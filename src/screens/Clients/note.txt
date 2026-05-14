@@ -1,0 +1,3032 @@
+// ==========================================
+// STORE PRINCIPAL - TailorPro (Supabase)
+// ==========================================
+
+import { create } from 'zustand';
+import { supabase } from '@/src/lib/supabase';
+import {
+  clientService, orderService, activityService,
+  statisticsService, mapClient, mapOrder, mapActivity,
+} from '../services/supabaseService';
+import type { Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics } from '../types';
+
+// ==========================================
+// TYPE PROFIL
+// ==========================================
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  display_name: string | null;
+  atelier_name: string | null;
+  phone: string | null;
+}
+
+// ==========================================
+// TYPES DU STORE
+// ==========================================
+
+interface AppState {
+  // ── Auth & Profil ──
+  isAuthenticated: boolean;
+  userId: string | null;
+  profile: UserProfile | null;
+
+  // ── Données ──
+  clients: Client[];
+  orders: Order[];
+  catalog: CatalogModel[];
+  activities: Activity[];
+  statistics: Statistics;
+  measurements: Record<string, Measurements>;
+  payments: Record<string, Payment[]>;
+
+  // ── UI ──
+  isLoading: boolean;
+  error: string | null;
+  selectedClientFilter: 'all' | 'recent' | 'favorite';
+  selectedCatalogCategory: string;
+  searchQuery: string;
+
+  // ── Actions Auth ──
+  setAuthenticated: (status: boolean, userId?: string) => void;
+  logout: () => Promise<void>;
+  fetchProfile: () => Promise<void>;
+
+  // ── Actions Data (Supabase) ──
+  loadClients: () => Promise<void>;
+  loadOrders: () => Promise<void>;
+  loadActivities: () => Promise<void>;
+  loadStatistics: () => Promise<void>;
+  loadAll: () => Promise<void>;
+
+  // ── Actions Clients (locales + sync) ──
+  addClient: (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Client | null>;
+  updateClient: (clientId: string, data: Partial<Client>) => Promise<void>;
+  deleteClient: (clientId: string) => Promise<void>;
+
+  // ── Actions Orders (locales + sync) ──
+  addOrder: (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Order | null>;
+  updateOrder: (orderId: string, data: Partial<Order>) => Promise<void>;
+  deleteOrder: (orderId: string) => Promise<void>;
+
+  // ── Actions Measurements ──
+  setMeasurements: (clientId: string, measurements: Measurements) => void;
+
+  // ── Actions Payments ──
+  addPayment: (clientId: string, payment: Payment) => void;
+
+  // ── Actions Catalog (local uniquement pour l'instant) ──
+  setCatalog: (catalog: CatalogModel[]) => void;
+  addCatalogModel: (model: CatalogModel) => void;
+  updateCatalogModel: (modelId: string, data: Partial<CatalogModel>) => void;
+  deleteCatalogModel: (modelId: string) => void;
+  toggleCatalogFavorite: (modelId: string) => void;
+
+  // ── Actions UI ──
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  setClientFilter: (filter: 'all' | 'recent' | 'favorite') => void;
+  setCatalogCategory: (category: string) => void;
+  setSearchQuery: (query: string) => void;
+
+  // ── Helpers ──
+  getClientById: (clientId: string) => Client | undefined;
+  getOrdersByClient: (clientId: string) => Order[];
+  getMeasurementsByClient: (clientId: string) => Measurements | undefined;
+  getPaymentsByClient: (clientId: string) => Payment[];
+}
+
+// ==========================================
+// STATISTIQUES PAR DÉFAUT
+// ==========================================
+
+const DEFAULT_STATISTICS: Statistics = {
+  totalClients: 0,
+  monthlyRevenue: 0,
+  revenueGrowth: 0,
+  ordersInProgress: 0,
+  completedOrders: 0,
+  unpaidInvoices: 0,
+  unpaidAmount: 0,
+  totalExpenses: 0,
+  netProfit: 0,
+};
+
+// ==========================================
+// STORE
+// ==========================================
+
+export const useAppStore = create<AppState>((set, get) => ({
+
+  // ── État initial ──
+  isAuthenticated: false,
+  userId: null,
+  profile: null,
+
+  clients: [],
+  orders: [],
+  catalog: [],
+  activities: [],
+  statistics: DEFAULT_STATISTICS,
+  measurements: {},
+  payments: {},
+
+  isLoading: false,
+  error: null,
+  selectedClientFilter: 'all',
+  selectedCatalogCategory: 'all',
+  searchQuery: '',
+
+  // ==========================================
+  // AUTH
+  // ==========================================
+
+  setAuthenticated: (status, userId) =>
+    set({ isAuthenticated: status, userId: userId ?? null }),
+
+  logout: async () => {
+    await supabase.auth.signOut();
+    set({
+      isAuthenticated: false,
+      userId: null,
+      profile: null,
+      clients: [],
+      orders: [],
+      activities: [],
+      statistics: DEFAULT_STATISTICS,
+    });
+  },
+
+  fetchProfile: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, display_name, atelier_name, phone')
+      .eq('id', user.id)
+      .single();
+
+    if (!error && data) {
+      set({ profile: data, userId: user.id, isAuthenticated: true });
+    }
+  },
+
+  // ==========================================
+  // CHARGEMENT DONNÉES (SUPABASE)
+  // ==========================================
+
+  loadClients: async () => {
+    const { data, error } = await clientService.getAll();
+    if (error) { set({ error: error.message }); return; }
+    set({ clients: (data ?? []).map(mapClient) });
+  },
+
+  loadOrders: async () => {
+    const { data, error } = await orderService.getAll();
+    if (error) { set({ error: error.message }); return; }
+    set({ orders: (data ?? []).map(mapOrder) });
+  },
+
+  loadActivities: async () => {
+    const { data, error } = await activityService.getRecent(20);
+    if (error) { set({ error: error.message }); return; }
+    set({ activities: (data ?? []).map(mapActivity) });
+  },
+
+  loadStatistics: async () => {
+    const { data, error } = await statisticsService.compute();
+    if (error || !data) return;
+    set({ statistics: data });
+  },
+
+  /** Charge tout en parallèle au démarrage */
+  loadAll: async () => {
+    set({ isLoading: true, error: null });
+    await Promise.all([
+      get().fetchProfile(),
+      get().loadClients(),
+      get().loadOrders(),
+      get().loadActivities(),
+      get().loadStatistics(),
+    ]);
+    set({ isLoading: false });
+  },
+
+  // ==========================================
+  // CLIENTS
+  // ==========================================
+
+  addClient: async (clientData) => {
+    const { data, error } = await clientService.create(clientData);
+    if (error || !data) { set({ error: error?.message }); return null; }
+
+    const newClient = mapClient(data);
+
+    // Mise à jour optimiste du store
+    set(state => ({ clients: [newClient, ...state.clients] }));
+
+    // Créer une activité
+    await activityService.create({
+      type: 'new_client',
+      title: 'Nouveau client',
+      subtitle: newClient.fullName,
+      clientId: newClient.id,
+    });
+
+    // Rafraîchir les stats
+    get().loadStatistics();
+    get().loadActivities();
+
+    return newClient;
+  },
+
+  updateClient: async (clientId, updates) => {
+    const { error } = await clientService.update(clientId, updates);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      clients: state.clients.map(c =>
+        c.id === clientId ? { ...c, ...updates, updatedAt: new Date() } : c
+      ),
+    }));
+  },
+
+  deleteClient: async (clientId) => {
+    const { error } = await clientService.delete(clientId);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      clients: state.clients.filter(c => c.id !== clientId),
+    }));
+    get().loadStatistics();
+  },
+
+  // ==========================================
+  // COMMANDES
+  // ==========================================
+
+  addOrder: async (orderData) => {
+    const { data, error } = await orderService.create(orderData);
+    if (error || !data) { set({ error: error?.message }); return null; }
+
+    const newOrder = mapOrder(data);
+
+    set(state => ({ orders: [newOrder, ...state.orders] }));
+
+    // Créer une activité
+    await activityService.create({
+      type: 'new_order',
+      title: 'Nouvelle commande',
+      subtitle: newOrder.clientName,
+      clientId: newOrder.clientId,
+      orderId: newOrder.id,
+    });
+
+    // Mettre à jour le solde client
+    const client = get().getClientById(newOrder.clientId);
+    if (client) {
+      await clientService.update(newOrder.clientId, {
+        balance: client.balance + newOrder.remainingAmount,
+      });
+      set(state => ({
+        clients: state.clients.map(c =>
+          c.id === newOrder.clientId
+            ? { ...c, balance: c.balance + newOrder.remainingAmount }
+            : c
+        ),
+      }));
+    }
+
+    get().loadStatistics();
+    get().loadActivities();
+
+    return newOrder;
+  },
+
+  updateOrder: async (orderId, updates) => {
+    const { error } = await orderService.update(orderId, updates);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      orders: state.orders.map(o =>
+        o.id === orderId ? { ...o, ...updates, updatedAt: new Date() } : o
+      ),
+    }));
+
+    // Si la commande est marquée comme terminée → créer une activité
+    if (updates.orderStatus === 'completed' || updates.orderStatus === 'delivered') {
+      const order = get().orders.find(o => o.id === orderId);
+      if (order) {
+        await activityService.create({
+          type: 'order_completed',
+          title: 'Commande terminée',
+          subtitle: order.clientName,
+          clientId: order.clientId,
+          orderId: order.id,
+        });
+        get().loadActivities();
+      }
+    }
+
+    get().loadStatistics();
+  },
+
+  deleteOrder: async (orderId) => {
+    const { error } = await orderService.delete(orderId);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      orders: state.orders.filter(o => o.id !== orderId),
+    }));
+    get().loadStatistics();
+  },
+
+  // ==========================================
+  // MEASUREMENTS & PAYMENTS (locaux)
+  // ==========================================
+
+  setMeasurements: (clientId, measurements) =>
+    set(state => ({
+      measurements: { ...state.measurements, [clientId]: measurements },
+    })),
+
+  addPayment: (clientId, payment) =>
+    set(state => ({
+      payments: {
+        ...state.payments,
+        [clientId]: [...(state.payments[clientId] ?? []), payment],
+      },
+    })),
+
+  // ==========================================
+  // CATALOG (local)
+  // ==========================================
+
+  setCatalog: (catalog) => set({ catalog }),
+  addCatalogModel: (model) =>
+    set(state => ({ catalog: [model, ...state.catalog] })),
+  updateCatalogModel: (modelId, data) =>
+    set(state => ({
+      catalog: state.catalog.map(m => m.id === modelId ? { ...m, ...data } : m),
+    })),
+  deleteCatalogModel: (modelId) =>
+    set(state => ({
+      catalog: state.catalog.filter(m => m.id !== modelId),
+    })),
+  toggleCatalogFavorite: (modelId) =>
+    set(state => ({
+      catalog: state.catalog.map(m =>
+        m.id === modelId ? { ...m, isFavorite: !m.isFavorite } : m
+      ),
+    })),
+
+  // ==========================================
+  // UI
+  // ==========================================
+
+  setLoading: (loading) => set({ isLoading: loading }),
+  setError: (error) => set({ error }),
+  setClientFilter: (filter) => set({ selectedClientFilter: filter }),
+  setCatalogCategory: (category) => set({ selectedCatalogCategory: category }),
+  setSearchQuery: (query) => set({ searchQuery: query }),
+
+  // ==========================================
+  // HELPERS
+  // ==========================================
+
+  getClientById: (clientId) =>
+    get().clients.find(c => c.id === clientId),
+
+  getOrdersByClient: (clientId) =>
+    get().orders.filter(o => o.clientId === clientId),
+
+  getMeasurementsByClient: (clientId) =>
+    get().measurements[clientId],
+
+  getPaymentsByClient: (clientId) =>
+    get().payments[clientId] ?? [],
+}));
+
+
+// ==========================================
+// ÉCRAN DÉTAILS CLIENT - TailorPro (Redesign)
+// ==========================================
+
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Linking,
+  Image,
+} from 'react-native';
+import { Ionicons, Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useAppStore } from '@store/useAppStore';
+import { formatCurrency, formatDate, formatPhone } from '@utils/formatters';
+import {
+  COLORS,
+  SPACING,
+  FONT_SIZES,
+  FONT_WEIGHTS,
+  BORDER_RADIUS,
+  PAYMENT_STATUS_LABELS,
+} from '@constants/theme';
+import {RootStackParamList} from "@/src/types";
+
+// ==========================================
+// TYPES
+// ==========================================
+
+type Props = NativeStackScreenProps<RootStackParamList, 'ClientDetails'>;
+
+// ==========================================
+// HELPERS
+// ==========================================
+
+const getInitials = (name: string): string => {
+  const parts = name.trim().split(' ');
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+};
+
+// ==========================================
+// SOUS-COMPOSANTS
+// ==========================================
+
+const ActionButton = ({
+                        icon,
+                        label,
+                        color,
+                        bg,
+                        onPress,
+                      }: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color: string;
+  bg: string;
+  onPress: () => void;
+}) => (
+    <TouchableOpacity style={styles.actionBtn} onPress={onPress} activeOpacity={0.7}>
+      <View style={[styles.actionIcon, { backgroundColor: bg }]}>
+        <Ionicons name={icon} size={20} color={color} />
+      </View>
+      <Text style={styles.actionLabel}>{label}</Text>
+    </TouchableOpacity>
+);
+
+const StatItem = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <View style={styles.statItem}>
+      <Text style={styles.statLabel}>{label}</Text>
+      {typeof value === 'string' ? (
+          <Text style={styles.statVal}>{value}</Text>
+      ) : (
+          value
+      )}
+    </View>
+);
+
+const InfoRow = ({
+                   icon,
+                   label,
+                   value,
+                 }: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: React.ReactNode;
+}) => (
+    <View style={styles.infoRow}>
+      <View style={styles.infoKey}>
+        <Ionicons name={icon} size={15} color={COLORS.gray400} />
+        <Text style={styles.infoKeyText}>{label}</Text>
+      </View>
+      {typeof value === 'string' ? (
+          <Text style={styles.infoVal}>{value}</Text>
+      ) : (
+          value
+      )}
+    </View>
+);
+
+const PaymentPill = ({ status }: { status: string }) => {
+  const config =
+      status === 'paid'
+          ? { bg: '#D1FAE5', color: '#065F46' }
+          : status === 'partial'
+              ? { bg: '#FEF3C7', color: '#92400E' }
+              : { bg: '#FEE2E2', color: '#991B1B' };
+
+  return (
+      <View style={[styles.pill, { backgroundColor: config.bg }]}>
+        <Text style={[styles.pillText, { color: config.color }]}>
+          {PAYMENT_STATUS_LABELS[status] ?? status}
+        </Text>
+      </View>
+  );
+};
+
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+
+export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { clientId } = route.params;
+
+  const { getClientById, getOrdersByClient } = useAppStore();
+  const client = getClientById(clientId);
+  const orders = getOrdersByClient(clientId);
+
+  if (!client) {
+    return (
+        <View style={[styles.container, { paddingTop: insets.top }]}>
+          <View style={styles.errorContainer}>
+            <Ionicons name="person-outline" size={48} color={COLORS.gray300} />
+            <Text style={styles.errorText}>Client non trouvé</Text>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Text style={styles.errorBack}>Retour</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+    );
+  }
+
+  const totalOrders = orders.length;
+  const totalSpent = orders.reduce((sum, o) => sum + o.advancePayment, 0);
+  const sortedOrders = [...orders].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  const lastOrder = sortedOrders[0] ?? null;
+  const recentOrders = sortedOrders.slice(0, 3);
+
+  const handleCall = () =>
+      Linking.openURL(`tel:${client.phone.replace(/\s/g, '')}`);
+  const handleWhatsApp = () => {
+    const phone = client.phone.replace(/\s/g, '').replace('+', '');
+    Linking.openURL(`whatsapp://send?phone=${phone}`);
+  };
+  const handleSMS = () =>
+      Linking.openURL(`sms:${client.phone.replace(/\s/g, '')}`);
+  const handleDirections = () =>
+      Linking.openURL(
+          `https://maps.google.com/?q=${encodeURIComponent(client.neighborhood)}`
+      );
+
+  const orderStatusColor: Record<string, string> = {
+    pending: '#F59E0B',
+    in_progress: '#3B82F6',
+    completed: '#10B981',
+    delivered: COLORS.primary,
+    cancelled: '#EF4444',
+  };
+
+  const orderStatusLabel: Record<string, string> = {
+    pending: 'En attente',
+    in_progress: 'En cours',
+    completed: 'Terminée',
+    delivered: 'Livrée',
+    cancelled: 'Annulée',
+  };
+
+  return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        {/* ── Header violet ── */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={20} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Détails client</Text>
+          <TouchableOpacity
+              style={styles.headerBtn}
+              onPress={() => navigation.navigate('AddClient')}
+          >
+            <Ionicons name="create-outline" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+        >
+          {/* ── Hero ── */}
+          <View style={styles.hero}>
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>{getInitials(client.fullName)}</Text>
+            </View>
+            <Text style={styles.heroName}>{client.fullName}</Text>
+            {client.isFavorite && (
+                <View style={styles.heroBadge}>
+                  <Ionicons name="star" size={11} color="#fff" style={{ marginRight: 4 }} />
+                  <Text style={styles.heroBadgeText}>Cliente fidèle</Text>
+                </View>
+            )}
+            <View style={styles.heroMeta}>
+              <View style={styles.heroMetaItem}>
+                <Ionicons name="call-outline" size={12} color="rgba(255,255,255,0.8)" />
+                <Text style={styles.heroMetaText}>{formatPhone(client.phone)}</Text>
+              </View>
+              <View style={styles.heroMetaItem}>
+                <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.8)" />
+                <Text style={styles.heroMetaText}>{client.neighborhood}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* ── Actions rapides ── */}
+          <View style={styles.actionsCard}>
+            <ActionButton
+                icon="call"
+                label="Appeler"
+                color="#6B21A8"
+                bg="#EDE9FE"
+                onPress={handleCall}
+            />
+            <ActionButton
+                icon="logo-whatsapp"
+                label="WhatsApp"
+                color="#065F46"
+                bg="#D1FAE5"
+                onPress={handleWhatsApp}
+            />
+            <ActionButton
+                icon="chatbubble-outline"
+                label="SMS"
+                color="#1E40AF"
+                bg="#DBEAFE"
+                onPress={handleSMS}
+            />
+            <ActionButton
+                icon="map-outline"
+                label="Itinéraire"
+                color="#92400E"
+                bg="#FEF3C7"
+                onPress={handleDirections}
+            />
+          </View>
+
+          <View style={styles.body}>
+            {/* ── Stats grid ── */}
+            <View style={styles.sectionCard}>
+              <View style={styles.statGrid}>
+                <StatItem label="Commandes" value={String(totalOrders)} />
+                <StatItem
+                    label="Total dépensé"
+                    value={formatCurrency(totalSpent)}
+                />
+                <StatItem
+                    label="Dernière commande"
+                    value={lastOrder ? formatDate(lastOrder.createdAt) : '-'}
+                />
+                <StatItem
+                    label="Statut paiement"
+                    value={
+                      lastOrder ? (
+                          <PaymentPill status={lastOrder.paymentStatus} />
+                      ) : (
+                          <Text style={styles.statVal}>-</Text>
+                      )
+                    }
+                />
+              </View>
+            </View>
+
+            {/* ── Commandes récentes ── */}
+            {recentOrders.length > 0 && (
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionHead}>
+                    <Text style={styles.sectionTitle}>Commandes récentes</Text>
+                    <TouchableOpacity>
+                      <Text style={styles.sectionLink}>Voir toutes</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {recentOrders.map((order, idx) => (
+                      <TouchableOpacity
+                          key={order.id}
+                          style={[
+                            styles.orderItem,
+                            idx === recentOrders.length - 1 && { borderBottomWidth: 0 },
+                          ]}
+                          onPress={() => {}}
+                          activeOpacity={0.7}
+                      >
+                        <View
+                            style={[
+                              styles.orderDot,
+                              {
+                                backgroundColor:
+                                    orderStatusColor[order.orderStatus] ?? COLORS.gray400,
+                              },
+                            ]}
+                        />
+                        <View style={styles.orderInfo}>
+                          <Text style={styles.orderName} numberOfLines={1}>
+                            {order.description}
+                          </Text>
+                          <Text style={styles.orderMeta}>
+                            {formatDate(order.createdAt)} ·{' '}
+                            {orderStatusLabel[order.orderStatus] ?? order.orderStatus}
+                          </Text>
+                        </View>
+                        <Text style={styles.orderAmt}>
+                          {formatCurrency(order.totalPrice)}
+                        </Text>
+                      </TouchableOpacity>
+                  ))}
+                </View>
+            )}
+
+            {/* ── Informations ── */}
+            <View style={styles.sectionCard}>
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>Informations</Text>
+              </View>
+              <InfoRow
+                  icon="calendar-outline"
+                  label="Membre depuis"
+                  value={formatDate(client.createdAt)}
+              />
+              <InfoRow
+                  icon="location-outline"
+                  label="Quartier"
+                  value={client.neighborhood}
+              />
+              <InfoRow
+                  icon="wallet-outline"
+                  label="Solde restant"
+                  value={
+                    client.balance > 0 ? (
+                        <View style={[styles.pill, { backgroundColor: '#FEF3C7' }]}>
+                          <Text style={[styles.pillText, { color: '#92400E' }]}>
+                            {formatCurrency(client.balance)}
+                          </Text>
+                        </View>
+                    ) : (
+                        <View style={[styles.pill, { backgroundColor: '#D1FAE5' }]}>
+                          <Text style={[styles.pillText, { color: '#065F46' }]}>Soldé</Text>
+                        </View>
+                    )
+                  }
+              />
+            </View>
+
+            {/* ── Modèles réalisés (photos) ── */}
+            {/* ── Modèles réalisés (photos) ── */}
+            <View style={styles.sectionCard}>
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>Modèles réalisés</Text>
+
+                <TouchableOpacity>
+                  <Text style={styles.sectionLink}>Voir tous</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.photosGrid}
+              >
+                {[
+                  'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=300',
+                  'https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=300',
+                  'https://images.unsplash.com/photo-1551803091-e20673f15770?w=300',
+                  'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=300',
+                ].map((uri, i) => (
+                    <TouchableOpacity
+                        key={i}
+                        style={styles.photoThumb}
+                        activeOpacity={0.8}
+                    >
+                      <Image
+                          source={{ uri }}
+                          style={styles.photoImg}
+                          resizeMode="cover"
+                      />
+
+                      {i === 3 && (
+                          <View style={styles.photoOverlay}>
+                            <Text style={styles.photoOverlayText}>+12</Text>
+                          </View>
+                      )}
+                    </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+
+          {/* ── CTA Nouvelle commande ── */}
+          <TouchableOpacity
+              style={styles.cta}
+              onPress={() => navigation.navigate('AddOrder', { clientId })}
+              activeOpacity={0.85}
+          >
+            <Ionicons name="add" size={20} color="#fff" />
+            <Text style={styles.ctaText}>Nouvelle commande</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+  );
+};
+
+// ==========================================
+// STYLES
+// ==========================================
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  // ── Header ──
+  header: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+  },
+  headerBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#fff',
+  },
+
+  // ── Scroll ──
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: SPACING.xxxl },
+
+  // ── Hero ──
+  hero: {
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: 32,
+    paddingTop: SPACING.md,
+    gap: SPACING.sm,
+  },
+  avatarCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  avatarText: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.primary,
+  },
+  heroName: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#fff',
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  heroBadgeText: {
+    fontSize: 11,
+    color: '#fff',
+  },
+  heroMeta: {
+    flexDirection: 'row',
+    gap: SPACING.lg,
+    marginTop: 4,
+  },
+  heroMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  heroMetaText: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.85)',
+  },
+
+  // ── Actions ──
+  actionsCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.xl,
+    marginHorizontal: SPACING.lg,
+    marginTop: -20,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  actionBtn: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  actionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BORDER_RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLabel: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+  },
+
+  // ── Body ──
+  body: {
+    padding: SPACING.lg,
+    gap: SPACING.md,
+  },
+
+  // ── Section Card ──
+  sectionCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: SPACING.md,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
+  },
+  sectionTitle: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  sectionLink: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+  },
+
+  // ── Stat Grid ──
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  statItem: {
+    width: '50%',
+    padding: SPACING.md,
+    borderRightWidth: 0.5,
+    borderBottomWidth: 0.5,
+    borderColor: COLORS.border,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  statVal: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+
+  // ── Orders ──
+  orderItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    padding: SPACING.md,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
+  },
+  orderDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    flexShrink: 0,
+  },
+  orderInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  orderName: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: COLORS.text,
+  },
+  orderMeta: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  orderAmt: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+    flexShrink: 0,
+  },
+
+  // ── Info Rows ──
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: SPACING.md,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
+  },
+  infoKey: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  infoKeyText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  infoVal: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: COLORS.text,
+  },
+
+  // ── Pill ──
+  pill: {
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  pillText: {
+    fontSize: 11,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+
+  // ── CTA ──
+  cta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.lg,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xl,
+    padding: SPACING.lg,
+  },
+  ctaText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#fff',
+  },
+
+  // ── Photos grid ──
+  photosGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    padding: SPACING.md,
+  },
+  photoThumb: {
+    width: 100,
+    height: 100,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    backgroundColor: COLORS.gray100,
+  },
+  photoImg: {
+    width: '100%',
+    height: '100%',
+  },
+  photoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BORDER_RADIUS.md,
+  },
+  photoOverlayText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.xl,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+
+  // ── Error ──
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.md,
+  },
+  errorText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textSecondary,
+  },
+  errorBack: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.primary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+});
+
+
+// ==========================================
+// ÉCRAN DÉTAILS CLIENT - TailorPro
+// ==========================================
+
+/****
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Linking,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Header, Avatar, Badge, Card, IconButton, Button } from '../../components/ui';
+import { useAppStore } from '../../store/useAppStore';
+import { formatCurrency, formatDate, formatPhone } from '../../utils/formatters';
+import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS } from '../../constants/theme';
+
+interface ClientDetailsScreenProps {
+  clientId: string;
+  onBack?: () => void;
+  onEdit?: () => void;
+  onMeasurementsPress?: () => void;
+  onOrderPress?: (orderId: string) => void;
+  onNewOrderPress?: () => void;
+}
+
+export const ClientDetailsScreen: React.FC<ClientDetailsScreenProps> = ({
+  clientId,
+  onBack,
+  onEdit,
+  onMeasurementsPress,
+  onOrderPress,
+  onNewOrderPress,
+}) => {
+  const { getClientById, getOrdersByClient } = useAppStore();
+  const client = getClientById(clientId);
+  const orders = getOrdersByClient(clientId);
+
+  if (!client) {
+    return (
+      <View style={styles.container}>
+        <Header title="Client" showBack onBackPress={onBack} />
+        <View style={styles.errorContainer}>
+          <Text>Client non trouvé</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Stats calculées
+  const totalOrders = orders.length;
+  const totalSpent = orders.reduce((sum, o) => sum + o.advancePayment, 0);
+  const lastOrder = orders.length > 0
+    ? orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+    : null;
+
+  const handleCall = () => {
+    Linking.openURL(`tel:${client.phone.replace(/\s/g, '')}`);
+  };
+
+  const handleWhatsApp = () => {
+    const phone = client.phone.replace(/\s/g, '').replace('+', '');
+    Linking.openURL(`whatsapp://send?phone=${phone}`);
+  };
+
+  const handleSMS = () => {
+    Linking.openURL(`sms:${client.phone.replace(/\s/g, '')}`);
+  };
+
+  const handleDirections = () => {
+    Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(client.neighborhood)}`);
+  };
+
+  return (
+    <View style={styles.container}>
+      <Header
+        title="Détails du client"
+        variant="primary"
+        showBack
+        onBackPress={onBack}
+        rightIcon="create-outline"
+        onRightPress={onEdit}
+      />
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile Section }
+        <View style={styles.profileSection}>
+          <Avatar source={client.photo} name={client.fullName} size="xl" />
+
+          <Text style={styles.clientName}>{client.fullName}</Text>
+
+          {client.isFavorite && (
+            <Badge label="Cliente fidèle" variant="success" size="md" />
+          )}
+
+          <View style={styles.contactInfo}>
+            <Ionicons name="call-outline" size={16} color={COLORS.gray500} />
+            <Text style={styles.contactText}>{formatPhone(client.phone)}</Text>
+          </View>
+
+          <View style={styles.contactInfo}>
+            <Ionicons name="location-outline" size={16} color={COLORS.gray500} />
+            <Text style={styles.contactText}>{client.neighborhood}</Text>
+          </View>
+
+          <View style={styles.contactInfo}>
+            <Ionicons name="calendar-outline" size={16} color={COLORS.gray500} />
+            <Text style={styles.contactText}>Depuis {formatDate(client.createdAt)}</Text>
+          </View>
+        </View>
+
+        {/* Quick Actions }
+        <View style={styles.quickActions}>
+          <IconButton
+            icon="call"
+            label="Appeler"
+            variant="ghost"
+            onPress={handleCall}
+          />
+          <IconButton
+            icon="logo-whatsapp"
+            label="WhatsApp"
+            variant="ghost"
+            onPress={handleWhatsApp}
+          />
+          <IconButton
+            icon="chatbubble"
+            label="SMS"
+            variant="ghost"
+            onPress={handleSMS}
+          />
+          <IconButton
+            icon="navigate"
+            label="Itinéraire"
+            variant="ghost"
+            onPress={handleDirections}
+          />
+        </View>
+
+        {/* Informations }
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Informations</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeMoreText}>Voir plus</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Card>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Commandes</Text>
+              <Text style={styles.infoValue}>{totalOrders}</Text>
+            </View>
+            <View style={styles.infoDivider} />
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Total dépensé</Text>
+              <Text style={styles.infoValue}>{formatCurrency(totalSpent)}</Text>
+            </View>
+            <View style={styles.infoDivider} />
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Dernière commande</Text>
+              <Text style={styles.infoValue}>
+                {lastOrder ? formatDate(lastOrder.createdAt) : '-'}
+              </Text>
+            </View>
+            <View style={styles.infoDivider} />
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Statut paiement</Text>
+              {lastOrder ? (
+                <Badge
+                  label={PAYMENT_STATUS_LABELS[lastOrder.paymentStatus]}
+                  variant={
+                    lastOrder.paymentStatus === 'paid' ? 'success' :
+                    lastOrder.paymentStatus === 'partial' ? 'warning' : 'error'
+                  }
+                />
+              ) : (
+                <Text style={styles.infoValue}>-</Text>
+              )}
+            </View>
+          </Card>
+        </View>
+
+        {/* Photos }
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Photos</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeMoreText}>Voir toutes</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.photosContainer}
+          >
+            {/* Placeholder photos }
+            {[1, 2, 3].map((i) => (
+              <TouchableOpacity key={i} style={styles.photoItem}>
+                <Image
+                  source={{ uri: `https://images.unsplash.com/photo-159577745758${i}-95e059d581b8?w=200` }}
+                  style={styles.photo}
+                />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* New Order Button }
+        <Button
+          title="+ Nouvelle commande"
+          onPress={onNewOrderPress || (() => {})}
+          fullWidth
+          style={styles.newOrderButton}
+        />
+      </ScrollView>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: SPACING.xxxl,
+  },
+
+  // Profile Section
+  profileSection: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+    backgroundColor: COLORS.white,
+    borderBottomLeftRadius: BORDER_RADIUS.xxl,
+    borderBottomRightRadius: BORDER_RADIUS.xxl,
+    marginTop: -SPACING.md,
+    paddingTop: SPACING.xl + SPACING.md,
+  },
+  clientName: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.text,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  contactInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  contactText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+  },
+
+  // Quick Actions
+  quickActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: SPACING.lg,
+    backgroundColor: COLORS.white,
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    ...SHADOWS.sm,
+  },
+
+  // Section
+  section: {
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  sectionTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  seeMoreText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+  },
+
+  // Info Card
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  infoLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+  },
+  infoValue: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: COLORS.gray100,
+  },
+
+  // Photos
+  photosContainer: {
+    gap: SPACING.sm,
+  },
+  photoItem: {
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+  },
+  photo: {
+    width: 100,
+    height: 100,
+    backgroundColor: COLORS.gray200,
+  },
+
+  // New Order Button
+  newOrderButton: {
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.xl,
+  },
+});
+*/
+
+
+// ==========================================
+// ÉCRAN LISTE DES CLIENTS - TailorPro (Redesign)
+// ==========================================
+
+import React, { useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  TextInput,
+} from 'react-native';
+import { Ionicons, Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppStore } from '../../store/useAppStore';
+import { formatCurrency, formatPhone } from '../../utils/formatters';
+import {
+  COLORS,
+  SPACING,
+  FONT_SIZES,
+  FONT_WEIGHTS,
+  BORDER_RADIUS,
+  SHADOWS,
+} from '../../constants/theme';
+import type {Client, RootStackParamList} from '../../types';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+// ==========================================
+// TYPES
+// ==========================================
+
+type Props = NativeStackScreenProps<RootStackParamList, 'MainTabs'>;
+
+type FilterType = 'all' | 'recent' | 'favorite';
+
+// ==========================================
+// CONSTANTES
+// ==========================================
+
+const AVATAR_PALETTES = [
+  { bg: '#EDE9FE', text: '#6B21A8' },
+  { bg: '#D1FAE5', text: '#065F46' },
+  { bg: '#FCE7F3', text: '#9D174D' },
+  { bg: '#FEF3C7', text: '#92400E' },
+  { bg: '#DBEAFE', text: '#1E40AF' },
+  { bg: '#FFE4E6', text: '#9F1239' },
+  { bg: '#ECFDF5', text: '#064E3B' },
+];
+
+const FILTERS: { key: FilterType; label: string }[] = [
+  { key: 'all', label: 'Tous' },
+  { key: 'recent', label: 'Récents' },
+  { key: 'favorite', label: 'Fidèles' },
+];
+
+// ==========================================
+// HELPERS
+// ==========================================
+
+const getInitials = (name: string): string => {
+  const parts = name.trim().split(' ');
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+};
+
+const getAvatarPalette = (id: string) => {
+  const index = parseInt(id, 10) % AVATAR_PALETTES.length;
+  return AVATAR_PALETTES[isNaN(index) ? 0 : index];
+};
+
+const isNewClient = (createdAt: Date): boolean => {
+  return Date.now() - new Date(createdAt).getTime() < 30 * 24 * 60 * 60 * 1000;
+};
+
+// ==========================================
+// SOUS-COMPOSANTS
+// ==========================================
+
+const ClientAvatar = ({ client }: { client: Client }) => {
+  const palette = getAvatarPalette(client.id);
+  return (
+      <View style={[styles.avatar, { backgroundColor: palette.bg }]}>
+        <Text style={[styles.avatarText, { color: palette.text }]}>
+          {getInitials(client.fullName)}
+        </Text>
+      </View>
+  );
+};
+
+const StatCard = ({
+                    label,
+                    value,
+                    sub,
+                    subColor,
+                  }: {
+  label: string;
+  value: string;
+  sub: string;
+  subColor?: string;
+}) => (
+    <View style={styles.statCard}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={[styles.statSub, subColor ? { color: subColor } : {}]}>{sub}</Text>
+    </View>
+);
+
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+
+export const ClientsListScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { clients, searchQuery, setSearchQuery } = useAppStore();
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+
+  // Stats
+  const totalClients = clients.length;
+  const clientsWithBalance = clients.filter((c) => c.balance > 0);
+  const totalUnpaid = clientsWithBalance.reduce((s, c) => s + c.balance, 0);
+
+  // Filtered list
+  const filteredClients = useMemo(() => {
+    let result = [...clients];
+
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+          (c) =>
+              c.fullName.toLowerCase().includes(q) ||
+              c.phone.includes(q) ||
+              c.neighborhood.toLowerCase().includes(q)
+      );
+    }
+
+    switch (activeFilter) {
+      case 'recent':
+        result.sort(
+            (a, b) =>
+                new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+        break;
+      case 'favorite':
+        result = result.filter((c) => c.isFavorite);
+        break;
+    }
+
+    return result;
+  }, [clients, searchQuery, activeFilter]);
+
+  // ==========================================
+  // RENDU CLIENT
+  // ==========================================
+
+  const renderClientItem = ({ item }: { item: Client }) => {
+    const isNew = isNewClient(item.createdAt);
+
+    return (
+        <TouchableOpacity
+            style={styles.clientCard}
+            onPress={() => navigation.navigate('ClientDetails', { clientId: item.id })}
+            activeOpacity={0.7}
+        >
+          <ClientAvatar client={item} />
+
+          <View style={styles.clientInfo}>
+            <View style={styles.clientNameRow}>
+              <Text style={styles.clientName} numberOfLines={1}>
+                {item.fullName}
+              </Text>
+              {item.isFavorite && (
+                  <View style={styles.badgeFidele}>
+                    <Text style={styles.badgeFideleText}>Fidèle</Text>
+                  </View>
+              )}
+              {isNew && !item.isFavorite && (
+                  <View style={styles.badgeNew}>
+                    <Text style={styles.badgeNewText}>Nouveau</Text>
+                  </View>
+              )}
+            </View>
+
+            <Text style={styles.clientPhone}>{formatPhone(item.phone)}</Text>
+
+            <View style={styles.clientLocRow}>
+              <Ionicons name="location-outline" size={11} color={COLORS.gray400} />
+              <Text style={styles.clientLoc} numberOfLines={1}>
+                {item.neighborhood}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.clientRight}>
+            {item.balance > 0 ? (
+                <View style={styles.balanceWarn}>
+                  <Text style={styles.balanceWarnText}>
+                    {formatCurrency(item.balance)}
+                  </Text>
+                </View>
+            ) : (
+                <View style={styles.balanceOk}>
+                  <Text style={styles.balanceOkText}>Soldé</Text>
+                </View>
+            )}
+            <Feather name="chevron-right" size={16} color={COLORS.gray300} />
+          </View>
+        </TouchableOpacity>
+    );
+  };
+
+  // ==========================================
+  // RENDU
+  // ==========================================
+
+  return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+
+        {/* ── TopBar ── */}
+        <View style={styles.topBar}>
+          <View style={styles.topBarRow}>
+            <View style={styles.topBarLeft}>
+              <TouchableOpacity style={styles.iconBtn}>
+                <Ionicons name="menu" size={20} color={COLORS.text} />
+              </TouchableOpacity>
+              <Text style={styles.screenTitle}>Clients</Text>
+            </View>
+            <View style={styles.topBarRight}>
+              <TouchableOpacity style={styles.iconBtn}>
+                <Ionicons name="options-outline" size={20} color={COLORS.text} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                  style={styles.addBtn}
+                  onPress={() => navigation.navigate('AddClient')}
+              >
+                <Ionicons name="add" size={22} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Search */}
+          <View style={styles.searchWrap}>
+            <Ionicons
+                name="search-outline"
+                size={16}
+                color={COLORS.gray400}
+                style={styles.searchIcon}
+            />
+            <TextInput
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Rechercher un client..."
+                placeholderTextColor={COLORS.gray400}
+            />
+            {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearBtn}>
+                  <Ionicons name="close-circle" size={16} color={COLORS.gray400} />
+                </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Tabs */}
+          <View style={styles.tabs}>
+            {FILTERS.map((f) => (
+                <TouchableOpacity
+                    key={f.key}
+                    style={[styles.tab, activeFilter === f.key && styles.tabActive]}
+                    onPress={() => setActiveFilter(f.key)}
+                >
+                  <Text
+                      style={[
+                        styles.tabText,
+                        activeFilter === f.key && styles.tabTextActive,
+                      ]}
+                  >
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <FlatList
+            data={filteredClients}
+            keyExtractor={(item) => item.id}
+            renderItem={renderClientItem}
+            showsVerticalScrollIndicator={false}
+            ListHeaderComponent={
+              <>
+                {/* Stats */}
+                <View style={styles.statsRow}>
+                  <StatCard
+                      label="Total clients"
+                      value={String(totalClients)}
+                      sub="↑ +3 ce mois"
+                      subColor={COLORS.primary}
+                  />
+                  <StatCard
+                      label="Soldes en attente"
+                      value={formatCurrency(totalUnpaid)}
+                      sub={`${clientsWithBalance.length} clients`}
+                      subColor={COLORS.warning}
+                  />
+                </View>
+
+                <Text style={styles.sectionLabel}>
+                  {filteredClients.length} client{filteredClients.length !== 1 ? 's' : ''}
+                </Text>
+              </>
+            }
+            contentContainerStyle={styles.listContent}
+            ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="people-outline" size={48} color={COLORS.gray300} />
+                <Text style={styles.emptyText}>Aucun client trouvé</Text>
+                {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchQuery('')}>
+                      <Text style={styles.emptyAction}>Effacer la recherche</Text>
+                    </TouchableOpacity>
+                )}
+              </View>
+            }
+        />
+      </View>
+  );
+};
+
+// ==========================================
+// STYLES
+// ==========================================
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  // ── TopBar ──
+  topBar: {
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+  },
+  topBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+  },
+  topBarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  topBarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  screenTitle: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.gray50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Search ──
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray50,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+    height: 40,
+  },
+  searchIcon: {
+    marginRight: SPACING.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    height: '100%',
+  },
+  clearBtn: {
+    padding: 4,
+  },
+
+  // ── Tabs ──
+  tabs: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  tab: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    marginBottom: -0.5,
+  },
+  tabActive: {
+    borderBottomColor: COLORS.primary,
+  },
+  tabText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHTS.regular,
+  },
+  tabTextActive: {
+    color: COLORS.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // ── Stats ──
+  statsRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.sm,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+  },
+  statLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  statSub: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.primary,
+    marginTop: 2,
+  },
+
+  // ── Section label ──
+  sectionLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.sm,
+  },
+
+  // ── List ──
+  listContent: {
+    paddingBottom: SPACING.xxxl * 2,
+  },
+
+  // ── Client Card ──
+  clientCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    marginHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    gap: SPACING.md,
+  },
+
+  // ── Avatar ──
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  avatarText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // ── Client Info ──
+  clientInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  clientNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 3,
+  },
+  clientName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+    flexShrink: 1,
+  },
+  clientPhone: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  clientLocRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 2,
+  },
+  clientLoc: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray400,
+    flexShrink: 1,
+  },
+
+  // ── Badges ──
+  badgeFidele: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    flexShrink: 0,
+  },
+  badgeFideleText: {
+    fontSize: 11,
+    color: '#92400E',
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  badgeNew: {
+    backgroundColor: '#EDE9FE',
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    flexShrink: 0,
+  },
+  badgeNewText: {
+    fontSize: 11,
+    color: '#6B21A8',
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+
+  // ── Client Right ──
+  clientRight: {
+    alignItems: 'flex-end',
+    gap: 6,
+    flexShrink: 0,
+  },
+  balanceWarn: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  balanceWarnText: {
+    fontSize: 11,
+    color: '#92400E',
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  balanceOk: {
+    backgroundColor: '#D1FAE5',
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  balanceOkText: {
+    fontSize: 11,
+    color: '#065F46',
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+
+  // ── Empty ──
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xxxl * 2,
+    paddingHorizontal: SPACING.lg,
+  },
+  emptyText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray400,
+    marginTop: SPACING.md,
+  },
+  emptyAction: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    marginTop: SPACING.sm,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+});
+
+
+// ==========================================
+// ÉCRAN AJOUTER UN CLIENT - TailorPro
+// ==========================================
+
+import React, { useState } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView,
+  TouchableOpacity, Image, Alert,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
+import { Header, Input, Button } from '@components/ui';
+import { useAppStore } from '@store/useAppStore';
+import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '@constants/theme';
+import type { RootStackParamList } from '../../types';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'AddClient'>;
+
+interface FormData {
+  fullName: string;
+  phone: string;
+  neighborhood: string;
+  gender: 'female' | 'male';
+}
+
+export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
+  const addClient = useAppStore(s => s.addClient);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [formData, setFormData] = useState<FormData>({
+    fullName: '',
+    phone: '',
+    neighborhood: '',
+    gender: 'female',
+  });
+
+  const update = (field: keyof FormData) => (value: string) =>
+      setFormData(prev => ({ ...prev, [field]: value }));
+
+  // ── Galerie ──
+  const pickFromGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission refusée', "L'accès à la galerie est requis.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setPhoto(result.assets[0].uri);
+    }
+  };
+
+  // ── Caméra ──
+  const pickFromCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission refusée', "L'accès à la caméra est requis.");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setPhoto(result.assets[0].uri);
+    }
+  };
+
+  // ── Choix source photo ──
+  const handlePhotoPress = () => {
+    Alert.alert(
+        'Photo du client',
+        'Choisir une option',
+        [
+          { text: 'Galerie', onPress: pickFromGallery },
+          { text: 'Caméra', onPress: pickFromCamera },
+          { text: 'Annuler', style: 'cancel' },
+        ]
+    );
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.fullName.trim()) {
+      Alert.alert('Erreur', 'Veuillez entrer le nom complet');
+      return;
+    }
+    if (!formData.phone.trim()) {
+      Alert.alert('Erreur', 'Veuillez entrer le numéro de téléphone');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const newClient = await addClient({
+        fullName: formData.fullName.trim(),
+        phone: formData.phone.trim(),
+        neighborhood: formData.neighborhood.trim(),
+        gender: formData.gender,
+        photo: photo ?? undefined,
+        isFavorite: false,
+        balance: 0,
+      });
+
+      if (!newClient) {
+        Alert.alert('Erreur', "Impossible d'ajouter le client");
+        return;
+      }
+
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert('Erreur', "Impossible d'ajouter le client");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+
+        {/* ── Header ── */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={20} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Ajouter un client</Text>
+          <View style={[styles.headerBtn, { opacity: 0 }]} />
+        </View>
+
+        <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + SPACING.xxxl }]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+        >
+          {/* ── Photo ── */}
+          <View style={styles.photoSection}>
+            <TouchableOpacity style={styles.photoContainer} onPress={handlePhotoPress}>
+              {photo ? (
+                  <Image source={{ uri: photo }} style={styles.photo} />
+              ) : (
+                  <View style={styles.photoPlaceholder}>
+                    <Ionicons name="camera-outline" size={32} color={COLORS.gray400} />
+                    <Text style={styles.photoHint}>Ajouter photo</Text>
+                  </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Bouton supprimer photo */}
+            {photo && (
+                <TouchableOpacity
+                    style={styles.removePhotoBtn}
+                    onPress={() => setPhoto(null)}
+                >
+                  <Ionicons name="trash-outline" size={14} color={COLORS.error ?? '#e53e3e'} />
+                  <Text style={styles.removePhotoText}>Supprimer</Text>
+                </TouchableOpacity>
+            )}
+          </View>
+
+          {/* ── Formulaire ── */}
+          <View style={styles.form}>
+            <Text style={styles.formTitle}>Informations personnelles</Text>
+
+            <Input
+                label="Nom complet *"
+                placeholder="Aminata Diallo"
+                value={formData.fullName}
+                onChangeText={update('fullName')}
+                autoCapitalize="words"
+            />
+
+            <Input
+                label="Numéro de téléphone *"
+                placeholder="+237 6XX XXX XXX"
+                value={formData.phone}
+                onChangeText={update('phone')}
+                keyboardType="phone-pad"
+            />
+
+            <Input
+                label="Quartier"
+                placeholder="Bastos, Yaoundé"
+                value={formData.neighborhood}
+                onChangeText={update('neighborhood')}
+            />
+
+            {/* Genre */}
+            <Text style={styles.label}>Genre</Text>
+            <View style={styles.genderContainer}>
+              {(['female', 'male'] as const).map(g => (
+                  <TouchableOpacity
+                      key={g}
+                      style={[styles.genderOption, formData.gender === g && styles.genderOptionActive]}
+                      onPress={() => setFormData(prev => ({ ...prev, gender: g }))}
+                  >
+                    <Ionicons
+                        name={g === 'female' ? 'female' : 'male'}
+                        size={20}
+                        color={formData.gender === g ? COLORS.primary : COLORS.gray500}
+                    />
+                    <Text style={[styles.genderText, formData.gender === g && styles.genderTextActive]}>
+                      {g === 'female' ? 'Femme' : 'Homme'}
+                    </Text>
+                  </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* ── Footer ── */}
+        <View style={[styles.footer, { paddingBottom: insets.bottom + SPACING.sm }]}>
+          <Button
+              title="Enregistrer le client"
+              onPress={handleSubmit}
+              fullWidth
+              loading={isLoading}
+          />
+        </View>
+      </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+
+  header: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+  },
+  headerBtn: {
+    width: 36, height: 36,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#fff',
+  },
+
+  scrollView: { flex: 1 },
+  scrollContent: {},
+
+  photoSection: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
+    gap: SPACING.sm,
+  },
+  photoContainer: {
+    width: 100, height: 100,
+    borderRadius: 50,
+    overflow: 'hidden',
+  },
+  photo: { width: '100%', height: '100%' },
+  photoPlaceholder: {
+    width: '100%', height: '100%',
+    backgroundColor: COLORS.gray100,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: COLORS.gray200,
+    borderStyle: 'dashed',
+    borderRadius: 50,
+    gap: 4,
+  },
+  photoHint: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray400,
+  },
+  removePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  removePhotoText: {
+    fontSize: FONT_SIZES.xs,
+    color: '#e53e3e',
+  },
+
+  form: { padding: SPACING.lg, gap: SPACING.sm },
+  formTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+  },
+  label: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHTS.medium,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  genderContainer: { flexDirection: 'row', gap: SPACING.md },
+  genderOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    backgroundColor: COLORS.gray50,
+  },
+  genderOptionActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.secondary,
+  },
+  genderText: { fontSize: FONT_SIZES.md, color: COLORS.gray500 },
+  genderTextActive: { color: COLORS.primary, fontWeight: FONT_WEIGHTS.medium },
+
+  footer: {
+    padding: SPACING.lg,
+    backgroundColor: COLORS.white,
+    borderTopWidth: 0.5,
+    borderTopColor: COLORS.border,
+  },
+});
+
+
+
+
+
+
+-- last version
+
+// ==========================================
+// ÉCRAN LISTE DES CLIENTS - TailorPro
+// ==========================================
+
+import React, { useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SearchBar, TabGroup, Avatar, Badge, Card } from '../../components/ui';
+import { useAppStore } from '../../store/useAppStore';
+import { formatCurrency, formatPhone } from '../../utils/formatters';
+import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import type { Client } from '../../types';
+
+interface ClientsListScreenProps {
+  onClientPress?: (clientId: string) => void;
+  onAddPress?: () => void;
+}
+
+export const ClientsListScreen: React.FC<ClientsListScreenProps> = ({
+  onClientPress,
+  onAddPress,
+}) => {
+  const insets = useSafeAreaInsets();
+  const { clients, selectedClientFilter, setClientFilter, searchQuery, setSearchQuery } = useAppStore();
+  const [activeFilter, setActiveFilter] = useState<'all' | 'recent' | 'favorite'>('all');
+
+  const filteredClients = useMemo(() => {
+    let result = clients;
+
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (client) =>
+          client.fullName.toLowerCase().includes(query) ||
+          client.phone.includes(query) ||
+          client.neighborhood.toLowerCase().includes(query)
+      );
+    }
+
+    // Filter by tab
+    switch (activeFilter) {
+      case 'recent':
+        result = [...result].sort(
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+        break;
+      case 'favorite':
+        result = result.filter((client) => client.isFavorite);
+        break;
+    }
+
+    return result;
+  }, [clients, searchQuery, activeFilter]);
+
+  const renderClientItem = ({ item }: { item: Client }) => (
+    <TouchableOpacity
+      style={styles.clientCard}
+      onPress={() => onClientPress?.(item.id)}
+      activeOpacity={0.7}
+    >
+      <Avatar
+        source={item.photo}
+        name={item.fullName}
+        size="md"
+        showBadge={item.isFavorite}
+        badgeColor={COLORS.warning}
+      />
+
+      <View style={styles.clientInfo}>
+        <View style={styles.clientHeader}>
+          <Text style={styles.clientName}>{item.fullName}</Text>
+          {item.isFavorite && (
+            <Badge label="Fidèle" variant="warning" />
+          )}
+        </View>
+        <Text style={styles.clientPhone}>{formatPhone(item.phone)}</Text>
+        <Text style={styles.clientAddress}>{item.neighborhood}</Text>
+      </View>
+
+      <View style={styles.clientBalance}>
+        {item.balance > 0 ? (
+          <Text style={styles.balanceAmount}>
+            Solde: {formatCurrency(item.balance)}
+          </Text>
+        ) : (
+          <Badge label="Solde: 0 FCFA" variant="success" />
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity>
+            <Ionicons name="menu" size={24} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Clients</Text>
+        </View>
+        <TouchableOpacity style={styles.addButton} onPress={onAddPress}>
+          <Ionicons name="add" size={24} color={COLORS.text} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Rechercher un client..."
+        />
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        <TabGroup
+          tabs={[
+            { key: 'all', label: 'Tous' },
+            { key: 'recent', label: 'Récents' },
+            { key: 'favorite', label: 'Fidèles' },
+          ]}
+          activeTab={activeFilter}
+          onTabChange={(key) => setActiveFilter(key as any)}
+        />
+      </View>
+
+      {/* Clients List */}
+      <FlatList
+        data={filteredClients}
+        keyExtractor={(item) => item.id}
+        renderItem={renderClientItem}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="people-outline" size={48} color={COLORS.gray300} />
+            <Text style={styles.emptyText}>Aucun client trouvé</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.white,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  headerTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  addButton: {
+    padding: SPACING.xs,
+  },
+  searchContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.white,
+  },
+  tabsContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+    backgroundColor: COLORS.white,
+  },
+  listContent: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxxl,
+  },
+  clientCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    ...SHADOWS.sm,
+  },
+  clientInfo: {
+    flex: 1,
+    marginLeft: SPACING.md,
+  },
+  clientHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xs / 2,
+  },
+  clientName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  clientPhone: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+  },
+  clientAddress: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray400,
+    marginTop: SPACING.xs / 2,
+  },
+  clientBalance: {
+    alignItems: 'flex-end',
+  },
+  balanceAmount: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: COLORS.warning,
+    backgroundColor: COLORS.warningLight,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs / 2,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  separator: {
+    height: SPACING.sm,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xxxl * 2,
+  },
+  emptyText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray400,
+    marginTop: SPACING.md,
+  },
+});
+
+// ==========================================
+// ÉCRAN DÉTAILS CLIENT - TailorPro
+// ==========================================
+
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Linking,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Header, Avatar, Badge, Card, IconButton, Button } from '@components/ui';
+import { useAppStore } from '@store/useAppStore';
+import { formatCurrency, formatDate, formatPhone } from '@utils/formatters';
+import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '@constants/theme';
+import { PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS } from '@constants/theme';
+import {RootStackParamList} from "@/src/types";
+
+// ✅ Remplacement des props directes par le type React Navigation
+type Props = NativeStackScreenProps<RootStackParamList, 'ClientDetails'>;
+
+export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
+  // ✅ clientId récupéré depuis route.params
+  const { clientId } = route.params;
+
+  const { getClientById, getOrdersByClient } = useAppStore();
+  const client = getClientById(clientId);
+  const orders = getOrdersByClient(clientId);
+
+  if (!client) {
+    return (
+        <View style={styles.container}>
+          <Header title="Client" showBack onBackPress={() => navigation.goBack()} />
+          <View style={styles.errorContainer}>
+            <Text>Client non trouvé</Text>
+          </View>
+        </View>
+    );
+  }
+
+  const totalOrders = orders.length;
+  const totalSpent = orders.reduce((sum, o) => sum + o.advancePayment, 0);
+  const lastOrder = orders.length > 0
+      ? orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+      : null;
+
+  const handleCall = () => Linking.openURL(`tel:${client.phone.replace(/\s/g, '')}`);
+  const handleWhatsApp = () => {
+    const phone = client.phone.replace(/\s/g, '').replace('+', '');
+    Linking.openURL(`whatsapp://send?phone=${phone}`);
+  };
+  const handleSMS = () => Linking.openURL(`sms:${client.phone.replace(/\s/g, '')}`);
+  const handleDirections = () => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(client.neighborhood)}`);
+
+  return (
+      <View style={styles.container}>
+        <Header
+            title="Détails du client"
+            variant="primary"
+            showBack
+            onBackPress={() => navigation.goBack()}           // ✅
+            rightIcon="create-outline"
+            onRightPress={() => navigation.navigate('AddClient')} // ✅ adapte selon ta route d'édition
+        />
+
+        <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+        >
+          {/* Profile Section */}
+          <View style={styles.profileSection}>
+            <Avatar source={client.photo} name={client.fullName} size="xl" />
+            <Text style={styles.clientName}>{client.fullName}</Text>
+            {client.isFavorite && (
+                <Badge label="Cliente fidèle" variant="success" size="md" />
+            )}
+            <View style={styles.contactInfo}>
+              <Ionicons name="call-outline" size={16} color={COLORS.gray500} />
+              <Text style={styles.contactText}>{formatPhone(client.phone)}</Text>
+            </View>
+            <View style={styles.contactInfo}>
+              <Ionicons name="location-outline" size={16} color={COLORS.gray500} />
+              <Text style={styles.contactText}>{client.neighborhood}</Text>
+            </View>
+            <View style={styles.contactInfo}>
+              <Ionicons name="calendar-outline" size={16} color={COLORS.gray500} />
+              <Text style={styles.contactText}>Depuis {formatDate(client.createdAt)}</Text>
+            </View>
+          </View>
+
+          {/* Quick Actions */}
+          <View style={styles.quickActions}>
+            <IconButton icon="call" label="Appeler" variant="ghost" onPress={handleCall} />
+            <IconButton icon="logo-whatsapp" label="WhatsApp" variant="ghost" onPress={handleWhatsApp} />
+            <IconButton icon="chatbubble" label="SMS" variant="ghost" onPress={handleSMS} />
+            <IconButton icon="navigate" label="Itinéraire" variant="ghost" onPress={handleDirections} />
+          </View>
+
+          {/* Informations */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Informations</Text>
+              <TouchableOpacity>
+                <Text style={styles.seeMoreText}>Voir plus</Text>
+              </TouchableOpacity>
+            </View>
+            <Card>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Commandes</Text>
+                <Text style={styles.infoValue}>{totalOrders}</Text>
+              </View>
+              <View style={styles.infoDivider} />
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Total dépensé</Text>
+                <Text style={styles.infoValue}>{formatCurrency(totalSpent)}</Text>
+              </View>
+              <View style={styles.infoDivider} />
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Dernière commande</Text>
+                <Text style={styles.infoValue}>
+                  {lastOrder ? formatDate(lastOrder.createdAt) : '-'}
+                </Text>
+              </View>
+              <View style={styles.infoDivider} />
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Statut paiement</Text>
+                {lastOrder ? (
+                    <Badge
+                        label={PAYMENT_STATUS_LABELS[lastOrder.paymentStatus]}
+                        variant={
+                          lastOrder.paymentStatus === 'paid' ? 'success' :
+                              lastOrder.paymentStatus === 'partial' ? 'warning' : 'error'
+                        }
+                    />
+                ) : (
+                    <Text style={styles.infoValue}>-</Text>
+                )}
+              </View>
+            </Card>
+          </View>
+
+          {/* Photos */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Photos</Text>
+              <TouchableOpacity>
+                <Text style={styles.seeMoreText}>Voir toutes</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.photosContainer}
+            >
+              {[1, 2, 3].map((i) => (
+                  <TouchableOpacity key={i} style={styles.photoItem}>
+                    <Image
+                        source={{ uri: `https://images.unsplash.com/photo-159577745758${i}-95e059d581b8?w=200` }}
+                        style={styles.photo}
+                    />
+                  </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* New Order Button */}
+          <Button
+              title="+ Nouvelle commande"
+              onPress={() => navigation.navigate('AddOrder', { clientId })} // ✅
+              fullWidth
+              style={styles.newOrderButton}
+          />
+        </ScrollView>
+      </View>
+  );
+};
+
+// styles inchangés...
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: SPACING.xxxl,
+  },
+
+  // Profile Section
+  profileSection: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+    backgroundColor: COLORS.white,
+    borderBottomLeftRadius: BORDER_RADIUS.xxl,
+    borderBottomRightRadius: BORDER_RADIUS.xxl,
+    marginTop: -SPACING.md,
+    paddingTop: SPACING.xl + SPACING.md,
+  },
+  clientName: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.text,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  contactInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  contactText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+  },
+
+  // Quick Actions
+  quickActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: SPACING.lg,
+    backgroundColor: COLORS.white,
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    ...SHADOWS.sm,
+  },
+
+  // Section
+  section: {
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  sectionTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  seeMoreText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+  },
+
+  // Info Card
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  infoLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+  },
+  infoValue: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: COLORS.gray100,
+  },
+
+  // Photos
+  photosContainer: {
+    gap: SPACING.sm,
+  },
+  photoItem: {
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+  },
+  photo: {
+    width: 100,
+    height: 100,
+    backgroundColor: COLORS.gray200,
+  },
+
+  // New Order Button
+  newOrderButton: {
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.xl,
+  },
+});
+
+

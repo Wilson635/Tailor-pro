@@ -1,0 +1,793 @@
+// ==========================================
+// STORE PRINCIPAL - TailorPro
+// ==========================================
+
+import { create } from 'zustand';
+import type { Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics } from '../types';
+
+// ==========================================
+// MOCK DATA POUR LE DÉVELOPPEMENT
+// ==========================================
+
+const MOCK_CLIENTS: Client[] = [
+  {
+    id: '1',
+    fullName: 'Aminata Diallo',
+    phone: '+225 07 12 34 56 78',
+    neighborhood: 'Cocody, Angré',
+    gender: 'female',
+    photo: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=200',
+    isFavorite: true,
+    balance: 0,
+    createdAt: new Date('2023-03-12'),
+    updatedAt: new Date('2024-05-15'),
+  },
+  {
+    id: '2',
+    fullName: 'Koffi Yao',
+    phone: '+225 05 56 78 90 12',
+    neighborhood: 'Yopougon, Maroc',
+    gender: 'male',
+    isFavorite: false,
+    balance: 50000,
+    createdAt: new Date('2023-06-20'),
+    updatedAt: new Date('2024-05-10'),
+  },
+  {
+    id: '3',
+    fullName: 'Mariama Koné',
+    phone: '+225 07 89 01 23 45',
+    neighborhood: 'Abobo, Avocatier',
+    gender: 'female',
+    isFavorite: true,
+    balance: 80000,
+    createdAt: new Date('2023-09-15'),
+    updatedAt: new Date('2024-05-12'),
+  },
+  {
+    id: '4',
+    fullName: 'Bamba Traoré',
+    phone: '+225 01 02 03 04 05',
+    neighborhood: 'Treichville, Zone 3',
+    gender: 'male',
+    isFavorite: false,
+    balance: 0,
+    createdAt: new Date('2024-01-10'),
+    updatedAt: new Date('2024-05-14'),
+  },
+  {
+    id: '5',
+    fullName: 'Fatoumata Barry',
+    phone: '+225 07 67 89 10 11',
+    neighborhood: 'Plateau, Dokui',
+    gender: 'female',
+    isFavorite: false,
+    balance: 30000,
+    createdAt: new Date('2024-02-28'),
+    updatedAt: new Date('2024-05-08'),
+  },
+];
+
+const MOCK_ORDERS: Order[] = [
+  {
+    id: '1',
+    clientId: '1',
+    clientName: 'Aminata Diallo',
+    clothingType: 'robe_longue',
+    description: 'Robe longue avec manches bouffantes. Couleur rose poudré.',
+    fabricPhotos: [],
+    inspirationPhotos: [],
+    deliveryDate: new Date('2024-05-25'),
+    urgencyLevel: 'medium',
+    totalPrice: 120000,
+    advancePayment: 70000,
+    remainingAmount: 50000,
+    paymentStatus: 'partial',
+    orderStatus: 'in_progress',
+    createdAt: new Date('2024-05-10'),
+    updatedAt: new Date('2024-05-15'),
+  },
+  {
+    id: '2',
+    clientId: '2',
+    clientName: 'Koffi Yao',
+    clothingType: 'costume',
+    description: 'Costume trois pièces pour mariage',
+    fabricPhotos: [],
+    inspirationPhotos: [],
+    deliveryDate: new Date('2024-06-01'),
+    urgencyLevel: 'high',
+    totalPrice: 250000,
+    advancePayment: 150000,
+    remainingAmount: 100000,
+    paymentStatus: 'partial',
+    orderStatus: 'in_progress',
+    createdAt: new Date('2024-05-08'),
+    updatedAt: new Date('2024-05-12'),
+  },
+];
+
+const MOCK_MEASUREMENTS: Record<string, Measurements> = {
+  '1': {
+    id: 'm1',
+    clientId: '1',
+    recordedAt: new Date('2024-05-15'),
+    chestCircumference: 88,
+    waistCircumference: 70,
+    hipCircumference: 96,
+    backWidth: 38,
+    shoulderWidth: 12,
+    sleeveLength: 58,
+    armCircumference: 30,
+    neckCircumference: 38,
+    dressLength: 135,
+    bustHeight: 45,
+    thighCircumference: 56,
+  },
+};
+
+const MOCK_CATALOG: CatalogModel[] = [
+  {
+    id: '1',
+    name: 'Robe princesse',
+    category: 'robes',
+    price: 25000,
+    description: 'Robe princesse en tissu damassé avec broderie et manches bouffantes.',
+    photos: ['https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=400'],
+    isFavorite: true,
+    createdAt: new Date('2024-01-15'),
+  },
+  {
+    id: '2',
+    name: 'Boubou homme',
+    category: 'traditionnel',
+    price: 30000,
+    description: 'Boubou traditionnel africain pour homme',
+    photos: ['https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=400'],
+    isFavorite: false,
+    createdAt: new Date('2024-02-20'),
+  },
+  {
+    id: '3',
+    name: 'Robe longue',
+    category: 'robes',
+    price: 28000,
+    description: 'Robe longue élégante',
+    photos: ['https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=400'],
+    isFavorite: false,
+    createdAt: new Date('2024-03-10'),
+  },
+  {
+    id: '4',
+    name: 'Ensemble 2 pièces',
+    category: 'casual',
+    price: 22000,
+    description: 'Ensemble haut et jupe assorti',
+    photos: ['https://images.unsplash.com/photo-1551803091-e20673f15770?w=400'],
+    isFavorite: true,
+    createdAt: new Date('2024-04-05'),
+  },
+];
+
+const MOCK_ACTIVITIES: Activity[] = [
+  {
+    id: '1',
+    type: 'new_order',
+    title: 'Nouvelle commande',
+    subtitle: 'Aminata Diallo',
+    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // Il y a 2h
+    clientId: '1',
+    orderId: '1',
+  },
+  {
+    id: '2',
+    type: 'payment_received',
+    title: 'Paiement reçu',
+    subtitle: 'Koffi Yao',
+    amount: 50000,
+    timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000), // Il y a 4h
+    clientId: '2',
+  },
+  {
+    id: '3',
+    type: 'order_completed',
+    title: 'Commande terminée',
+    subtitle: 'Mariama Koné',
+    timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000), // Il y a 6h
+    clientId: '3',
+  },
+];
+
+const MOCK_STATISTICS: Statistics = {
+  totalClients: 124,
+  monthlyRevenue: 1250000,
+  revenueGrowth: 18,
+  ordersInProgress: 18,
+  unpaidInvoices: 7,
+  unpaidAmount: 520000,
+  completedOrders: 36,
+  totalExpenses: 320000,
+  netProfit: 930000,
+};
+
+const MOCK_PAYMENTS: Record<string, Payment[]> = {
+  '1': [
+    {
+      id: 'p1',
+      orderId: '1',
+      clientId: '1',
+      amount: 50000,
+      date: new Date('2024-05-15'),
+      method: 'cash',
+    },
+    {
+      id: 'p2',
+      orderId: '1',
+      clientId: '1',
+      amount: 20000,
+      date: new Date('2024-05-02'),
+      method: 'mobile_money',
+    },
+  ],
+};
+
+// ==========================================
+// TYPES DU STORE
+// ==========================================
+
+interface AppState {
+  // User
+  isAuthenticated: boolean;
+  userId: string | null;
+
+  // Données
+  clients: Client[];
+  orders: Order[];
+  catalog: CatalogModel[];
+  activities: Activity[];
+  statistics: Statistics;
+  measurements: Record<string, Measurements>;
+  payments: Record<string, Payment[]>;
+
+  // UI State
+  isLoading: boolean;
+  error: string | null;
+  selectedClientFilter: 'all' | 'recent' | 'favorite';
+  selectedCatalogCategory: string;
+  searchQuery: string;
+
+  // Actions - Auth
+  setAuthenticated: (status: boolean, userId?: string) => void;
+  logout: () => void;
+
+  // Actions - Clients
+  setClients: (clients: Client[]) => void;
+  addClient: (client: Client) => void;
+  updateClient: (clientId: string, data: Partial<Client>) => void;
+  deleteClient: (clientId: string) => void;
+
+  // Actions - Orders
+  setOrders: (orders: Order[]) => void;
+  addOrder: (order: Order) => void;
+  updateOrder: (orderId: string, data: Partial<Order>) => void;
+  deleteOrder: (orderId: string) => void;
+
+  // Actions - Measurements
+  setMeasurements: (clientId: string, measurements: Measurements) => void;
+
+  // Actions - Payments
+  addPayment: (clientId: string, payment: Payment) => void;
+
+  // Actions - Catalog
+  setCatalog: (catalog: CatalogModel[]) => void;
+  addCatalogModel: (model: CatalogModel) => void;
+  updateCatalogModel: (modelId: string, data: Partial<CatalogModel>) => void;
+  deleteCatalogModel: (modelId: string) => void;
+  toggleCatalogFavorite: (modelId: string) => void;
+
+  // Actions - UI
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  setClientFilter: (filter: 'all' | 'recent' | 'favorite') => void;
+  setCatalogCategory: (category: string) => void;
+  setSearchQuery: (query: string) => void;
+
+  // Helpers
+  getClientById: (clientId: string) => Client | undefined;
+  getOrdersByClient: (clientId: string) => Order[];
+  getMeasurementsByClient: (clientId: string) => Measurements | undefined;
+  getPaymentsByClient: (clientId: string) => Payment[];
+}
+
+// ==========================================
+// STORE
+// ==========================================
+
+export const useAppStore = create<AppState>((set, get) => ({
+  // Initial State
+  isAuthenticated: true, // Pour le dev, on simule un utilisateur connecté
+  userId: 'mock-user-id',
+
+  clients: MOCK_CLIENTS,
+  orders: MOCK_ORDERS,
+  catalog: MOCK_CATALOG,
+  activities: MOCK_ACTIVITIES,
+  statistics: MOCK_STATISTICS,
+  measurements: MOCK_MEASUREMENTS,
+  payments: MOCK_PAYMENTS,
+
+  isLoading: false,
+  error: null,
+  selectedClientFilter: 'all',
+  selectedCatalogCategory: 'all',
+  searchQuery: '',
+
+  // Auth Actions
+  setAuthenticated: (status, userId) => set({ isAuthenticated: status, userId: userId || null }),
+  logout: () => set({ isAuthenticated: false, userId: null }),
+
+  // Client Actions
+  setClients: (clients) => set({ clients }),
+  addClient: (client) => set((state) => ({ clients: [client, ...state.clients] })),
+  updateClient: (clientId, data) => set((state) => ({
+    clients: state.clients.map((c) => c.id === clientId ? { ...c, ...data, updatedAt: new Date() } : c),
+  })),
+  deleteClient: (clientId) => set((state) => ({
+    clients: state.clients.filter((c) => c.id !== clientId),
+  })),
+
+  // Order Actions
+  setOrders: (orders) => set({ orders }),
+  addOrder: (order) => set((state) => ({ orders: [order, ...state.orders] })),
+  updateOrder: (orderId, data) => set((state) => ({
+    orders: state.orders.map((o) => o.id === orderId ? { ...o, ...data, updatedAt: new Date() } : o),
+  })),
+  deleteOrder: (orderId) => set((state) => ({
+    orders: state.orders.filter((o) => o.id !== orderId),
+  })),
+
+  // Measurements Actions
+  setMeasurements: (clientId, measurements) => set((state) => ({
+    measurements: { ...state.measurements, [clientId]: measurements },
+  })),
+
+  // Payment Actions
+  addPayment: (clientId, payment) => set((state) => ({
+    payments: {
+      ...state.payments,
+      [clientId]: [...(state.payments[clientId] || []), payment],
+    },
+  })),
+
+  // Catalog Actions
+  setCatalog: (catalog) => set({ catalog }),
+  addCatalogModel: (model) => set((state) => ({ catalog: [model, ...state.catalog] })),
+  updateCatalogModel: (modelId, data) => set((state) => ({
+    catalog: state.catalog.map((m) => m.id === modelId ? { ...m, ...data } : m),
+  })),
+  deleteCatalogModel: (modelId) => set((state) => ({
+    catalog: state.catalog.filter((m) => m.id !== modelId),
+  })),
+  toggleCatalogFavorite: (modelId) => set((state) => ({
+    catalog: state.catalog.map((m) =>
+      m.id === modelId ? { ...m, isFavorite: !m.isFavorite } : m
+    ),
+  })),
+
+  // UI Actions
+  setLoading: (loading) => set({ isLoading: loading }),
+  setError: (error) => set({ error }),
+  setClientFilter: (filter) => set({ selectedClientFilter: filter }),
+  setCatalogCategory: (category) => set({ selectedCatalogCategory: category }),
+  setSearchQuery: (query) => set({ searchQuery: query }),
+
+  // Helpers
+  getClientById: (clientId) => get().clients.find((c) => c.id === clientId),
+  getOrdersByClient: (clientId) => get().orders.filter((o) => o.clientId === clientId),
+  getMeasurementsByClient: (clientId) => get().measurements[clientId],
+  getPaymentsByClient: (clientId) => get().payments[clientId] || [],
+}));
+
+
+-- version firebase
+
+// ==========================================
+// STORE PRINCIPAL - TailorPro (Firebase)
+// ==========================================
+
+import { create } from 'zustand';
+import type { Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics } from '../types';
+import * as FirestoreService from '../services/firebase/firestore';
+
+// ==========================================
+// TYPES DU STORE
+// ==========================================
+
+interface AppState {
+  // Auth
+  isAuthenticated: boolean;
+  userId: string | null;
+
+  // Données
+  clients: Client[];
+  orders: Order[];
+  catalog: CatalogModel[];
+  activities: Activity[];
+  statistics: Statistics;
+  measurements: Record<string, Measurements>;
+  payments: Record<string, Payment[]>;
+
+  // UI State
+  isLoading: boolean;
+  error: string | null;
+  selectedClientFilter: 'all' | 'recent' | 'favorite';
+  selectedCatalogCategory: string;
+  searchQuery: string;
+
+  // Actions - Auth
+  setAuthenticated: (status: boolean, userId?: string) => void;
+  logout: () => void;
+
+  // Actions - Chargement Firebase
+  loadClients: () => Promise<void>;
+  loadOrders: () => Promise<void>;
+  loadCatalog: () => Promise<void>;
+  loadActivities: () => Promise<void>;
+  loadAll: () => Promise<void>;
+
+  // Actions - Clients
+  addClient: (data: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateClient: (clientId: string, data: Partial<Client>) => Promise<void>;
+  deleteClient: (clientId: string) => Promise<void>;
+
+  // Actions - Orders
+  addOrder: (data: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateOrder: (orderId: string, data: Partial<Order>) => Promise<void>;
+  deleteOrder: (orderId: string) => Promise<void>;
+
+  // Actions - Measurements
+  saveMeasurements: (clientId: string, data: Omit<Measurements, 'id' | 'clientId'>) => Promise<void>;
+  loadMeasurements: (clientId: string) => Promise<void>;
+
+  // Actions - Payments
+  addPayment: (orderId: string, data: Omit<Payment, 'id'>) => Promise<void>;
+  loadPayments: (orderId: string) => Promise<void>;
+
+  // Actions - Catalog
+  addCatalogModel: (data: Omit<CatalogModel, 'id' | 'createdAt'>) => Promise<void>;
+  updateCatalogModel: (modelId: string, data: Partial<CatalogModel>) => Promise<void>;
+  deleteCatalogModel: (modelId: string) => Promise<void>;
+  toggleCatalogFavorite: (modelId: string) => Promise<void>;
+
+  // Actions - UI
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  setClientFilter: (filter: 'all' | 'recent' | 'favorite') => void;
+  setCatalogCategory: (category: string) => void;
+  setSearchQuery: (query: string) => void;
+
+  // Helpers (synchrones, pas d'appel Firebase)
+  getClientById: (clientId: string) => Client | undefined;
+  getOrdersByClient: (clientId: string) => Order[];
+  getMeasurementsByClient: (clientId: string) => Measurements | undefined;
+  getPaymentsByOrder: (orderId: string) => Payment[];
+}
+
+// ==========================================
+// STATISTIQUES CALCULÉES
+// ==========================================
+
+const computeStatistics = (
+    clients: Client[],
+    orders: Order[]
+): Statistics => {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const monthlyOrders = orders.filter(
+      (o) => new Date(o.createdAt) >= startOfMonth
+  );
+  const monthlyRevenue = monthlyOrders.reduce((s, o) => s + o.advancePayment, 0);
+
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthOrders = orders.filter((o) => {
+    const d = new Date(o.createdAt);
+    return d >= prevMonthStart && d < startOfMonth;
+  });
+  const prevRevenue = prevMonthOrders.reduce((s, o) => s + o.advancePayment, 0);
+  const revenueGrowth =
+      prevRevenue > 0
+          ? Math.round(((monthlyRevenue - prevRevenue) / prevRevenue) * 100)
+          : 0;
+
+  const unpaidOrders = orders.filter((o) => o.paymentStatus !== 'paid');
+
+  return {
+    totalClients: clients.length,
+    monthlyRevenue,
+    revenueGrowth,
+    ordersInProgress: orders.filter((o) => o.orderStatus === 'in_progress').length,
+    unpaidInvoices: unpaidOrders.length,
+    unpaidAmount: unpaidOrders.reduce((s, o) => s + o.remainingAmount, 0),
+    completedOrders: orders.filter((o) => o.orderStatus === 'completed').length,
+    totalExpenses: 0, // À implémenter si nécessaire
+    netProfit: monthlyRevenue,
+  };
+};
+
+// ==========================================
+// STORE
+// ==========================================
+
+export const useAppStore = create<AppState>((set, get) => ({
+  // ── État initial ──
+  isAuthenticated: false,
+  userId: null,
+
+  clients: [],
+  orders: [],
+  catalog: [],
+  activities: [],
+  statistics: {
+    totalClients: 0,
+    monthlyRevenue: 0,
+    revenueGrowth: 0,
+    ordersInProgress: 0,
+    unpaidInvoices: 0,
+    unpaidAmount: 0,
+    completedOrders: 0,
+    totalExpenses: 0,
+    netProfit: 0,
+  },
+  measurements: {},
+  payments: {},
+
+  isLoading: false,
+  error: null,
+  selectedClientFilter: 'all',
+  selectedCatalogCategory: 'all',
+  searchQuery: '',
+
+  // ── Auth ──
+  setAuthenticated: (status, userId) =>
+      set({ isAuthenticated: status, userId: userId ?? null }),
+
+  logout: () =>
+      set({
+        isAuthenticated: false,
+        userId: null,
+        clients: [],
+        orders: [],
+        catalog: [],
+        activities: [],
+        measurements: {},
+        payments: {},
+      }),
+
+  // ── Chargement Firebase ──
+  loadClients: async () => {
+    const { userId } = get();
+    if (!userId) return;
+    const clients = await FirestoreService.fetchClients(userId);
+    const statistics = computeStatistics(clients, get().orders);
+    set({ clients, statistics });
+  },
+
+  loadOrders: async () => {
+    const { userId } = get();
+    if (!userId) return;
+    const orders = await FirestoreService.fetchOrders(userId);
+    const statistics = computeStatistics(get().clients, orders);
+    set({ orders, statistics });
+  },
+
+  loadCatalog: async () => {
+    const { userId } = get();
+    if (!userId) return;
+    const catalog = await FirestoreService.fetchCatalog(userId);
+    set({ catalog });
+  },
+
+  loadActivities: async () => {
+    const { userId } = get();
+    if (!userId) return;
+    const activities = await FirestoreService.fetchActivities(userId);
+    set({ activities });
+  },
+
+  loadAll: async () => {
+    const { userId } = get();
+    if (!userId) return;
+    set({ isLoading: true, error: null });
+    try {
+      const [clients, orders, catalog, activities] = await Promise.all([
+        FirestoreService.fetchClients(userId),
+        FirestoreService.fetchOrders(userId),
+        FirestoreService.fetchCatalog(userId),
+        FirestoreService.fetchActivities(userId),
+      ]);
+      const statistics = computeStatistics(clients, orders);
+      set({ clients, orders, catalog, activities, statistics });
+    } catch (e: any) {
+      set({ error: e.message ?? 'Erreur de chargement' });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  // ── Clients ──
+  addClient: async (data) => {
+    const { userId } = get();
+    if (!userId) return;
+    const client = await FirestoreService.createClient(userId, data);
+    const clients = [client, ...get().clients];
+    set({ clients, statistics: computeStatistics(clients, get().orders) });
+    // Log activité
+    await FirestoreService.logActivity(userId, {
+      type: 'new_client',
+      title: 'Nouveau client',
+      subtitle: data.fullName,
+      timestamp: new Date(),
+      clientId: client.id,
+    });
+  },
+
+  updateClient: async (clientId, data) => {
+    const { userId } = get();
+    if (!userId) return;
+    await FirestoreService.updateClient(userId, clientId, data);
+    const clients = get().clients.map((c) =>
+        c.id === clientId ? { ...c, ...data, updatedAt: new Date() } : c
+    );
+    set({ clients });
+  },
+
+  deleteClient: async (clientId) => {
+    const { userId } = get();
+    if (!userId) return;
+    await FirestoreService.deleteClient(userId, clientId);
+    const clients = get().clients.filter((c) => c.id !== clientId);
+    set({ clients, statistics: computeStatistics(clients, get().orders) });
+  },
+
+  // ── Orders ──
+  addOrder: async (data) => {
+    const { userId } = get();
+    if (!userId) return;
+    const order = await FirestoreService.createOrder(userId, data);
+    const orders = [order, ...get().orders];
+    set({ orders, statistics: computeStatistics(get().clients, orders) });
+    await FirestoreService.logActivity(userId, {
+      type: 'new_order',
+      title: 'Nouvelle commande',
+      subtitle: data.clientName,
+      timestamp: new Date(),
+      clientId: data.clientId,
+      orderId: order.id,
+    });
+  },
+
+  updateOrder: async (orderId, data) => {
+    const { userId } = get();
+    if (!userId) return;
+    await FirestoreService.updateOrder(userId, orderId, data);
+    const orders = get().orders.map((o) =>
+        o.id === orderId ? { ...o, ...data, updatedAt: new Date() } : o
+    );
+    set({ orders, statistics: computeStatistics(get().clients, orders) });
+  },
+
+  deleteOrder: async (orderId) => {
+    const { userId } = get();
+    if (!userId) return;
+    await FirestoreService.deleteOrder(userId, orderId);
+    const orders = get().orders.filter((o) => o.id !== orderId);
+    set({ orders, statistics: computeStatistics(get().clients, orders) });
+  },
+
+  // ── Measurements ──
+  saveMeasurements: async (clientId, data) => {
+    const { userId } = get();
+    if (!userId) return;
+    const measurements = await FirestoreService.saveMeasurements(userId, clientId, data);
+    set((state) => ({
+      measurements: { ...state.measurements, [clientId]: measurements },
+    }));
+  },
+
+  loadMeasurements: async (clientId) => {
+    const { userId } = get();
+    if (!userId) return;
+    const measurements = await FirestoreService.fetchMeasurements(userId, clientId);
+    if (measurements) {
+      set((state) => ({
+        measurements: { ...state.measurements, [clientId]: measurements },
+      }));
+    }
+  },
+
+  // ── Payments ──
+  addPayment: async (orderId, data) => {
+    const { userId } = get();
+    if (!userId) return;
+    const payment = await FirestoreService.addPayment(userId, orderId, data);
+    set((state) => ({
+      payments: {
+        ...state.payments,
+        [orderId]: [...(state.payments[orderId] ?? []), payment],
+      },
+    }));
+    // Recharger les commandes pour mettre à jour les statuts
+    await get().loadOrders();
+    // Log activité
+    await FirestoreService.logActivity(userId, {
+      type: 'payment_received',
+      title: 'Paiement reçu',
+      subtitle: data.clientId,
+      amount: data.amount,
+      timestamp: new Date(),
+      clientId: data.clientId,
+      orderId,
+    });
+  },
+
+  loadPayments: async (orderId) => {
+    const { userId } = get();
+    if (!userId) return;
+    const payments = await FirestoreService.fetchPayments(userId, orderId);
+    set((state) => ({
+      payments: { ...state.payments, [orderId]: payments },
+    }));
+  },
+
+  // ── Catalog ──
+  addCatalogModel: async (data) => {
+    const { userId } = get();
+    if (!userId) return;
+    const model = await FirestoreService.createCatalogModel(userId, data);
+    set((state) => ({ catalog: [model, ...state.catalog] }));
+  },
+
+  updateCatalogModel: async (modelId, data) => {
+    const { userId } = get();
+    if (!userId) return;
+    await FirestoreService.updateCatalogModel(userId, modelId, data);
+    set((state) => ({
+      catalog: state.catalog.map((m) =>
+          m.id === modelId ? { ...m, ...data } : m
+      ),
+    }));
+  },
+
+  deleteCatalogModel: async (modelId) => {
+    const { userId } = get();
+    if (!userId) return;
+    await FirestoreService.deleteCatalogModel(userId, modelId);
+    set((state) => ({
+      catalog: state.catalog.filter((m) => m.id !== modelId),
+    }));
+  },
+
+  toggleCatalogFavorite: async (modelId) => {
+    const model = get().catalog.find((m) => m.id === modelId);
+    if (!model) return;
+    await get().updateCatalogModel(modelId, { isFavorite: !model.isFavorite });
+  },
+
+  // ── UI ──
+  setLoading: (loading) => set({ isLoading: loading }),
+  setError: (error) => set({ error }),
+  setClientFilter: (filter) => set({ selectedClientFilter: filter }),
+  setCatalogCategory: (category) => set({ selectedCatalogCategory: category }),
+  setSearchQuery: (query) => set({ searchQuery: query }),
+
+  // ── Helpers synchrones ──
+  getClientById: (clientId) =>
+      get().clients.find((c) => c.id === clientId),
+  getOrdersByClient: (clientId) =>
+      get().orders.filter((o) => o.clientId === clientId),
+  getMeasurementsByClient: (clientId) =>
+      get().measurements[clientId],
+  getPaymentsByOrder: (orderId) =>
+      get().payments[orderId] ?? [],
+}));

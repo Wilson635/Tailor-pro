@@ -1,0 +1,1203 @@
+// ==========================================
+// ÉCRAN AJOUTER UNE COMMANDE - TailorPro
+// ==========================================
+
+import React, { useState } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView,
+  TouchableOpacity, TextInput, Alert,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useAppStore } from '@store/useAppStore';
+import { formatCurrency } from '@utils/formatters';
+import {
+  COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS,
+  BORDER_RADIUS, CLOTHING_TYPE_LABELS,
+} from '@constants/theme';
+import type { ClothingType, RootStackParamList, UrgencyLevel } from '../../types';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'AddOrder'>;
+
+const CLOTHING_TYPES: ClothingType[] = [
+  'robe_longue', 'robe_courte', 'costume', 'chemise',
+  'pantalon', 'boubou', 'ensemble', 'robe_mariage', 'tenue_enfant', 'autre',
+];
+
+const URGENCY_OPTIONS: { key: UrgencyLevel; label: string; bg: string; color: string; dot: string }[] = [
+  { key: 'low',    label: 'Normal',  bg: '#D1FAE5', color: '#065F46', dot: '#10B981' },
+  { key: 'medium', label: 'Moyen',   bg: '#FEF3C7', color: '#92400E', dot: '#F59E0B' },
+  { key: 'high',   label: 'Urgent',  bg: '#FEE2E2', color: '#991B1B', dot: '#EF4444' },
+];
+
+const getInitials = (name: string): string => {
+  const parts = name.trim().split(' ');
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+};
+
+const getPaymentStatus = (total: number, advance: number) => {
+  if (total === 0) return { label: 'Non payé', bg: '#FEE2E2', color: '#991B1B' };
+  if (advance >= total) return { label: 'Payé', bg: '#D1FAE5', color: '#065F46' };
+  if (advance > 0) return { label: 'Paiement partiel', bg: '#FEF3C7', color: '#92400E' };
+  return { label: 'Non payé', bg: '#FEE2E2', color: '#991B1B' };
+};
+
+// ── Sous-composants ──
+const SectionCard = ({
+  iconName, iconBg, iconColor, title, children,
+}: {
+  iconName: keyof typeof Ionicons.glyphMap;
+  iconBg: string; iconColor: string;
+  title: string; children: React.ReactNode;
+}) => (
+  <View style={styles.card}>
+    <View style={styles.cardHead}>
+      <View style={[styles.cardHeadIcon, { backgroundColor: iconBg }]}>
+        <Ionicons name={iconName} size={15} color={iconColor} />
+      </View>
+      <Text style={styles.cardTitle}>{title}</Text>
+    </View>
+    {children}
+  </View>
+);
+
+const FieldLabel = ({ label }: { label: string }) => (
+  <Text style={styles.fieldLabel}>{label}</Text>
+);
+
+const StyledInput = ({
+  placeholder, value, onChangeText, keyboardType, suffix, multiline, numberOfLines, icon,
+}: {
+  placeholder: string; value?: string;
+  onChangeText?: (t: string) => void;
+  keyboardType?: 'default' | 'numeric';
+  suffix?: string; multiline?: boolean;
+  numberOfLines?: number;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) => (
+  <View style={styles.inputWrap}>
+    <TextInput
+      style={[styles.input, multiline && styles.inputMulti, suffix && { paddingRight: 56 }]}
+      placeholder={placeholder}
+      placeholderTextColor={COLORS.gray400}
+      value={value}
+      onChangeText={onChangeText}
+      keyboardType={keyboardType ?? 'default'}
+      multiline={multiline}
+      numberOfLines={numberOfLines}
+    />
+    {suffix && <Text style={styles.inputSuffix}>{suffix}</Text>}
+    {icon && !suffix && (
+      <View style={styles.inputIconRight}>
+        <Ionicons name={icon} size={16} color={COLORS.gray400} />
+      </View>
+    )}
+  </View>
+);
+
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+
+export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { addOrder, getClientById } = useAppStore();
+
+  const preselectedClientId = route.params?.clientId ?? '';
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedClientId] = useState(preselectedClientId);
+  const [clothingType, setClothingType] = useState<ClothingType>('robe_longue');
+  const [urgency, setUrgency] = useState<UrgencyLevel>('medium');
+  const [description, setDescription] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [totalPrice, setTotalPrice] = useState('');
+  const [advancePayment, setAdvancePayment] = useState('');
+
+  const selectedClient = selectedClientId ? getClientById(selectedClientId) : null;
+
+  const total = parseInt(totalPrice) || 0;
+  const advance = parseInt(advancePayment) || 0;
+  const remaining = Math.max(0, total - advance);
+  const paymentStatus = getPaymentStatus(total, advance);
+
+  const handleSubmit = async () => {
+    if (!selectedClientId) {
+      Alert.alert('Erreur', 'Veuillez sélectionner un client');
+      return;
+    }
+    if (!totalPrice || total === 0) {
+      Alert.alert('Erreur', 'Veuillez entrer le montant total');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Parser la date de livraison
+      let parsedDeliveryDate: Date;
+      if (deliveryDate) {
+        const [day, month, year] = deliveryDate.split('/');
+        parsedDeliveryDate = new Date(Number(year), Number(month) - 1, Number(day));
+        if (isNaN(parsedDeliveryDate.getTime())) {
+          parsedDeliveryDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        }
+      } else {
+        parsedDeliveryDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      }
+
+      const payStatus = remaining === 0 ? 'paid' as const
+        : advance > 0 ? 'partial' as const
+        : 'unpaid' as const;
+
+      // 👇 Appel Supabase via le store
+      const newOrder = await addOrder({
+        clientId: selectedClientId,
+        clientName: selectedClient?.fullName ?? '',
+        clothingType,
+        description,
+        fabricPhotos: [],
+        inspirationPhotos: [],
+        deliveryDate: parsedDeliveryDate,
+        urgencyLevel: urgency,
+        totalPrice: total,
+        advancePayment: advance,
+        remainingAmount: remaining,
+        paymentStatus: payStatus,
+        orderStatus: 'pending',
+      });
+
+      if (!newOrder) {
+        Alert.alert('Erreur', 'Impossible de créer la commande');
+        return;
+      }
+
+      navigation.goBack();
+    } catch {
+      Alert.alert('Erreur', 'Impossible de créer la commande');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={20} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Nouvelle commande</Text>
+        <View style={[styles.headerBtn, { opacity: 0 }]} />
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + SPACING.xxxl }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+
+        {/* ── Client ── */}
+        <SectionCard iconName="person-outline" iconBg="#EDE9FE" iconColor="#6B21A8" title="Client">
+          <TouchableOpacity
+            style={styles.clientRow}
+            onPress={() => navigation.navigate('Clients')}
+            activeOpacity={0.7}
+          >
+            {selectedClient ? (
+              <>
+                <View style={styles.clientAvatar}>
+                  <Text style={styles.clientAvatarText}>{getInitials(selectedClient.fullName)}</Text>
+                </View>
+                <View style={styles.clientInfo}>
+                  <Text style={styles.clientName}>{selectedClient.fullName}</Text>
+                  <Text style={styles.clientSub}>{selectedClient.neighborhood}</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={[styles.clientAvatar, { backgroundColor: COLORS.gray100 }]}>
+                  <Ionicons name="person-outline" size={18} color={COLORS.gray400} />
+                </View>
+                <Text style={styles.clientPlaceholder}>Sélectionner un client</Text>
+              </>
+            )}
+            <Ionicons name="chevron-forward" size={18} color={COLORS.gray400} />
+          </TouchableOpacity>
+        </SectionCard>
+
+        {/* ── Type de vêtement ── */}
+        <SectionCard iconName="shirt-outline" iconBg="#DBEAFE" iconColor="#1E40AF" title="Type de vêtement">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.typesScroll}
+          >
+            {CLOTHING_TYPES.map((type) => (
+              <TouchableOpacity
+                key={type}
+                style={[styles.typeChip, clothingType === type && styles.typeChipActive]}
+                onPress={() => setClothingType(type)}
+              >
+                <Text style={[styles.typeChipText, clothingType === type && styles.typeChipTextActive]}>
+                  {CLOTHING_TYPE_LABELS[type]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </SectionCard>
+
+        {/* ── Photos ── */}
+        <SectionCard iconName="images-outline" iconBg="#FEF3C7" iconColor="#92400E" title="Photos tissu & inspiration">
+          <View style={styles.photosGrid}>
+            <TouchableOpacity style={styles.photoAdd} activeOpacity={0.7}>
+              <Ionicons name="camera-outline" size={24} color={COLORS.gray400} />
+              <Text style={styles.photoAddLabel}>Tissu</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.photoAdd} activeOpacity={0.7}>
+              <Ionicons name="image-outline" size={24} color={COLORS.gray400} />
+              <Text style={styles.photoAddLabel}>Inspiration</Text>
+            </TouchableOpacity>
+          </View>
+        </SectionCard>
+
+        {/* ── Détails ── */}
+        <SectionCard iconName="document-text-outline" iconBg="#EDE9FE" iconColor="#6B21A8" title="Détails">
+          <View style={styles.cardBody}>
+            <View style={styles.field}>
+              <FieldLabel label="Description / instructions" />
+              <StyledInput
+                placeholder="Robe longue avec manches bouffantes..."
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+            <View style={styles.field}>
+              <FieldLabel label="Date de livraison (JJ/MM/AAAA)" />
+              <StyledInput
+                placeholder="25/05/2025"
+                value={deliveryDate}
+                onChangeText={setDeliveryDate}
+                icon="calendar-outline"
+              />
+            </View>
+            <View style={styles.field}>
+              <FieldLabel label="Niveau d'urgence" />
+              <View style={styles.urgencyRow}>
+                {URGENCY_OPTIONS.map((opt) => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[
+                      styles.urgencyChip,
+                      urgency === opt.key && { backgroundColor: opt.bg, borderColor: opt.dot },
+                    ]}
+                    onPress={() => setUrgency(opt.key)}
+                  >
+                    <View style={[styles.urgencyDot, { backgroundColor: opt.dot }]} />
+                    <Text style={[
+                      styles.urgencyLabel,
+                      urgency === opt.key && { color: opt.color, fontWeight: FONT_WEIGHTS.medium },
+                    ]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        </SectionCard>
+
+        {/* ── Paiement ── */}
+        <SectionCard iconName="wallet-outline" iconBg="#D1FAE5" iconColor="#065F46" title="Paiement">
+          <View style={styles.cardBody}>
+            <View style={styles.twoCol}>
+              <View style={styles.field}>
+                <FieldLabel label="Montant total" />
+                <StyledInput
+                  placeholder="120 000"
+                  value={totalPrice}
+                  onChangeText={setTotalPrice}
+                  keyboardType="numeric"
+                  suffix="FCFA"
+                />
+              </View>
+              <View style={styles.field}>
+                <FieldLabel label="Avance reçue" />
+                <StyledInput
+                  placeholder="50 000"
+                  value={advancePayment}
+                  onChangeText={setAdvancePayment}
+                  keyboardType="numeric"
+                  suffix="FCFA"
+                />
+              </View>
+            </View>
+
+            {/* Résumé paiement */}
+            <View style={styles.pricingSummary}>
+              <View>
+                <Text style={styles.psLabel}>Reste à payer</Text>
+                <Text style={styles.psValue}>
+                  {total > 0 ? formatCurrency(remaining) : '–'}
+                </Text>
+              </View>
+              <View style={[styles.statusPill, { backgroundColor: paymentStatus.bg }]}>
+                <Text style={[styles.statusPillText, { color: paymentStatus.color }]}>
+                  {paymentStatus.label}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </SectionCard>
+
+      </ScrollView>
+
+      {/* ── Footer CTA ── */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + SPACING.md }]}>
+        <TouchableOpacity
+          style={[styles.submitBtn, isLoading && { opacity: 0.7 }]}
+          onPress={handleSubmit}
+          disabled={isLoading}
+          activeOpacity={0.85}
+        >
+          <Ionicons name={isLoading ? 'reload-outline' : 'checkmark'} size={20} color="#fff" />
+          <Text style={styles.submitText}>
+            {isLoading ? 'Enregistrement...' : 'Enregistrer la commande'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+// ── Styles (identiques à la version originale) ──
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
+  },
+  headerBtn: {
+    width: 36, height: 36, borderRadius: BORDER_RADIUS.md,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerTitle: { fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.semibold, color: '#fff' },
+  scroll: { flex: 1 },
+  scrollContent: { padding: SPACING.lg, gap: SPACING.md },
+  card: {
+    backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 0.5, borderColor: COLORS.border, overflow: 'hidden',
+  },
+  cardHead: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    padding: SPACING.md, borderBottomWidth: 0.5, borderBottomColor: COLORS.border,
+  },
+  cardHeadIcon: {
+    width: 28, height: 28, borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  cardTitle: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  cardBody: { padding: SPACING.md, gap: SPACING.md },
+  clientRow: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: SPACING.md, padding: SPACING.md,
+  },
+  clientAvatar: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center',
+  },
+  clientAvatarText: {
+    fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.primary,
+  },
+  clientInfo: { flex: 1 },
+  clientName: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.medium, color: COLORS.text },
+  clientSub: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 2 },
+  clientPlaceholder: { flex: 1, fontSize: FONT_SIZES.md, color: COLORS.gray400 },
+  typesScroll: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, gap: SPACING.sm },
+  typeChip: {
+    paddingHorizontal: SPACING.md, paddingVertical: 7,
+    borderRadius: BORDER_RADIUS.full, borderWidth: 0.5,
+    borderColor: COLORS.border, backgroundColor: COLORS.gray50,
+  },
+  typeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  typeChipText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  typeChipTextActive: { color: '#fff', fontWeight: FONT_WEIGHTS.medium },
+  photosGrid: { flexDirection: 'row', gap: SPACING.md, padding: SPACING.md },
+  photoAdd: {
+    flex: 1, aspectRatio: 1, borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: COLORS.gray300,
+    backgroundColor: COLORS.gray50, alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  photoAddLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
+  field: { gap: 5 },
+  fieldLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, fontWeight: FONT_WEIGHTS.medium },
+  inputWrap: { position: 'relative' },
+  input: {
+    backgroundColor: COLORS.gray50, borderRadius: BORDER_RADIUS.md,
+    borderWidth: 0.5, borderColor: COLORS.border,
+    padding: SPACING.md, fontSize: FONT_SIZES.md, color: COLORS.text,
+  },
+  inputMulti: { height: 80, textAlignVertical: 'top' },
+  inputSuffix: {
+    position: 'absolute', right: SPACING.md, top: '50%', marginTop: -8,
+    fontSize: FONT_SIZES.xs, color: COLORS.textSecondary,
+  },
+  inputIconRight: { position: 'absolute', right: SPACING.md, top: '50%', marginTop: -8 },
+  urgencyRow: { flexDirection: 'row', gap: SPACING.sm },
+  urgencyChip: {
+    flex: 1, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.md,
+    borderWidth: 0.5, borderColor: COLORS.border,
+    backgroundColor: COLORS.gray50, alignItems: 'center', gap: 4,
+  },
+  urgencyDot: { width: 8, height: 8, borderRadius: 4 },
+  urgencyLabel: { fontSize: 11, color: COLORS.textSecondary },
+  twoCol: { flexDirection: 'row', gap: SPACING.md },
+  pricingSummary: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.gray50, borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md, marginTop: SPACING.xs,
+  },
+  psLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginBottom: 3 },
+  psValue: { fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  statusPill: { borderRadius: BORDER_RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 4 },
+  statusPillText: { fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.medium },
+  footer: {
+    backgroundColor: COLORS.white, borderTopWidth: 0.5,
+    borderTopColor: COLORS.border, padding: SPACING.lg,
+  },
+  submitBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: SPACING.sm, backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.lg, padding: SPACING.lg,
+  },
+  submitText: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: '#fff' },
+});
+
+
+-- last version
+
+
+// ==========================================
+// ÉCRAN AJOUTER UNE COMMANDE - TailorPro
+// ==========================================
+
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Alert,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Header, Input, Button, Card, Avatar } from '../../components/ui';
+import { useAppStore } from '../../store/useAppStore';
+import { formatCurrency } from '../../utils/formatters';
+import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '../../constants/theme';
+import { CLOTHING_TYPE_LABELS } from '../../constants/theme';
+import type { ClothingType } from '../../types';
+
+interface AddOrderScreenProps {
+  clientId?: string;
+  onBack?: () => void;
+  onSuccess?: (orderId: string) => void;
+  onSelectClient?: () => void;
+}
+
+export const AddOrderScreen: React.FC<AddOrderScreenProps> = ({
+  clientId,
+  onBack,
+  onSuccess,
+  onSelectClient,
+}) => {
+  const { addOrder, getClientById, clients } = useAppStore();
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState(clientId || '');
+  const [clothingType, setClothingType] = useState<ClothingType>('robe_longue');
+  const [description, setDescription] = useState('');
+  const [totalPrice, setTotalPrice] = useState('');
+  const [advancePayment, setAdvancePayment] = useState('');
+  const [fabricPhoto, setFabricPhoto] = useState<string | null>(null);
+
+  const selectedClient = selectedClientId ? getClientById(selectedClientId) : null;
+
+  const clothingTypes: ClothingType[] = [
+    'robe_longue', 'robe_courte', 'costume', 'chemise',
+    'pantalon', 'boubou', 'ensemble', 'robe_mariage', 'tenue_enfant', 'autre'
+  ];
+
+  const handlePhotoPress = () => {
+    Alert.alert('Photo', 'Fonctionnalité à implémenter avec expo-image-picker');
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedClientId) {
+      Alert.alert('Erreur', 'Veuillez sélectionner un client');
+      return;
+    }
+    if (!totalPrice) {
+      Alert.alert('Erreur', 'Veuillez entrer le montant total');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const total = parseInt(totalPrice) || 0;
+      const advance = parseInt(advancePayment) || 0;
+      const remaining = total - advance;
+
+      const newOrder = {
+        id: Date.now().toString(),
+        clientId: selectedClientId,
+        clientName: selectedClient?.fullName || '',
+        clothingType,
+        description,
+        fabricPhotos: fabricPhoto ? [fabricPhoto] : [],
+        inspirationPhotos: [],
+        deliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // +7 jours
+        urgencyLevel: 'medium' as const,
+        totalPrice: total,
+        advancePayment: advance,
+        remainingAmount: remaining,
+        paymentStatus: remaining === 0 ? 'paid' as const : advance > 0 ? 'partial' as const : 'unpaid' as const,
+        orderStatus: 'pending' as const,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      addOrder(newOrder);
+      onSuccess?.(newOrder.id);
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible de créer la commande');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <Header
+        title="Ajouter une commande"
+        variant="primary"
+        showBack
+        onBackPress={onBack}
+      />
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Client Selection */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Client</Text>
+          <TouchableOpacity
+            style={styles.clientSelector}
+            onPress={onSelectClient}
+          >
+            {selectedClient ? (
+              <View style={styles.selectedClient}>
+                <Avatar
+                  source={selectedClient.photo}
+                  name={selectedClient.fullName}
+                  size="sm"
+                />
+                <Text style={styles.selectedClientName}>{selectedClient.fullName}</Text>
+              </View>
+            ) : (
+              <Text style={styles.clientSelectorPlaceholder}>
+                Sélectionner un client
+              </Text>
+            )}
+            <Ionicons name="chevron-forward" size={20} color={COLORS.gray400} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Clothing Type */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Type de vêtement</Text>
+          <View style={styles.typeSelector}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.typesContainer}
+            >
+              {clothingTypes.map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.typeOption,
+                    clothingType === type && styles.typeOptionActive,
+                  ]}
+                  onPress={() => setClothingType(type)}
+                >
+                  <Text
+                    style={[
+                      styles.typeOptionText,
+                      clothingType === type && styles.typeOptionTextActive,
+                    ]}
+                  >
+                    {CLOTHING_TYPE_LABELS[type]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+
+        {/* Fabric Photo */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Tissu</Text>
+          <TouchableOpacity style={styles.fabricPhoto} onPress={handlePhotoPress}>
+            {fabricPhoto ? (
+              <Image source={{ uri: fabricPhoto }} style={styles.fabricImage} />
+            ) : (
+              <View style={styles.fabricPlaceholder}>
+                <Ionicons name="image-outline" size={32} color={COLORS.gray400} />
+                <Text style={styles.fabricPlaceholderText}>Changer photo</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Delivery Date */}
+        <View style={styles.section}>
+          <Input
+            label="Date de livraison"
+            placeholder="25/05/2024"
+            icon="calendar-outline"
+          />
+        </View>
+
+        {/* Description */}
+        <View style={styles.section}>
+          <Input
+            label="Description / Instructions"
+            placeholder="Robe longue avec manches bouffantes..."
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={3}
+          />
+        </View>
+
+        {/* Pricing */}
+        <View style={styles.pricingSection}>
+          <View style={styles.pricingRow}>
+            <Text style={styles.pricingLabel}>Montant total</Text>
+            <Text style={styles.pricingValue}>
+              {totalPrice ? formatCurrency(parseInt(totalPrice)) : '-'}
+            </Text>
+          </View>
+
+          <Input
+            placeholder="120 000"
+            value={totalPrice}
+            onChangeText={setTotalPrice}
+            keyboardType="numeric"
+            suffix="FCFA"
+          />
+
+          <View style={styles.pricingRow}>
+            <Text style={styles.pricingLabel}>Avance (optionnel)</Text>
+            <Text style={styles.pricingValue}>
+              {advancePayment ? formatCurrency(parseInt(advancePayment)) : '-'}
+            </Text>
+          </View>
+
+          <Input
+            placeholder="50 000"
+            value={advancePayment}
+            onChangeText={setAdvancePayment}
+            keyboardType="numeric"
+            suffix="FCFA"
+          />
+        </View>
+      </ScrollView>
+
+      {/* Submit Button */}
+      <View style={styles.footer}>
+        <Button
+          title="Enregistrer la commande"
+          onPress={handleSubmit}
+          fullWidth
+          loading={isLoading}
+        />
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxxl,
+  },
+
+  // Section
+  section: {
+    marginBottom: SPACING.lg,
+  },
+  sectionLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
+    marginBottom: SPACING.sm,
+    fontWeight: '500',
+  },
+
+  // Client Selector
+  clientSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  selectedClient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  selectedClientName: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  clientSelectorPlaceholder: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray400,
+  },
+
+  // Type Selector
+  typeSelector: {
+    marginHorizontal: -SPACING.lg,
+  },
+  typesContainer: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  typeOption: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.gray100,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  typeOptionActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  typeOptionText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
+  },
+  typeOptionTextActive: {
+    color: COLORS.white,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+
+  // Fabric Photo
+  fabricPhoto: {
+    width: 120,
+    height: 120,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    backgroundColor: COLORS.gray100,
+  },
+  fabricImage: {
+    width: '100%',
+    height: '100%',
+  },
+  fabricPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fabricPlaceholderText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.primary,
+    marginTop: SPACING.xs,
+  },
+
+  // Pricing
+  pricingSection: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+  },
+  pricingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  pricingLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
+  },
+  pricingValue: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+
+  // Footer
+  footer: {
+    padding: SPACING.lg,
+    backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+  },
+});
+
+
+
+// ==========================================
+// ÉCRAN LISTE DES COMMANDES - TailorPro
+// ==========================================
+
+import React, { useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SearchBar, TabGroup, Badge, Card, Avatar } from '../../components/ui';
+import { useAppStore } from '../../store/useAppStore';
+import { formatCurrency, formatDate } from '../../utils/formatters';
+import {
+  COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS,
+  ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_LABELS, CLOTHING_TYPE_LABELS
+} from '../../constants/theme';
+import type { Order } from '../../types';
+
+interface OrdersListScreenProps {
+  onOrderPress?: (orderId: string) => void;
+  onAddPress?: () => void;
+}
+
+export const OrdersListScreen: React.FC<OrdersListScreenProps> = ({
+  onOrderPress,
+  onAddPress,
+}) => {
+  const insets = useSafeAreaInsets();
+  const { orders, searchQuery, setSearchQuery, getClientById } = useAppStore();
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+
+  const filteredOrders = useMemo(() => {
+    let result = orders;
+
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (order) =>
+          order.clientName.toLowerCase().includes(query) ||
+          CLOTHING_TYPE_LABELS[order.clothingType]?.toLowerCase().includes(query)
+      );
+    }
+
+    // Filter by status
+    if (activeFilter !== 'all') {
+      result = result.filter((order) => order.orderStatus === activeFilter);
+    }
+
+    // Sort by date
+    return result.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [orders, searchQuery, activeFilter]);
+
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case 'completed':
+      case 'delivered':
+        return 'success';
+      case 'in_progress':
+        return 'info';
+      case 'pending':
+        return 'warning';
+      case 'cancelled':
+        return 'error';
+      default:
+        return 'neutral';
+    }
+  };
+
+  const renderOrderItem = ({ item }: { item: Order }) => {
+    const client = getClientById(item.clientId);
+
+    return (
+      <TouchableOpacity
+        style={styles.orderCard}
+        onPress={() => onOrderPress?.(item.id)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.orderHeader}>
+          <View style={styles.orderClient}>
+            <Avatar
+              source={client?.photo}
+              name={item.clientName}
+              size="sm"
+            />
+            <View style={styles.orderClientInfo}>
+              <Text style={styles.orderClientName}>{item.clientName}</Text>
+              <Text style={styles.orderType}>
+                {CLOTHING_TYPE_LABELS[item.clothingType] || item.clothingType}
+              </Text>
+            </View>
+          </View>
+          <Badge
+            label={ORDER_STATUS_LABELS[item.orderStatus]}
+            variant={getStatusVariant(item.orderStatus)}
+          />
+        </View>
+
+        <View style={styles.orderDetails}>
+          <View style={styles.orderDetailItem}>
+            <Ionicons name="calendar-outline" size={16} color={COLORS.gray400} />
+            <Text style={styles.orderDetailText}>
+              Livraison: {formatDate(item.deliveryDate)}
+            </Text>
+          </View>
+
+          <View style={styles.orderDetailItem}>
+            <Ionicons name="cash-outline" size={16} color={COLORS.gray400} />
+            <Text style={styles.orderDetailText}>
+              {formatCurrency(item.totalPrice)}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.orderFooter}>
+          <View style={styles.paymentInfo}>
+            <Text style={styles.paymentLabel}>Reste: </Text>
+            <Text style={[
+              styles.paymentAmount,
+              item.remainingAmount === 0 && styles.paymentPaid
+            ]}>
+              {formatCurrency(item.remainingAmount)}
+            </Text>
+          </View>
+          <Badge
+            label={PAYMENT_STATUS_LABELS[item.paymentStatus]}
+            variant={
+              item.paymentStatus === 'paid' ? 'success' :
+              item.paymentStatus === 'partial' ? 'warning' : 'error'
+            }
+          />
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity>
+            <Ionicons name="menu" size={24} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Commandes</Text>
+        </View>
+        <TouchableOpacity style={styles.addButton} onPress={onAddPress}>
+          <Ionicons name="add" size={24} color={COLORS.text} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Rechercher une commande..."
+        />
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        <TabGroup
+          tabs={[
+            { key: 'all', label: 'Toutes' },
+            { key: 'pending', label: 'En attente' },
+            { key: 'in_progress', label: 'En cours' },
+            { key: 'completed', label: 'Terminées' },
+          ]}
+          activeTab={activeFilter}
+          onTabChange={setActiveFilter}
+        />
+      </View>
+
+      {/* Orders List */}
+      <FlatList
+        data={filteredOrders}
+        keyExtractor={(item) => item.id}
+        renderItem={renderOrderItem}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="receipt-outline" size={48} color={COLORS.gray300} />
+            <Text style={styles.emptyText}>Aucune commande trouvée</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.white,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  headerTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  addButton: {
+    padding: SPACING.xs,
+  },
+  searchContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.white,
+  },
+  tabsContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+    backgroundColor: COLORS.white,
+  },
+  listContent: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxxl,
+  },
+  orderCard: {
+    backgroundColor: COLORS.white,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    ...SHADOWS.sm,
+  },
+  orderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.md,
+  },
+  orderClient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    flex: 1,
+  },
+  orderClientInfo: {
+    flex: 1,
+  },
+  orderClientName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  orderType: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+  },
+  orderDetails: {
+    flexDirection: 'row',
+    gap: SPACING.lg,
+    marginBottom: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+  },
+  orderDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  orderDetailText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+  },
+  orderFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+  },
+  paymentInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  paymentLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+  },
+  paymentAmount: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.error,
+  },
+  paymentPaid: {
+    color: COLORS.success,
+  },
+  separator: {
+    height: SPACING.sm,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xxxl * 2,
+  },
+  emptyText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray400,
+    marginTop: SPACING.md,
+  },
+});

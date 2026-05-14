@@ -1,0 +1,34 @@
+{/*try {
+            // Numéro complet avec indicatif
+            const fullPhone = `${selectedCountry.code} ${form.phoneFormatted}`;
+
+            const { data, error: signUpError } = await supabase.auth.signUp({
+                email: form.email.trim(),
+                password: form.password,
+            });
+
+            if (signUpError) throw signUpError;
+            if (!data.user) throw new Error('Erreur lors de la création du compte');
+
+            const { error: profileError } = await supabase.from('users').insert({
+                id: data.user.id,
+                email: form.email.trim(),
+                display_name: form.displayName.trim(),
+                atelier_name: form.atelierName.trim(),
+                phone: fullPhone,
+            });
+
+            if (profileError) throw profileError;
+
+            if (!data.session) {
+                Alert.alert(
+                    'Vérification requise',
+                    'Un email de confirmation a été envoyé. Vérifiez votre boîte mail avant de vous connecter.',
+                    [{ text: 'OK', onPress: onNavigateToLogin }]
+                );
+            }
+        } catch (e: any) {
+            Alert.alert('Erreur', e.message ?? "Impossible de créer le compte");
+        } finally {
+            setLoading(false);
+        }*/}
