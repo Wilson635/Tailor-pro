@@ -11,11 +11,11 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Header, Card, Badge, Button } from '../../components/ui';
-import { useAppStore } from '../../store/useAppStore';
-import { formatCurrency, formatDate } from '../../utils/formatters';
-import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
-import { PAYMENT_STATUS_LABELS } from '../../constants/theme';
+import { Header, Card, Badge, Button } from '@components/ui';
+import { useAppStore } from '@store/useAppStore';
+import { formatCurrency, formatDate } from '@utils/formatters';
+import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '@constants/theme';
+import { PAYMENT_STATUS_LABELS } from '@constants/theme';
 
 interface PaymentsScreenProps {
   clientId: string;

@@ -26,7 +26,7 @@ import {
   PAYMENT_STATUS_LABELS,
   CLOTHING_TYPE_LABELS,
 } from '@constants/theme';
-import { RootStackParamList } from '@navigation/AppNavigator';
+import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import type { Order } from '../../types';
 
 // ==========================================

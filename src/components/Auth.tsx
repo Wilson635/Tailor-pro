@@ -1,8 +1,8 @@
 // ==========================================
-// ÉCRAN CONNEXION - TailorPro
+// ÉCRAN CONNEXION - TailorPro (Redesign)
 // ==========================================
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
     View,
     Text,
@@ -14,400 +14,380 @@ import {
     ScrollView,
     Alert,
     ActivityIndicator,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { supabase } from '@/src/lib/supabase';
-import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '@constants/theme';
+    StatusBar,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { supabase } from "@/src/lib/supabase";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { RootStackParamList } from "@/src/navigation/AppNavigator";
 
-// ==========================================
-// TYPES
-// ==========================================
+// ── PALETTE (Harmonisée avec Register) ───────────────────────────
+const C = {
+    bg:            "#FFFFFF",
+    surface:       "#F7F6F4",
+    border:        "#EBEBEB",
+    borderError:   "#EF4444",
+    textPrimary:   "#0E0B14",
+    textSecondary: "#7A7787",
+    textTertiary:  "#B0ACBA",
+    error:         "#EF4444",
 
-type Props = {
-    onNavigateToRegister: () => void;
+    purple900:  "#1A0033",
+    purple700:  "#2E0057",
+    purple600:  "#534AB7",
+    purple200:  "#AFA9EC",
+    purple100:  "#EEEDFE",
+    purple50:   "#F7F5FF",
+
+    gold:       "#D4AF37",
+    gold800:    "#412402",
+    gold100:    "#FAEEDA",
 };
 
-// ==========================================
-// ÉCRAN
-// ==========================================
+type Props = NativeStackScreenProps<RootStackParamList, "Login">;
 
-export const LoginScreen: React.FC<Props> = ({ onNavigateToRegister }) => {
+// ── COMPOSANT CHAMP GÉNÉRIQUE (Identique à Register) ──────────────
+const Field = ({
+                   label,
+                   icon,
+                   value,
+                   onChangeText,
+                   placeholder,
+                   keyboardType,
+                   autoCapitalize,
+                   secure,
+                   error,
+                   rightElement,
+               }: {
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    value: string;
+    onChangeText: (t: string) => void;
+    placeholder: string;
+    keyboardType?: "default" | "email-address";
+    autoCapitalize?: "none" | "sentences";
+    secure?: boolean;
+    error?: string;
+    rightElement?: React.ReactNode;
+}) => (
+    <View style={fieldStyles.wrap}>
+        <Text style={fieldStyles.label}>{label}</Text>
+        <View style={[fieldStyles.inputWrap, error ? fieldStyles.inputError : null]}>
+            <Ionicons
+                name={icon}
+                size={17}
+                color={error ? C.borderError : C.textTertiary}
+                style={fieldStyles.icon}
+            />
+            <TextInput
+                style={fieldStyles.input}
+                value={value}
+                onChangeText={onChangeText}
+                placeholder={placeholder}
+                placeholderTextColor={C.textTertiary}
+                keyboardType={keyboardType ?? "default"}
+                autoCapitalize={autoCapitalize ?? "sentences"}
+                autoCorrect={false}
+                secureTextEntry={secure}
+            />
+            {rightElement}
+        </View>
+        {error && (
+            <View style={fieldStyles.errorRow}>
+                <Ionicons name="alert-circle-outline" size={12} color={C.error} />
+                <Text style={fieldStyles.errorText}>{error}</Text>
+            </View>
+        )}
+    </View>
+);
+
+const fieldStyles = StyleSheet.create({
+    wrap: { marginBottom: 14 },
+    label: {
+        fontSize: 11,
+        fontWeight: "600",
+        color: C.textSecondary,
+        letterSpacing: 0.5,
+        //textTransform: "uppercase",
+        marginBottom: 6,
+    },
+    inputWrap: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: C.surface,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: C.border,
+        paddingHorizontal: 14,
+        height: 50,
+    },
+    inputError: { borderColor: C.borderError, backgroundColor: "#FFF5F5" },
+    icon: { marginRight: 10 },
+    input: { flex: 1, fontSize: 15, color: C.textPrimary, height: "100%" },
+    errorRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
+    errorText: { fontSize: 12, color: C.error },
+});
+
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+export const LoginScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
     const handleLogin = async () => {
-        if (!email.trim() || !password.trim()) {
-            Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+        const localErrors: { email?: string; password?: string } = {};
+        if (!email.trim()) localErrors.email = "Champ requis";
+        if (!password) localErrors.password = "Champ requis";
+
+        if (Object.keys(localErrors).length > 0) {
+            setErrors(localErrors);
             return;
         }
+
+        setErrors({});
         setLoading(true);
         const { error } = await supabase.auth.signInWithPassword({
             email: email.trim(),
             password,
         });
-        if (error) Alert.alert('Erreur de connexion', error.message);
+
+        if (error) Alert.alert("Erreur de connexion", error.message);
         setLoading(false);
-        // Si succès, onAuthStateChange dans _layout.tsx prend le relais
     };
 
     const handleForgotPassword = async () => {
         if (!email.trim()) {
-            Alert.alert('Email requis', 'Entrez votre email pour réinitialiser le mot de passe');
+            setErrors({ email: "Entrez votre email pour la réinitialisation" });
             return;
         }
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
         if (error) {
-            Alert.alert('Erreur', error.message);
+            Alert.alert("Erreur", error.message);
         } else {
-            Alert.alert('Email envoyé', 'Vérifiez votre boîte mail pour réinitialiser votre mot de passe');
+            Alert.alert("Email envoyé", "Vérifiez votre boîte mail pour réinitialiser votre mot de passe.");
         }
     };
 
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-            <ScrollView
-                contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + SPACING.xxxl }]}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
+        <>
+            <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
+            <KeyboardAvoidingView
+                style={{ flex: 1, backgroundColor: C.bg }}
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
             >
-                {/* ── Hero ── */}
-                <View style={[styles.hero, { paddingTop: insets.top + SPACING.xl }]}>
-                    <View style={styles.logoWrap}>
-                        <Ionicons name="cut-outline" size={28} color="#fff" />
-                    </View>
-                    <Text style={styles.heroTitle}>TailorPro</Text>
-                    <Text style={styles.heroSub}>Gérez votre atelier avec sérénité</Text>
-                </View>
-
-                {/* ── Formulaire ── */}
-                <View style={styles.form}>
-                    <View style={styles.formHeader}>
-                        <Ionicons name="log-in-outline" size={16} color={COLORS.textSecondary} />
-                        <Text style={styles.formTitle}>Connexion</Text>
-                    </View>
-
-                    {/* Email */}
-                    <View style={styles.field}>
-                        <Text style={styles.label}>Adresse email</Text>
-                        <View style={styles.inputWrap}>
-                            <Ionicons name="mail-outline" size={18} color={COLORS.gray400} style={styles.inputIcon} />
-                            <TextInput
-                                style={styles.input}
-                                value={email}
-                                onChangeText={setEmail}
-                                placeholder="couturier@atelier.com"
-                                placeholderTextColor={COLORS.gray400}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
+                <ScrollView
+                    contentContainerStyle={[
+                        styles.scrollContent,
+                        { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 40 },
+                    ]}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    {/* ── HEADER (Sans flèche de retour) ── */}
+                    <View style={styles.header}>
+                        <View style={styles.profileBadge}>
+                            <View style={[styles.profileBadgeIcon, { backgroundColor: C.purple100 }]}>
+                                <Ionicons name="lock-open-outline" size={14} color={C.purple600} />
+                            </View>
+                            <Text style={[styles.profileBadgeText, { color: C.purple600 }]}>
+                                Connexion sécurisée
+                            </Text>
                         </View>
                     </View>
 
-                    {/* Mot de passe */}
-                    <View style={styles.field}>
-                        <Text style={styles.label}>Mot de passe</Text>
-                        <View style={styles.inputWrap}>
-                            <Ionicons name="lock-closed-outline" size={18} color={COLORS.gray400} style={styles.inputIcon} />
-                            <TextInput
-                                style={[styles.input, { paddingRight: 44 }]}
-                                value={password}
-                                onChangeText={setPassword}
-                                placeholder="••••••••"
-                                placeholderTextColor={COLORS.gray400}
-                                secureTextEntry={!showPassword}
-                                autoCapitalize="none"
-                            />
-                            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword((v) => !v)}>
-                                <Ionicons
-                                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                                    size={18}
-                                    color={COLORS.gray400}
-                                />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-
-                    {/* Mot de passe oublié */}
-                    <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotWrap}>
-                        <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
-                    </TouchableOpacity>
-
-                    {/* CTA */}
-                    <TouchableOpacity
-                        style={[styles.cta, loading && styles.ctaDisabled]}
-                        onPress={handleLogin}
-                        disabled={loading}
-                        activeOpacity={0.85}
-                    >
-                        {loading
-                            ? <ActivityIndicator color="#fff" size="small" />
-                            : <Text style={styles.ctaText}>Se connecter</Text>
-                        }
-                    </TouchableOpacity>
-
-                    {/* Séparateur */}
-                    <View style={styles.divider}>
-                        <View style={styles.dividerLine} />
-                        <Text style={styles.dividerText}>ou</Text>
-                        <View style={styles.dividerLine} />
-                    </View>
-
-                    {/* Lien inscription */}
-                    <TouchableOpacity style={styles.switchWrap} onPress={onNavigateToRegister}>
-                        <Text style={styles.switchText}>
-                            Pas encore de compte ?{' '}
-                            <Text style={styles.switchLink}>Créer un compte</Text>
+                    {/* ── TITRE ── */}
+                    <View style={styles.titleSection}>
+                        <Text style={styles.mainTitle}>
+                            Bon retour sur{"\n"}
+                            <Text style={{ color: C.purple600 }}>TailorPro</Text>
                         </Text>
-                    </TouchableOpacity>
-                </View>
-            </ScrollView>
-        </KeyboardAvoidingView>
+                        <Text style={styles.subtitle}>
+                            Connectez-vous pour gérer votre activité ou suivre vos commandes.
+                        </Text>
+                    </View>
+
+                    {/* ── FORMULAIRE ── */}
+                    <View style={styles.formSection}>
+                        <Field
+                            label="Adresse email"
+                            icon="mail-outline"
+                            value={email}
+                            onChangeText={(t) => { setEmail(t); setErrors(prev => ({...prev, email: undefined})); }}
+                            placeholder="marie@atelier.com"
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            error={errors.email}
+                        />
+
+                        <Field
+                            label="Mot de passe"
+                            icon="lock-closed-outline"
+                            value={password}
+                            onChangeText={(t) => { setPassword(t); setErrors(prev => ({...prev, password: undefined})); }}
+                            placeholder="••••••••"
+                            autoCapitalize="none"
+                            secure={!showPassword}
+                            error={errors.password}
+                            rightElement={
+                                <TouchableOpacity
+                                    style={styles.eyeBtn}
+                                    onPress={() => setShowPassword((v) => !v)}
+                                >
+                                    <Ionicons
+                                        name={showPassword ? "eye-off-outline" : "eye-outline"}
+                                        size={17}
+                                        color={C.textTertiary}
+                                    />
+                                </TouchableOpacity>
+                            }
+                        />
+
+                        {/* Mot de passe oublié */}
+                        <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotWrap}>
+                            <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* ── FOOTER ── */}
+                    <View style={styles.footer}>
+                        {/* CTA Connexion */}
+                        <TouchableOpacity
+                            activeOpacity={0.85}
+                            onPress={handleLogin}
+                            disabled={loading}
+                            style={[styles.ctaButton, loading && { opacity: 0.7 }]}
+                        >
+                            {loading ? (
+                                <ActivityIndicator color="#FFFFFF" size="small" />
+                            ) : (
+                                <>
+                                    <Text style={styles.ctaButtonText}>Se connecter</Text>
+                                    <Ionicons
+                                        name="arrow-forward"
+                                        size={17}
+                                        color={C.gold}
+                                        style={{ marginLeft: 8 }}
+                                    />
+                                </>
+                            )}
+                        </TouchableOpacity>
+
+                        {/* Séparateur */}
+                        <View style={styles.divider}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>ou</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        {/* Lien Redirection Inscription */}
+                        <TouchableOpacity
+                            style={styles.loginLink}
+                            onPress={() => navigation.navigate("ChooseProfile")}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.loginText}>
+                                Pas encore de compte ?{" "}
+                                <Text style={styles.loginBold}>Créer un compte</Text>
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </>
     );
 };
 
-// ==========================================
-// STYLES
-// ==========================================
-
+// ── STYLES ────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
-    scroll: { flexGrow: 1 },
-
-    hero: {
-        backgroundColor: COLORS.primary,
-        paddingBottom: 36,
-        alignItems: 'center',
-        gap: SPACING.sm,
+    scrollContent: {
+        flexGrow: 1,
+        paddingHorizontal: 24,
     },
-    logoWrap: {
-        width: 56,
-        height: 56,
-        borderRadius: BORDER_RADIUS.lg,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: SPACING.xs,
+    header: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        marginBottom: 32,
     },
-    heroTitle: {
-        fontSize: FONT_SIZES.xxl,
-        fontWeight: FONT_WEIGHTS.semibold,
-        color: '#fff',
+    profileBadge: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 7,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: C.purple200,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
     },
-    heroSub: {
-        fontSize: FONT_SIZES.sm,
-        color: 'rgba(255,255,255,0.75)',
+    profileBadgeIcon: {
+        width: 22,
+        height: 22,
+        borderRadius: 6,
+        alignItems: "center",
+        justifyContent: "center",
     },
-
-    form: { padding: SPACING.xl },
-    formHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        marginBottom: SPACING.lg,
+    profileBadgeText: {
+        fontSize: 12,
+        fontWeight: "600",
+        letterSpacing: 0.3,
     },
-    formTitle: {
-        fontSize: FONT_SIZES.md,
-        fontWeight: FONT_WEIGHTS.semibold,
-        color: COLORS.textSecondary,
+    titleSection: { marginBottom: 32 },
+    mainTitle: {
+        fontSize: 28,
+        fontWeight: "700",
+        color: C.textPrimary,
+        letterSpacing: -0.5,
+        lineHeight: 36,
+        marginBottom: 8,
     },
-
-    field: { marginBottom: SPACING.lg },
-    label: {
-        fontSize: FONT_SIZES.xs,
-        fontWeight: FONT_WEIGHTS.medium,
-        color: COLORS.textSecondary,
-        marginBottom: 6,
+    subtitle: {
+        fontSize: 14,
+        lineHeight: 21,
+        color: C.textSecondary,
     },
-    inputWrap: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: COLORS.gray50,
-        borderRadius: BORDER_RADIUS.md,
-        borderWidth: 0.5,
-        borderColor: COLORS.border,
-        paddingHorizontal: SPACING.md,
-        height: 46,
-    },
-    inputIcon: { marginRight: SPACING.sm },
-    input: {
-        flex: 1,
-        fontSize: FONT_SIZES.md,
-        color: COLORS.text,
-        height: '100%',
-    },
-    eyeBtn: {
-        position: 'absolute',
-        right: SPACING.md,
-        padding: 4,
-    },
-
+    formSection: { marginBottom: 24 },
+    eyeBtn: { position: "absolute", right: 14, padding: 4 },
     forgotWrap: {
-        alignSelf: 'flex-end',
-        marginTop: -SPACING.sm,
-        marginBottom: SPACING.lg,
+        alignSelf: "flex-end",
+        marginTop: 4,
+        paddingVertical: 4,
     },
     forgotText: {
-        fontSize: FONT_SIZES.sm,
-        color: COLORS.primary,
+        fontSize: 13,
+        color: C.purple600,
+        fontWeight: "600",
     },
-
-    cta: {
-        backgroundColor: COLORS.primary,
-        borderRadius: BORDER_RADIUS.lg,
-        height: 50,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: SPACING.lg,
+    footer: { marginTop: "auto" },
+    ctaButton: {
+        height: 54,
+        borderRadius: 16,
+        backgroundColor: C.purple900,
+        flexDirection: "row",
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 20,
     },
-    ctaDisabled: { opacity: 0.7 },
-    ctaText: {
-        fontSize: FONT_SIZES.md,
-        fontWeight: FONT_WEIGHTS.semibold,
-        color: '#fff',
+    ctaButtonText: {
+        fontSize: 16,
+        fontWeight: "700",
+        color: "#FFFFFF",
+        letterSpacing: 0.1,
     },
-
     divider: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: SPACING.sm,
-        marginBottom: SPACING.lg,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        marginBottom: 18,
     },
-    dividerLine: { flex: 1, height: 0.5, backgroundColor: COLORS.border },
-    dividerText: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
-
-    switchWrap: { alignItems: 'center' },
-    switchText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
-    switchLink: { color: COLORS.primary, fontWeight: FONT_WEIGHTS.semibold },
+    dividerLine: { flex: 1, height: 0.5, backgroundColor: C.border },
+    dividerText: { fontSize: 13, color: C.textTertiary },
+    loginLink: { alignItems: "center", paddingVertical: 4 },
+    loginText: { fontSize: 14, color: C.textSecondary },
+    loginBold: { color: C.purple600, fontWeight: "700" },
 });
-
-/***********
-import React, { useState } from 'react'
-import { Alert, StyleSheet, View, Text, TextInput, TouchableOpacity } from 'react-native'
-import { supabase } from '../lib/supabase'
-
-export default function Auth() {
-    const [email, setEmail] = useState('')
-    const [password, setPassword] = useState('')
-    const [loading, setLoading] = useState(false)
-
-    async function signInWithEmail() {
-        setLoading(true)
-        const { error } = await supabase.auth.signInWithPassword({
-            email: email,
-            password: password,
-        })
-
-        if (error) Alert.alert(error.message)
-        setLoading(false)
-    }
-
-    async function signUpWithEmail() {
-        setLoading(true)
-        const {
-            data: { session },
-            error,
-        } = await supabase.auth.signUp({
-            email: email,
-            password: password,
-        })
-
-        if (error) Alert.alert(error.message)
-        if (!session) Alert.alert('Please check your inbox for email verification!')
-        setLoading(false)
-    }
-
-    return (
-        <View style={styles.container}>
-            <View style={[styles.verticallySpaced, styles.mt20]}>
-                <Text style={styles.label}>Email</Text>
-                <TextInput
-                    onChangeText={(text) => setEmail(text)}
-                    value={email}
-                    placeholder="email@address.com"
-                    autoCapitalize="none"
-                    style={styles.input}
-                />
-            </View>
-            <View style={styles.verticallySpaced}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                    onChangeText={(text) => setPassword(text)}
-                    value={password}
-                    secureTextEntry={true}
-                    placeholder="Password"
-                    autoCapitalize="none"
-                    style={styles.input}
-                />
-            </View>
-            <View style={[styles.verticallySpaced, styles.mt20]}>
-                <TouchableOpacity
-                    style={[styles.button, loading && styles.buttonDisabled]}
-                    onPress={() => signInWithEmail()}
-                    disabled={loading}
-                >
-                    <Text style={styles.buttonText}>Sign in</Text>
-                </TouchableOpacity>
-            </View>
-            <View style={styles.verticallySpaced}>
-                <TouchableOpacity
-                    style={[styles.button, loading && styles.buttonDisabled]}
-                    onPress={() => signUpWithEmail()}
-                    disabled={loading}
-                >
-                    <Text style={styles.buttonText}>Sign up</Text>
-                </TouchableOpacity>
-            </View>
-        </View>
-    )
-}
-
-const styles = StyleSheet.create({
-    container: {
-        marginTop: 40,
-        padding: 12,
-    },
-    verticallySpaced: {
-        paddingTop: 4,
-        paddingBottom: 4,
-        alignSelf: 'stretch',
-    },
-    mt20: {
-        marginTop: 20,
-    },
-    label: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#86939e',
-        marginBottom: 6,
-    },
-    input: {
-        borderWidth: 1,
-        borderColor: '#86939e',
-        borderRadius: 4,
-        padding: 12,
-        fontSize: 16,
-    },
-    button: {
-        backgroundColor: '#2089dc',
-        borderRadius: 4,
-        padding: 12,
-        alignItems: 'center',
-    },
-    buttonDisabled: {
-        opacity: 0.5,
-    },
-    buttonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-})
- */

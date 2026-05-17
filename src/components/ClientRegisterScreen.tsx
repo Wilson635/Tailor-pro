@@ -1,5 +1,5 @@
 // ==========================================
-// ÉCRAN INSCRIPTION TAILLEUR - TailorPro (Redesign)
+// ÉCRAN INSCRIPTION CLIENT - TailorPro (Redesign)
 // ==========================================
 
 import React, { useState } from "react";
@@ -19,10 +19,12 @@ import {
     FlatList,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
-import {RootStackParamList} from "@/src/navigation/AppNavigator";
-import {NativeStackScreenProps} from "@react-navigation/native-stack";
+import { RootStackParamList } from "@/src/navigation/AppNavigator";
+
+type Props = NativeStackScreenProps<RootStackParamList, "RegisterClient">;
 
 // ── PALETTE (partagée avec ChooseProfileScreen) ──────────────────
 const C = {
@@ -38,13 +40,16 @@ const C = {
     purple900:  "#1A0033",
     purple700:  "#2E0057",
     purple600:  "#534AB7",
-    purple200:  "#AFA9EC",
     purple100:  "#EEEDFE",
-    purple50:   "#F7F5FF",
 
     gold:       "#D4AF37",
-    gold800:    "#412402",
+    gold50:     "#FFFBF0",
     gold100:    "#FAEEDA",
+    gold800:    "#412402",
+    teal100:    "#9FE1CB",
+    teal800:    "#04342C",
+    blue100:    "#B5D4F4",
+    blue800:    "#042C53",
 };
 
 // ── PAYS & CODES ─────────────────────────────────────────────────
@@ -94,10 +99,9 @@ const applyFormat = (digits: string, format: string): string => {
     return result;
 };
 
-// ── TYPES ─────────────────────────────────────────────────────────
+// ── TYPES ────────────────────────────────────────────────────────
 interface FormData {
-    displayName: string;
-    atelierName: string;
+    fullName: string;
     phoneDigits: string;
     phoneFormatted: string;
     email: string;
@@ -106,19 +110,17 @@ interface FormData {
 }
 
 interface FormErrors {
-    displayName?: string;
-    atelierName?: string;
+    fullName?: string;
     phone?: string;
     email?: string;
     password?: string;
     confirmPassword?: string;
 }
 
-// ── VALIDATION ────────────────────────────────────────────────────
+// ── VALIDATION ───────────────────────────────────────────────────
 const validate = (form: FormData, country: Country): FormErrors => {
     const errors: FormErrors = {};
-    if (!form.displayName.trim()) errors.displayName = "Champ requis";
-    if (!form.atelierName.trim()) errors.atelierName = "Champ requis";
+    if (!form.fullName.trim()) errors.fullName = "Champ requis";
     const max = maxDigits(country.format);
     if (!form.phoneDigits) {
         errors.phone = "Champ requis";
@@ -141,7 +143,7 @@ const validate = (form: FormData, country: Country): FormErrors => {
     return errors;
 };
 
-// ── COMPOSANT CHAMP GÉNÉRIQUE ─────────────────────────────────────
+// ── COMPOSANT CHAMP ───────────────────────────────────────────────
 const Field = ({
                    label,
                    icon,
@@ -167,7 +169,10 @@ const Field = ({
 }) => (
     <View style={fieldStyles.wrap}>
         <Text style={fieldStyles.label}>{label}</Text>
-        <View style={[fieldStyles.inputWrap, error ? fieldStyles.inputError : null]}>
+        <View style={[
+            fieldStyles.inputWrap,
+            error ? fieldStyles.inputError : null,
+        ]}>
             <Ionicons
                 name={icon}
                 size={17}
@@ -197,7 +202,7 @@ const Field = ({
 );
 
 const fieldStyles = StyleSheet.create({
-    wrap: { marginBottom: 14 },
+    wrap:       { marginBottom: 14 },
     label: {
         fontSize: 11,
         fontWeight: "600",
@@ -217,9 +222,19 @@ const fieldStyles = StyleSheet.create({
         height: 50,
     },
     inputError: { borderColor: C.borderError, backgroundColor: "#FFF5F5" },
-    icon: { marginRight: 10 },
-    input: { flex: 1, fontSize: 15, color: C.textPrimary, height: "100%" },
-    errorRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
+    icon:       { marginRight: 10 },
+    input: {
+        flex: 1,
+        fontSize: 15,
+        color: C.textPrimary,
+        height: "100%",
+    },
+    errorRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        marginTop: 4,
+    },
     errorText: { fontSize: 12, color: C.error },
 });
 
@@ -335,7 +350,6 @@ const CountryModal = ({
             onRequestClose={onClose}
         >
             <View style={[modalStyles.container, { paddingTop: insets.top }]}>
-                {/* Header */}
                 <View style={modalStyles.header}>
                     <Text style={modalStyles.title}>Choisir un pays</Text>
                     <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn} activeOpacity={0.7}>
@@ -343,7 +357,6 @@ const CountryModal = ({
                     </TouchableOpacity>
                 </View>
 
-                {/* Recherche */}
                 <View style={modalStyles.searchWrap}>
                     <Ionicons name="search-outline" size={15} color={C.textTertiary} style={{ marginRight: 8 }} />
                     <TextInput
@@ -361,7 +374,6 @@ const CountryModal = ({
                     )}
                 </View>
 
-                {/* Liste */}
                 <FlatList
                     data={filtered}
                     keyExtractor={(item) => item.iso}
@@ -382,7 +394,7 @@ const CountryModal = ({
                                 </Text>
                             </View>
                             {item.iso === selected.iso && (
-                                <Ionicons name="checkmark" size={17} color={C.purple600} />
+                                <Ionicons name="checkmark" size={17} color={C.gold} />
                             )}
                         </TouchableOpacity>
                     )}
@@ -406,7 +418,7 @@ const modalStyles = StyleSheet.create({
         borderBottomWidth: 0.5,
         borderBottomColor: C.border,
     },
-    title: { fontSize: 17, fontWeight: "600", color: C.textPrimary },
+    title:    { fontSize: 17, fontWeight: "600", color: C.textPrimary },
     closeBtn: {
         width: 32,
         height: 32,
@@ -434,7 +446,7 @@ const modalStyles = StyleSheet.create({
         paddingVertical: 12,
         gap: 14,
     },
-    countryItemActive: { backgroundColor: C.purple50 },
+    countryItemActive: { backgroundColor: C.gold100 },
     itemFlag:   { fontSize: 22 },
     itemName:   { fontSize: 15, color: C.textPrimary, fontWeight: "500" },
     itemFormat: { fontSize: 12, color: C.textTertiary, marginTop: 2 },
@@ -461,17 +473,15 @@ const StepIndicator = ({ current, total }: { current: number; total: number }) =
 );
 
 const stepStyles = StyleSheet.create({
-    container:   { flexDirection: "row", gap: 6, alignItems: "center" },
-    dot:         { height: 6, borderRadius: 3 },
+    container: { flexDirection: "row", gap: 6, alignItems: "center" },
+    dot:       { height: 6, borderRadius: 3 },
     dotInactive: { width: 6, backgroundColor: C.border },
     dotDone:     { width: 20, backgroundColor: C.purple600, opacity: 0.4 },
-    dotActive:   { width: 22, backgroundColor: C.purple600 },
+    dotActive:   { width: 22, backgroundColor: C.gold },
 });
 
-type Props = NativeStackScreenProps<RootStackParamList, "Register">;
-
 // ── ÉCRAN PRINCIPAL ───────────────────────────────────────────────
-export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
+export const ClientRegisterScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
     const [loading, setLoading]               = useState(false);
     const [showPassword, setShowPassword]     = useState(false);
@@ -482,8 +492,7 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
         COUNTRIES.find((c) => c.iso === "CM") ?? COUNTRIES[0]
     );
     const [form, setForm] = useState<FormData>({
-        displayName: "",
-        atelierName: "",
+        fullName: "",
         phoneDigits: "",
         phoneFormatted: "",
         email: "",
@@ -522,10 +531,10 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
                 password: form.password,
                 options: {
                     data: {
-                        display_name: form.displayName.trim(),
-                        atelier_name: form.atelierName.trim(),
+                        display_name: form.fullName.trim(),
                         phone:         fullPhone,
-                        role:          'tailor', // 👈 Le rôle est maintenant envoyé ici
+                        role:          "client",
+                        atelier_name:  null,
                     },
                 },
             });
@@ -563,12 +572,21 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
                 >
                     {/* ── HEADER ── */}
                     <View style={styles.header}>
+                        <TouchableOpacity
+                            onPress={() => navigation.goBack()}
+                            style={styles.backButton}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons name="arrow-back" size={18} color={C.textPrimary} />
+                        </TouchableOpacity>
+
+                        {/* Badge profil */}
                         <View style={styles.profileBadge}>
-                            <View style={[styles.profileBadgeIcon, { backgroundColor: C.purple100 }]}>
-                                <Ionicons name="cut-outline" size={14} color={C.purple600} />
+                            <View style={[styles.profileBadgeIcon, { backgroundColor: C.gold100 }]}>
+                                <Ionicons name="person-outline" size={14} color={C.gold800} />
                             </View>
-                            <Text style={[styles.profileBadgeText, { color: C.purple600 }]}>
-                                Espace tailleur
+                            <Text style={[styles.profileBadgeText, { color: C.gold800 }]}>
+                                Espace client
                             </Text>
                         </View>
                     </View>
@@ -580,11 +598,11 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
                     {/* ── TITRE ── */}
                     <View style={styles.titleSection}>
                         <Text style={styles.mainTitle}>
-                            Créer votre{"\n"}
-                            <Text style={{ color: C.purple600 }}>espace atelier</Text>
+                            Créer mon{"\n"}
+                            <Text style={{ color: C.gold }}>compte client</Text>
                         </Text>
                         <Text style={styles.subtitle}>
-                            Gérez vos clients, commandes et votre atelier au complet.
+                            Suivez vos commandes et accédez à vos mesures en un clic.
                         </Text>
                     </View>
 
@@ -593,22 +611,15 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
 
                         {/* Section: Identité */}
                         <Text style={styles.sectionTitle}>Identité</Text>
+
                         <Field
                             label="Nom complet"
                             icon="person-outline"
-                            value={form.displayName}
-                            onChangeText={update("displayName")}
-                            placeholder="Marie Dupont"
+                            value={form.fullName}
+                            onChangeText={update("fullName")}
+                            placeholder="Aminata Diallo"
                             autoCapitalize="words"
-                            error={errors.displayName}
-                        />
-                        <Field
-                            label="Nom de l'atelier"
-                            icon="storefront-outline"
-                            value={form.atelierName}
-                            onChangeText={update("atelierName")}
-                            placeholder="Atelier Marie Couture"
-                            error={errors.atelierName}
+                            error={errors.fullName}
                         />
                         <PhoneField
                             country={selectedCountry}
@@ -620,12 +631,13 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
 
                         {/* Section: Connexion */}
                         <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Connexion</Text>
+
                         <Field
                             label="Adresse email"
                             icon="mail-outline"
                             value={form.email}
                             onChangeText={update("email")}
-                            placeholder="marie@atelier.com"
+                            placeholder="aminata@email.com"
                             keyboardType="email-address"
                             autoCapitalize="none"
                             error={errors.email}
@@ -680,13 +692,13 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
                     <View style={styles.footer}>
                         {/* Chips recap */}
                         <View style={styles.chipsRow}>
-                            <View style={[styles.chip, { backgroundColor: C.purple100 }]}>
-                                <Ionicons name="sparkles-outline" size={12} color={C.purple600} />
-                                <Text style={[styles.chipText, { color: C.purple600 }]}>Accès complet</Text>
+                            <View style={[styles.chip, { backgroundColor: C.teal100 }]}>
+                                <Ionicons name="cube-outline" size={12} color={C.teal800} />
+                                <Text style={[styles.chipText, { color: C.teal800 }]}>Suivi de commandes</Text>
                             </View>
-                            <View style={[styles.chip, { backgroundColor: C.purple100 }]}>
-                                <Ionicons name="people-outline" size={12} color={C.purple600} />
-                                <Text style={[styles.chipText, { color: C.purple600 }]}>Gestion clients</Text>
+                            <View style={[styles.chip, { backgroundColor: C.blue100 }]}>
+                                <Ionicons name="resize-outline" size={12} color={C.blue800} />
+                                <Text style={[styles.chipText, { color: C.blue800 }]}>Mes mesures</Text>
                             </View>
                         </View>
 
@@ -698,16 +710,11 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
                             style={[styles.ctaButton, loading && { opacity: 0.7 }]}
                         >
                             {loading ? (
-                                <ActivityIndicator color="#FFFFFF" size="small" />
+                                <ActivityIndicator color={C.gold800} size="small" />
                             ) : (
                                 <>
                                     <Text style={styles.ctaButtonText}>Créer mon compte</Text>
-                                    <Ionicons
-                                        name="arrow-forward"
-                                        size={17}
-                                        color={C.gold}
-                                        style={{ marginLeft: 8 }}
-                                    />
+                                    <Ionicons name="arrow-forward" size={17} color={C.gold800} style={{ marginLeft: 8 }} />
                                 </>
                             )}
                         </TouchableOpacity>
@@ -756,8 +763,17 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: "row",
         alignItems: "center",
-        justifyContent: "flex-end",
+        justifyContent: "space-between",
         marginBottom: 24,
+    },
+    backButton: {
+        width: 38,
+        height: 38,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: C.border,
+        alignItems: "center",
+        justifyContent: "center",
     },
     profileBadge: {
         flexDirection: "row",
@@ -765,7 +781,7 @@ const styles = StyleSheet.create({
         gap: 7,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: C.purple200,
+        borderColor: C.gold,
         paddingHorizontal: 12,
         paddingVertical: 6,
     },
@@ -819,7 +835,11 @@ const styles = StyleSheet.create({
         //textTransform: "uppercase",
         marginBottom: 12,
     },
-    eyeBtn: { position: "absolute", right: 14, padding: 4 },
+    eyeBtn: {
+        position: "absolute",
+        right: 14,
+        padding: 4,
+    },
 
     // Footer
     footer: { marginTop: "auto" },
@@ -842,7 +862,7 @@ const styles = StyleSheet.create({
     ctaButton: {
         height: 54,
         borderRadius: 16,
-        backgroundColor: C.purple900,
+        backgroundColor: C.gold,
         flexDirection: "row",
         justifyContent: "center",
         alignItems: "center",
@@ -851,7 +871,7 @@ const styles = StyleSheet.create({
     ctaButtonText: {
         fontSize: 16,
         fontWeight: "700",
-        color: "#FFFFFF",
+        color: C.gold800,
         letterSpacing: 0.1,
     },
 

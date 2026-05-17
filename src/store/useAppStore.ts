@@ -20,6 +20,7 @@ export interface UserProfile {
   display_name: string | null;
   atelier_name: string | null;
   phone: string | null;
+  role: 'tailor' | 'client';
 }
 
 // ==========================================
@@ -162,14 +163,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // Ajout de 'role' dans la sélection
     const { data, error } = await supabase
         .from('users')
-        .select('id, email, display_name, atelier_name, phone')
+        .select('id, email, display_name, atelier_name, phone, role')
         .eq('id', user.id)
         .single();
 
     if (!error && data) {
-      set({ profile: data, userId: user.id, isAuthenticated: true });
+      set({ profile: data as UserProfile, userId: user.id, isAuthenticated: true });
     }
   },
 
@@ -183,7 +185,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ clients: (data ?? []).map(mapClient) });
   },
 
-  loadOrders: async () => {
+  /*loadOrders: async () => {
     const { data, error } = await orderService.getAll();
     if (error) { set({ error: error.message }); return; }
     set({ orders: (data ?? []).map(mapOrder) });
@@ -193,6 +195,50 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data, error } = await activityService.getRecent(20);
     if (error) { set({ error: error.message }); return; }
     set({ activities: (data ?? []).map(mapActivity) });
+  },*/
+
+  loadOrders: async () => {
+    const { profile, userId } = get();
+    if (!userId) return;
+
+    if (profile?.role === 'client') {
+      // Si c'custom client, on filtre les commandes où le client_id correspond à son userId
+      const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('client_id', userId); // Ajuste le nom de la colonne si nécessaire (ex: user_id)
+
+      if (error) { set({ error: error.message }); return; }
+      set({ orders: (data ?? []).map(mapOrder) });
+    } else {
+      // Mode Couturier : on garde ton service classique
+      const { data, error } = await orderService.getAll();
+      if (error) { set({ error: error.message }); return; }
+      set({ orders: (data ?? []).map(mapOrder) });
+    }
+  },
+
+  loadActivities: async () => {
+    const { profile, userId } = get();
+    if (!userId) return;
+
+    if (profile?.role === 'client') {
+      // Le client ne voit que le fil d'actualité de ses propres commandes
+      const { data, error } = await supabase
+          .from('activities')
+          .select('*')
+          .eq('client_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+      if (error) { set({ error: error.message }); return; }
+      set({ activities: (data ?? []).map(mapActivity) });
+    } else {
+      // Mode Couturier
+      const { data, error } = await activityService.getRecent(20);
+      if (error) { set({ error: error.message }); return; }
+      set({ activities: (data ?? []).map(mapActivity) });
+    }
   },
 
   loadStatistics: async () => {
@@ -202,7 +248,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   /** Charge tout en parallèle au démarrage */
-  loadAll: async () => {
+  /*loadAll: async () => {
     set({ isLoading: true, error: null });
     await Promise.all([
       get().fetchProfile(),
@@ -211,6 +257,31 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().loadActivities(),
       get().loadStatistics(),
     ]);
+    set({ isLoading: false });
+  },*/
+
+  loadAll: async () => {
+    set({ isLoading: true, error: null });
+
+    // 1. On récupère d'abord le profil pour connaître le rôle
+    await get().fetchProfile();
+    const currentProfile = get().profile;
+
+    // 2. On charge les données adaptées au rôle
+    if (currentProfile?.role === 'client') {
+      await Promise.all([
+        get().loadOrders(),
+        get().loadActivities(),
+      ]);
+    } else {
+      // Couturier charge tout
+      await Promise.all([
+        get().loadClients(),
+        get().loadOrders(),
+        get().loadActivities(),
+        get().loadStatistics(),
+      ]);
+    }
     set({ isLoading: false });
   },
 

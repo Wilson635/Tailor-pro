@@ -1,3 +1,69 @@
+import 'react-native-url-polyfill/auto';
+import { useState, useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { Session } from '@supabase/supabase-js';
+
+import { supabase } from '@/src/lib/supabase';
+import AppNavigator from '../src/navigation/AppNavigator';
+import { COLORS } from '@constants/theme';
+import { useAppStore } from '@store/useAppStore';
+
+export default function App() {
+    const [session, setSession] = useState<Session | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const loadAll = useAppStore(s => s.loadAll);
+
+    useEffect(() => {
+        // Récupérer la session existante au démarrage
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setSession(session);
+            setIsLoading(false);
+            // 👇 Charger toutes les données si déjà connecté
+            if (session?.user) loadAll();
+        });
+
+        // Observer les changements d'auth (Login / Logout / Register)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            (_event, session) => {
+                setSession(session);
+                setIsLoading(false);
+                // 👇 Charger après chaque login
+                if (session?.user) loadAll();
+            }
+        );
+
+        return () => subscription.unsubscribe();
+    }, []);
+
+    // Écran de chargement en attendant Supabase
+    if (isLoading) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        );
+    }
+
+    // Le navigateur prend désormais le contrôle complet selon l'état de "session"
+    return (
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <SafeAreaProvider>
+                {/* Dynamise la couleur de la barre de statut selon la connexion */}
+                <StatusBar style={session ? "dark" : "light"} />
+                <AppNavigator session={session} />
+            </SafeAreaProvider>
+        </GestureHandlerRootView>
+    );
+}
+
+
+/*******
+
+
 // ==========================================
 // APP.TSX - TailorPro
 // ==========================================
@@ -16,6 +82,7 @@ import { RegisterScreen } from '@components/Account';
 import AppNavigator from '../src/navigation/AppNavigator';
 import { COLORS } from '@constants/theme';
 import { useAppStore } from '@store/useAppStore';
+import {WelcomeScreen} from "@screens/Welcome/WelcomeScreen";
 
 export default function App() {
     const [session, setSession] = useState<Session | null>(null);
@@ -61,7 +128,7 @@ export default function App() {
                 {showRegister ? (
                     <RegisterScreen onNavigateToLogin={() => setShowRegister(false)} />
                 ) : (
-                    <LoginScreen onNavigateToRegister={() => setShowRegister(true)} />
+                    <WelcomeScreen navigation={undefined} route={undefined}  />
                 )}
             </SafeAreaProvider>
         );
@@ -77,7 +144,7 @@ export default function App() {
     );
 }
 
-
+*/
 /***************
 
 import 'react-native-url-polyfill/auto'

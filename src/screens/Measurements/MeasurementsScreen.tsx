@@ -11,11 +11,14 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Header, Card, Button } from '../../components/ui';
-import { useAppStore } from '../../store/useAppStore';
-import { formatDate } from '../../utils/formatters';
-import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '../../constants/theme';
-import { MEASUREMENT_LABELS } from '../../constants/theme';
+import { Header, Card, Button } from '@components/ui';
+import { useAppStore } from '@store/useAppStore';
+import { formatDate } from '@utils/formatters';
+import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '@constants/theme';
+import {NativeStackScreenProps} from "@react-navigation/native-stack";
+import {RootStackParamList} from "@/src/types";
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Measurements'>;
 
 interface MeasurementsScreenProps {
   clientId: string;

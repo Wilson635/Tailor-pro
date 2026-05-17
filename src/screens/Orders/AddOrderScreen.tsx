@@ -1,5 +1,5 @@
 // ==========================================
-// ÉCRAN AJOUTER UNE COMMANDE - TailorPro
+// ÉCRAN AJOUTER UNE COMMANDE - TailorPro (redesign)
 // ==========================================
 
 import React, { useState } from 'react';
@@ -55,20 +55,24 @@ const getPaymentStatus = (total: number, advance: number) => {
 
 // ── Sous-composants ──
 const SectionCard = ({
-                       iconName, iconBg, iconColor, title, children,
+                       iconName, iconBg, iconColor, title, subtitle, children,
                      }: {
   iconName: keyof typeof Ionicons.glyphMap;
   iconBg: string; iconColor: string;
-  title: string; children: React.ReactNode;
+  title: string; subtitle?: string;
+  children: React.ReactNode;
 }) => (
     <View style={styles.card}>
       <View style={styles.cardHead}>
         <View style={[styles.cardHeadIcon, { backgroundColor: iconBg }]}>
-          <Ionicons name={iconName} size={15} color={iconColor} />
+          <Ionicons name={iconName} size={16} color={iconColor} />
         </View>
-        <Text style={styles.cardTitle}>{title}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle}>{title}</Text>
+          {subtitle && <Text style={styles.cardSubtitle}>{subtitle}</Text>}
+        </View>
       </View>
-      {children}
+      <View style={styles.cardContent}>{children}</View>
     </View>
 );
 
@@ -88,7 +92,7 @@ const StyledInput = ({
 }) => (
     <View style={styles.inputWrap}>
       <TextInput
-          style={[styles.input, multiline && styles.inputMulti, suffix && { paddingRight: 56 }]}
+          style={[styles.input, multiline && styles.inputMulti, suffix && { paddingRight: 60 }]}
           placeholder={placeholder}
           placeholderTextColor={COLORS.gray400}
           value={value}
@@ -100,7 +104,7 @@ const StyledInput = ({
       {suffix && <Text style={styles.inputSuffix}>{suffix}</Text>}
       {icon && !suffix && (
           <View style={styles.inputIconRight}>
-            <Ionicons name={icon} size={16} color={COLORS.gray400} />
+            <Ionicons name={icon} size={18} color={COLORS.gray400} />
           </View>
       )}
     </View>
@@ -138,51 +142,27 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const remaining = Math.max(0, total - advance);
   const paymentStatus = getPaymentStatus(total, advance);
 
-
-  const pickImage = async (
-      type: 'fabric' | 'inspiration'
-  ) => {
-    const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-
+  const pickImage = async (type: 'fabric' | 'inspiration') => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(
-          'Permission refusée',
-          "L'accès à la galerie est requis."
-      );
+      Alert.alert('Permission refusée', "L'accès à la galerie est requis.");
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
       quality: 0.7,
     });
-
     if (!result.canceled) {
       const uri = result.assets[0].uri;
-
-      if (type === 'fabric') {
-        setFabricPhotos(prev => [...prev, uri]);
-      } else {
-        setInspirationPhotos(prev => [...prev, uri]);
-      }
+      if (type === 'fabric') setFabricPhotos(prev => [...prev, uri]);
+      else setInspirationPhotos(prev => [...prev, uri]);
     }
   };
 
-  const removePhoto = (
-      uri: string,
-      type: 'fabric' | 'inspiration'
-  ) => {
-    if (type === 'fabric') {
-      setFabricPhotos(prev =>
-          prev.filter(p => p !== uri)
-      );
-    } else {
-      setInspirationPhotos(prev =>
-          prev.filter(p => p !== uri)
-      );
-    }
+  const removePhoto = (uri: string, type: 'fabric' | 'inspiration') => {
+    if (type === 'fabric') setFabricPhotos(prev => prev.filter(p => p !== uri));
+    else setInspirationPhotos(prev => prev.filter(p => p !== uri));
   };
 
   const handleSubmit = async () => {
@@ -197,7 +177,6 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
 
     setIsLoading(true);
     try {
-      // Parser la date de livraison
       let parsedDeliveryDate: Date;
       if (deliveryDate) {
         const [day, month, year] = deliveryDate.split('/');
@@ -213,7 +192,6 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           : advance > 0 ? 'partial' as const
               : 'unpaid' as const;
 
-      // 👇 Appel Supabase via le store
       const newOrder = await addOrder({
         clientId: selectedClientId,
         clientName: selectedClient?.fullName ?? '',
@@ -234,7 +212,6 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
         Alert.alert('Erreur', 'Impossible de créer la commande');
         return;
       }
-
       navigation.goBack();
     } catch {
       Alert.alert('Erreur', 'Impossible de créer la commande');
@@ -243,20 +220,14 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  const handleDateChange = (
-      event: any,
-      date?: Date
-  ) => {
+  const handleDateChange = (event: any, date?: Date) => {
     setShowDatePicker(false);
-
     if (date) {
       setSelectedDate(date);
-
       const formatted =
           `${String(date.getDate()).padStart(2, '0')}/` +
           `${String(date.getMonth() + 1).padStart(2, '0')}/` +
           `${date.getFullYear()}`;
-
       setDeliveryDate(formatted);
     }
   };
@@ -264,24 +235,37 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
 
-        {/* ── Header ── */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={20} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Nouvelle commande</Text>
-          <View style={[styles.headerBtn, { opacity: 0 }]} />
+        {/* ── Header courbé ── */}
+        <View style={styles.headerWrap}>
+          <View style={styles.headerRow}>
+            <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={20} color="#fff" />
+            </TouchableOpacity>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={styles.headerTitle}>Nouvelle commande</Text>
+              <Text style={styles.headerSubtitle}>Créer une nouvelle pièce</Text>
+            </View>
+            <View style={[styles.headerBtn, { opacity: 0 }]} />
+          </View>
         </View>
 
         <ScrollView
             style={styles.scroll}
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + SPACING.xxxl }]}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: insets.bottom + 120 },
+            ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
         >
 
           {/* ── Client ── */}
-          <SectionCard iconName="person-outline" iconBg="#EDE9FE" iconColor="#6B21A8" title="Client">
+          <SectionCard
+              iconName="person-outline"
+              iconBg="#EDE9FE" iconColor="#6B21A8"
+              title="Client"
+              subtitle="Sélectionnez la personne concernée"
+          >
             <TouchableOpacity
                 style={styles.clientRow}
                 onPress={() => navigation.navigate('Clients')}
@@ -294,126 +278,120 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                     </View>
                     <View style={styles.clientInfo}>
                       <Text style={styles.clientName}>{selectedClient.fullName}</Text>
-                      <Text style={styles.clientSub}>{selectedClient.neighborhood}</Text>
+                      <View style={styles.clientSubRow}>
+                        <Ionicons name="location-outline" size={12} color={COLORS.textSecondary} />
+                        <Text style={styles.clientSub}>{selectedClient.neighborhood}</Text>
+                      </View>
                     </View>
                   </>
               ) : (
                   <>
                     <View style={[styles.clientAvatar, { backgroundColor: COLORS.gray100 }]}>
-                      <Ionicons name="person-outline" size={18} color={COLORS.gray400} />
+                      <Ionicons name="person-add-outline" size={20} color={COLORS.gray400} />
                     </View>
-                    <Text style={styles.clientPlaceholder}>Sélectionner un client</Text>
+                    <View style={styles.clientInfo}>
+                      <Text style={styles.clientPlaceholder}>Sélectionner un client</Text>
+                      <Text style={styles.clientSub}>Touchez pour parcourir la liste</Text>
+                    </View>
                   </>
               )}
-              <Ionicons name="chevron-forward" size={18} color={COLORS.gray400} />
+              <View style={styles.chevWrap}>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.gray400} />
+              </View>
             </TouchableOpacity>
           </SectionCard>
 
           {/* ── Type de vêtement ── */}
-          <SectionCard iconName="shirt-outline" iconBg="#DBEAFE" iconColor="#1E40AF" title="Type de vêtement">
+          <SectionCard
+              iconName="shirt-outline"
+              iconBg="#DBEAFE" iconColor="#1E40AF"
+              title="Type de vêtement"
+          >
             <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.typesScroll}
             >
-              {CLOTHING_TYPES.map((type) => (
-                  <TouchableOpacity
-                      key={type}
-                      style={[styles.typeChip, clothingType === type && styles.typeChipActive]}
-                      onPress={() => setClothingType(type)}
-                  >
-                    <Text style={[styles.typeChipText, clothingType === type && styles.typeChipTextActive]}>
-                      {CLOTHING_TYPE_LABELS[type]}
-                    </Text>
-                  </TouchableOpacity>
-              ))}
+              {CLOTHING_TYPES.map((type) => {
+                const active = clothingType === type;
+                return (
+                    <TouchableOpacity
+                        key={type}
+                        style={[styles.typeChip, active && styles.typeChipActive]}
+                        onPress={() => setClothingType(type)}
+                        activeOpacity={0.8}
+                    >
+                      {active && (
+                          <Ionicons name="checkmark" size={14} color="#fff" style={{ marginRight: 4 }} />
+                      )}
+                      <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
+                        {CLOTHING_TYPE_LABELS[type]}
+                      </Text>
+                    </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </SectionCard>
 
           {/* ── Photos ── */}
-          <SectionCard iconName="images-outline" iconBg="#FEF3C7" iconColor="#92400E" title="Photos tissu & inspiration">
+          <SectionCard
+              iconName="images-outline"
+              iconBg="#FEF3C7" iconColor="#92400E"
+              title="Photos"
+              subtitle="Tissu et inspiration"
+          >
             <View style={styles.photosContainer}>
 
-              {/* Photos tissu */}
+              {/* Tissu */}
               <View style={styles.photoSection}>
-                <Text style={styles.photoTitle}>Tissu</Text>
-
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <TouchableOpacity
-                      style={styles.photoAdd}
-                      onPress={() => pickImage('fabric')}
-                  >
-                    <Ionicons
-                        name="camera-outline"
-                        size={24}
-                        color={COLORS.gray400}
-                    />
-                    <Text style={styles.photoAddLabel}>
-                      Ajouter
-                    </Text>
+                <View style={styles.photoSectionHead}>
+                  <Text style={styles.photoTitle}>Tissu</Text>
+                  <Text style={styles.photoCount}>{fabricPhotos.length} photo{fabricPhotos.length > 1 ? 's' : ''}</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }}>
+                  <TouchableOpacity style={styles.photoAdd} onPress={() => pickImage('fabric')} activeOpacity={0.7}>
+                    <View style={styles.photoAddIcon}>
+                      <Ionicons name="camera-outline" size={20} color={COLORS.primary} />
+                    </View>
+                    <Text style={styles.photoAddLabel}>Ajouter</Text>
                   </TouchableOpacity>
-
                   {fabricPhotos.map(uri => (
                       <View key={uri} style={styles.photoPreviewWrap}>
-                        <Image
-                            source={{ uri }}
-                            style={styles.photoPreview}
-                        />
-
+                        <Image source={{ uri }} style={styles.photoPreview} />
                         <TouchableOpacity
                             style={styles.removePhotoBtn}
                             onPress={() => removePhoto(uri, 'fabric')}
                         >
-                          <Ionicons
-                              name="close"
-                              size={14}
-                              color="#fff"
-                          />
+                          <Ionicons name="close" size={14} color="#fff" />
                         </TouchableOpacity>
                       </View>
                   ))}
                 </ScrollView>
               </View>
 
+              <View style={styles.photoDivider} />
+
               {/* Inspiration */}
               <View style={styles.photoSection}>
-                <Text style={styles.photoTitle}>
-                  Inspiration
-                </Text>
-
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <TouchableOpacity
-                      style={styles.photoAdd}
-                      onPress={() => pickImage('inspiration')}
-                  >
-                    <Ionicons
-                        name="image-outline"
-                        size={24}
-                        color={COLORS.gray400}
-                    />
-                    <Text style={styles.photoAddLabel}>
-                      Ajouter
-                    </Text>
+                <View style={styles.photoSectionHead}>
+                  <Text style={styles.photoTitle}>Inspiration</Text>
+                  <Text style={styles.photoCount}>{inspirationPhotos.length} photo{inspirationPhotos.length > 1 ? 's' : ''}</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }}>
+                  <TouchableOpacity style={styles.photoAdd} onPress={() => pickImage('inspiration')} activeOpacity={0.7}>
+                    <View style={styles.photoAddIcon}>
+                      <Ionicons name="image-outline" size={20} color={COLORS.primary} />
+                    </View>
+                    <Text style={styles.photoAddLabel}>Ajouter</Text>
                   </TouchableOpacity>
-
                   {inspirationPhotos.map(uri => (
                       <View key={uri} style={styles.photoPreviewWrap}>
-                        <Image
-                            source={{ uri }}
-                            style={styles.photoPreview}
-                        />
-
+                        <Image source={{ uri }} style={styles.photoPreview} />
                         <TouchableOpacity
                             style={styles.removePhotoBtn}
-                            onPress={() =>
-                                removePhoto(uri, 'inspiration')
-                            }
+                            onPress={() => removePhoto(uri, 'inspiration')}
                         >
-                          <Ionicons
-                              name="close"
-                              size={14}
-                              color="#fff"
-                          />
+                          <Ionicons name="close" size={14} color="#fff" />
                         </TouchableOpacity>
                       </View>
                   ))}
@@ -423,116 +401,124 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           </SectionCard>
 
           {/* ── Détails ── */}
-          <SectionCard iconName="document-text-outline" iconBg="#EDE9FE" iconColor="#6B21A8" title="Détails">
-            <View style={styles.cardBody}>
-              <View style={styles.field}>
-                <FieldLabel label="Description / instructions" />
+          <SectionCard
+              iconName="document-text-outline"
+              iconBg="#EDE9FE" iconColor="#6B21A8"
+              title="Détails"
+          >
+            <View style={styles.field}>
+              <FieldLabel label="Description / instructions" />
+              <StyledInput
+                  placeholder="Robe longue avec manches bouffantes..."
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                  numberOfLines={3}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <FieldLabel label="Date de livraison" />
+              <TouchableOpacity activeOpacity={0.7} onPress={() => setShowDatePicker(true)}>
                 <StyledInput
-                    placeholder="Robe longue avec manches bouffantes..."
-                    value={description}
-                    onChangeText={setDescription}
-                    multiline
-                    numberOfLines={3}
+                    placeholder="JJ/MM/AAAA"
+                    value={deliveryDate}
+                    icon="calendar-outline"
                 />
-              </View>
-              <View style={styles.field}>
-                <FieldLabel label="Date de livraison (JJ/MM/AAAA)" />
-                <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => setShowDatePicker(true)}
-                >
-                  <StyledInput
-                      placeholder="25/05/2025"
-                      value={deliveryDate}
-                      icon="calendar-outline"
+              </TouchableOpacity>
+              {showDatePicker && (
+                  <DateTimePicker
+                      value={selectedDate}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      minimumDate={new Date()}
+                      onChange={handleDateChange}
                   />
-                </TouchableOpacity>
-                {showDatePicker && (
-                    <DateTimePicker
-                        value={selectedDate}
-                        mode="date"
-                        display={
-                          Platform.OS === 'ios'
-                              ? 'spinner'
-                              : 'default'
-                        }
-                        minimumDate={new Date()}
-                        onChange={handleDateChange}
-                    />
-                )}
-              </View>
-              <View style={styles.field}>
-                <FieldLabel label="Niveau d'urgence" />
-                <View style={styles.urgencyRow}>
-                  {URGENCY_OPTIONS.map((opt) => (
+              )}
+            </View>
+
+            <View style={styles.field}>
+              <FieldLabel label="Niveau d'urgence" />
+              <View style={styles.urgencyRow}>
+                {URGENCY_OPTIONS.map((opt) => {
+                  const active = urgency === opt.key;
+                  return (
                       <TouchableOpacity
                           key={opt.key}
                           style={[
                             styles.urgencyChip,
-                            urgency === opt.key && { backgroundColor: opt.bg, borderColor: opt.dot },
+                            active && { backgroundColor: opt.bg, borderColor: opt.dot },
                           ]}
                           onPress={() => setUrgency(opt.key)}
+                          activeOpacity={0.8}
                       >
                         <View style={[styles.urgencyDot, { backgroundColor: opt.dot }]} />
                         <Text style={[
                           styles.urgencyLabel,
-                          urgency === opt.key && { color: opt.color, fontWeight: FONT_WEIGHTS.medium },
+                          active && { color: opt.color, fontWeight: FONT_WEIGHTS.semibold },
                         ]}>
                           {opt.label}
                         </Text>
                       </TouchableOpacity>
-                  ))}
-                </View>
+                  );
+                })}
               </View>
             </View>
           </SectionCard>
 
           {/* ── Paiement ── */}
-          <SectionCard iconName="wallet-outline" iconBg="#D1FAE5" iconColor="#065F46" title="Paiement">
-            <View style={styles.cardBody}>
-              <View style={styles.twoCol}>
-                <View style={styles.field}>
-                  <FieldLabel label="Montant total" />
-                  <StyledInput
-                      placeholder="120 000"
-                      value={totalPrice}
-                      onChangeText={setTotalPrice}
-                      keyboardType="numeric"
-                      suffix="FCFA"
-                  />
-                </View>
-                <View style={styles.field}>
-                  <FieldLabel label="Avance reçue" />
-                  <StyledInput
-                      placeholder="50 000"
-                      value={advancePayment}
-                      onChangeText={setAdvancePayment}
-                      keyboardType="numeric"
-                      suffix="FCFA"
-                  />
-                </View>
+          <SectionCard
+              iconName="wallet-outline"
+              iconBg="#D1FAE5" iconColor="#065F46"
+              title="Paiement"
+          >
+            <View style={styles.twoCol}>
+              <View style={[styles.field, { flex: 1 }]}>
+                <FieldLabel label="Montant total" />
+                <StyledInput
+                    placeholder="120 000"
+                    value={totalPrice}
+                    onChangeText={setTotalPrice}
+                    keyboardType="numeric"
+                    suffix="FCFA"
+                />
               </View>
+              <View style={[styles.field, { flex: 1 }]}>
+                <FieldLabel label="Avance reçue" />
+                <StyledInput
+                    placeholder="50 000"
+                    value={advancePayment}
+                    onChangeText={setAdvancePayment}
+                    keyboardType="numeric"
+                    suffix="FCFA"
+                />
+              </View>
+            </View>
 
-              {/* Résumé paiement */}
-              <View style={styles.pricingSummary}>
+            {/* Résumé paiement */}
+            <View style={styles.pricingSummary}>
+              <View style={styles.pricingLeft}>
+                <View style={styles.pricingIconWrap}>
+                  <Ionicons name="cash-outline" size={16} color={COLORS.primary} />
+                </View>
                 <View>
                   <Text style={styles.psLabel}>Reste à payer</Text>
                   <Text style={styles.psValue}>
                     {total > 0 ? formatCurrency(remaining) : '–'}
                   </Text>
                 </View>
-                <View style={[styles.statusPill, { backgroundColor: paymentStatus.bg }]}>
-                  <Text style={[styles.statusPillText, { color: paymentStatus.color }]}>
-                    {paymentStatus.label}
-                  </Text>
-                </View>
+              </View>
+              <View style={[styles.statusPill, { backgroundColor: paymentStatus.bg }]}>
+                <Text style={[styles.statusPillText, { color: paymentStatus.color }]}>
+                  {paymentStatus.label}
+                </Text>
               </View>
             </View>
           </SectionCard>
 
         </ScrollView>
 
-        {/* ── Footer CTA ── */}
+        {/* ── Footer flottant ── */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + SPACING.md }]}>
           <TouchableOpacity
               style={[styles.submitBtn, isLoading && { opacity: 0.7 }]}
@@ -540,7 +526,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               disabled={isLoading}
               activeOpacity={0.85}
           >
-            <Ionicons name={isLoading ? 'reload-outline' : 'checkmark'} size={20} color="#fff" />
+            <Ionicons name={isLoading ? 'reload-outline' : 'checkmark-circle'} size={22} color="#fff" />
             <Text style={styles.submitText}>
               {isLoading ? 'Enregistrement...' : 'Enregistrer la commande'}
             </Text>
@@ -550,145 +536,263 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 };
 
-// ── Styles (identiques à la version originale) ──
+// ==========================================
+// STYLES
+// ==========================================
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: {
+
+  // Header courbé
+  headerWrap: {
     backgroundColor: COLORS.primary,
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    paddingBottom: SPACING.lg,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
   headerBtn: {
-    width: 36, height: 36, borderRadius: BORDER_RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: 38, height: 38, borderRadius: BORDER_RADIUS.md,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: { fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.semibold, color: '#fff' },
+  headerTitle: {
+    fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.semibold, color: '#fff',
+  },
+  headerSubtitle: {
+    fontSize: FONT_SIZES.xs, color: 'rgba(255,255,255,0.75)', marginTop: 2,
+  },
+
   scroll: { flex: 1 },
-  scrollContent: { padding: SPACING.lg, gap: SPACING.md },
+  scrollContent: {
+    padding: SPACING.lg,
+    gap: SPACING.md,
+    marginTop: -SPACING.md,
+  },
+
+  // Card
   card: {
-    backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 0.5, borderColor: COLORS.border, overflow: 'hidden',
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   cardHead: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-    padding: SPACING.md, borderBottomWidth: 0.5, borderBottomColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
   },
   cardHeadIcon: {
-    width: 28, height: 28, borderRadius: BORDER_RADIUS.md,
+    width: 32, height: 32, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center',
   },
-  cardTitle: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
-  cardBody: { padding: SPACING.md, gap: SPACING.md },
+  cardTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  cardSubtitle: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 1,
+  },
+  cardContent: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
+    gap: SPACING.md,
+  },
+
+  // Client
   clientRow: {
     flexDirection: 'row', alignItems: 'center',
-    gap: SPACING.md, padding: SPACING.md,
+    gap: SPACING.md,
+    backgroundColor: COLORS.gray50,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
   },
   clientAvatar: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 44, height: 44, borderRadius: 22,
     backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center',
   },
   clientAvatarText: {
     fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.primary,
   },
   clientInfo: { flex: 1 },
-  clientName: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.medium, color: COLORS.text },
-  clientSub: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 2 },
-  clientPlaceholder: { flex: 1, fontSize: FONT_SIZES.md, color: COLORS.gray400 },
-  typesScroll: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, gap: SPACING.sm },
+  clientName: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  clientSubRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  clientSub: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
+  clientPlaceholder: { fontSize: FONT_SIZES.md, color: COLORS.text, fontWeight: FONT_WEIGHTS.medium },
+  chevWrap: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: COLORS.white,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Types
+  typesScroll: {
+    paddingVertical: SPACING.xs,
+    gap: SPACING.sm,
+  },
   typeChip: {
-    paddingHorizontal: SPACING.md, paddingVertical: 7,
-    borderRadius: BORDER_RADIUS.full, borderWidth: 0.5,
-    borderColor: COLORS.border, backgroundColor: COLORS.gray50,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: SPACING.md, paddingVertical: 9,
+    borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.gray50,
   },
   typeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   typeChipText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
-  typeChipTextActive: { color: '#fff', fontWeight: FONT_WEIGHTS.medium },
-  photosGrid: { flexDirection: 'row', gap: SPACING.md, padding: SPACING.md },
-  photoAdd: {
-    flex: 1, aspectRatio: 1, borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1.5, borderStyle: 'dashed', borderColor: COLORS.gray300,
-    backgroundColor: COLORS.gray50, alignItems: 'center', justifyContent: 'center', gap: 6,
-  },
-  photoAddLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
-  photosContainer: {
-    padding: SPACING.md,
-    gap: SPACING.lg,
-  },
+  typeChipTextActive: { color: '#fff', fontWeight: FONT_WEIGHTS.semibold },
 
-  photoSection: {
-    gap: SPACING.sm,
+  // Photos
+  photosContainer: { gap: SPACING.md },
+  photoSection: { gap: SPACING.sm },
+  photoSectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-
   photoTitle: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontWeight: FONT_WEIGHTS.semibold,
     color: COLORS.text,
   },
-
-  photoPreviewWrap: {
-    marginLeft: SPACING.sm,
-    position: 'relative',
+  photoCount: { fontSize: 11, color: COLORS.textSecondary },
+  photoDivider: {
+    height: 0.5,
+    backgroundColor: COLORS.border,
   },
-
+  photoAdd: {
+    width: 90, height: 90,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1.5, borderStyle: 'dashed',
+    borderColor: COLORS.gray300,
+    backgroundColor: COLORS.gray50,
+    alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  photoAddIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: COLORS.white,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  photoAddLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: FONT_WEIGHTS.medium },
+  photoPreviewWrap: { position: 'relative' },
   photoPreview: {
-    width: 90,
-    height: 90,
+    width: 90, height: 90,
     borderRadius: BORDER_RADIUS.md,
   },
-
   removePhotoBtn: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    position: 'absolute', top: -6, right: -6,
+    width: 24, height: 24, borderRadius: 12,
     backgroundColor: '#EF4444',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: COLORS.white,
   },
-  field: { gap: 5 },
-  fieldLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, fontWeight: FONT_WEIGHTS.medium },
+
+  // Field / inputs
+  field: { gap: 6 },
+  fieldLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHTS.medium,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   inputWrap: { position: 'relative' },
   input: {
-    backgroundColor: COLORS.gray50, borderRadius: BORDER_RADIUS.md,
-    borderWidth: 0.5, borderColor: COLORS.border,
-    padding: SPACING.md, fontSize: FONT_SIZES.md, color: COLORS.text,
+    backgroundColor: COLORS.gray50,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    fontSize: FONT_SIZES.md, color: COLORS.text,
   },
-  inputMulti: { height: 80, textAlignVertical: 'top' },
+  inputMulti: { height: 88, textAlignVertical: 'top' },
   inputSuffix: {
     position: 'absolute', right: SPACING.md, top: '50%', marginTop: -8,
-    fontSize: FONT_SIZES.xs, color: COLORS.textSecondary,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHTS.medium,
   },
-  inputIconRight: { position: 'absolute', right: SPACING.md, top: '50%', marginTop: -8 },
+  inputIconRight: { position: 'absolute', right: SPACING.md, top: '50%', marginTop: -9 },
+
+  // Urgency
   urgencyRow: { flexDirection: 'row', gap: SPACING.sm },
   urgencyChip: {
-    flex: 1, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.md,
-    borderWidth: 0.5, borderColor: COLORS.border,
-    backgroundColor: COLORS.gray50, alignItems: 'center', gap: 4,
+    flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.gray50,
   },
   urgencyDot: { width: 8, height: 8, borderRadius: 4 },
-  urgencyLabel: { fontSize: 11, color: COLORS.textSecondary },
+  urgencyLabel: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+
+  // Pricing
   twoCol: { flexDirection: 'row', gap: SPACING.md },
   pricingSummary: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: COLORS.gray50, borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md, marginTop: SPACING.xs,
+    backgroundColor: COLORS.secondary,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
   },
-  psLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginBottom: 3 },
+  pricingLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  pricingIconWrap: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: COLORS.white,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  psLabel: { fontSize: 11, color: COLORS.textSecondary, marginBottom: 2 },
   psValue: { fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
-  statusPill: { borderRadius: BORDER_RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 4 },
-  statusPillText: { fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.medium },
+  statusPill: {
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: SPACING.md, paddingVertical: 6,
+  },
+  statusPillText: { fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.semibold },
+
+  // Footer flottant
   footer: {
-    backgroundColor: COLORS.white, borderTopWidth: 0.5,
-    borderTopColor: COLORS.border, padding: SPACING.lg,
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: SPACING.lg, paddingTop: SPACING.md,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 12,
   },
   submitBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: SPACING.sm, backgroundColor: COLORS.primary,
-    borderRadius: BORDER_RADIUS.lg, padding: SPACING.lg,
+    gap: SPACING.sm,
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: SPACING.md + 2,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   submitText: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: '#fff' },
 });
