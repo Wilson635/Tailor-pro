@@ -26,6 +26,7 @@ import {
   PAYMENT_STATUS_LABELS,
 } from '@constants/theme';
 import {RootStackParamList} from "@/src/types";
+import {MeasurementsScreen} from "@/src/screens";
 
 // ==========================================
 // TYPES
@@ -283,6 +284,8 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 />
               </View>
             </View>
+
+            <MeasurementsScreen clientId={clientId} onBack={() => {}} onEdit={() => {}} onAddNew={() => navigation.navigate('AddMeasurements', {clientId})} />
 
             {/* ── Commandes récentes ── */}
             {recentOrders.length > 0 && (

@@ -252,6 +252,9 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                         <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotWrap}>
                             <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
                         </TouchableOpacity>
+                        <TouchableOpacity onPress={()=> navigation.navigate('BiometricAuth')} style={styles.forgotWrap}>
+                            <Text style={styles.forgotText}>Biometric Auth</Text>
+                        </TouchableOpacity>
                     </View>
 
                     {/* ── FOOTER ── */}

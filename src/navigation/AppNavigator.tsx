@@ -38,6 +38,8 @@ import { ChooseProfileScreen } from '@components/ChooseProfileScreen';
 import { ClientWelcomeScreen } from '@components/Clientwelcomescreen';
 import { TailorSetupScreen } from '@components/Tailorsetupscreen';
 import { ClientOrdersScreen } from '@screens/Orders/ClientOrdersScreen';
+import {OnboardingScreen} from "@screens/Onboarding/Onboardingscreen";
+import {BiometricAuthScreen} from "@components/Biometricauthscreen";
 
 // ==========================================
 // TYPAGES DES PARAMS DE NAVIGATION
@@ -63,6 +65,8 @@ export type RootStackParamList = {
     ChooseProfile: undefined;
     ClientWelcome: undefined;
     TailorSetup: undefined;
+    Onboarding: undefined;
+    BiometricAuth: undefined;
 };
 
 export type TailorTabParamList = {
@@ -225,8 +229,10 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
             ) : (
                 // 🔒 UTILISATEUR DÉCONNECTÉ
                 <>
+                    <Stack.Screen name="Onboarding" component={OnboardingScreen} />
                     <Stack.Screen name="Welcome" component={WelcomeScreen} />
                     <Stack.Screen name="Login" component={LoginScreen} />
+                    <Stack.Screen name="BiometricAuth" component={BiometricAuthScreen} />
                     <Stack.Screen name="Register" component={RegisterScreen} />
                     <Stack.Screen name="ChooseProfile" component={ChooseProfileScreen} />
                     <Stack.Screen name="RegisterClient" component={ClientRegisterScreen} />

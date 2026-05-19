@@ -11,6 +11,7 @@ export const COLORS = {
   // Couleurs secondaires
   secondary: '#F3E8FF',      // Violet très clair (fond)
   accent: '#A855F7',         // Violet accent
+
   
   // Neutres
   white: '#FFFFFF',
@@ -45,6 +46,7 @@ export const COLORS = {
   text: '#111827',
   textSecondary: '#6B7280',
   textLight: '#9CA3AF',
+  textMuted: '#b2bbc5',
   
   // Bordures
   border: '#E5E7EB',
