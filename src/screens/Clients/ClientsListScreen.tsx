@@ -10,11 +10,12 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
+  Image
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAppStore } from '../../store/useAppStore';
-import { formatCurrency, formatPhone } from '../../utils/formatters';
+import { useAppStore } from '@store/useAppStore';
+import { formatCurrency, formatPhone } from '@utils/formatters';
 import {
   COLORS,
   SPACING,
@@ -22,7 +23,7 @@ import {
   FONT_WEIGHTS,
   BORDER_RADIUS,
   SHADOWS,
-} from '../../constants/theme';
+} from '@constants/theme';
 import type {Client, RootStackParamList} from '../../types';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -77,8 +78,33 @@ const isNewClient = (createdAt: Date): boolean => {
 // SOUS-COMPOSANTS
 // ==========================================
 
+/*const ClientAvatar = ({ client }: { client: Client }) => {
+  const palette = getAvatarPalette(client.id);
+  return (
+      <View style={[styles.avatar, { backgroundColor: palette.bg }]}>
+        <Text style={[styles.avatarText, { color: palette.text }]}>
+          {getInitials(client.fullName)}
+        </Text>
+      </View>
+  );
+};*/
+
 const ClientAvatar = ({ client }: { client: Client }) => {
   const palette = getAvatarPalette(client.id);
+
+  // Rendu si le client a une photo valide
+  // Note: Adapte 'avatarUrl' si ton champ s'appelle autrement (ex: photoUrl, avatar_url)
+  if (client.photo) {
+    return (
+        <Image
+            source={{ uri: client.photo }}
+            style={styles.avatar}
+            resizeMode="cover"
+        />
+    );
+  }
+
+  // Rendu de secours (Fallback) avec les initiales si pas de photo
   return (
       <View style={[styles.avatar, { backgroundColor: palette.bg }]}>
         <Text style={[styles.avatarText, { color: palette.text }]}>
