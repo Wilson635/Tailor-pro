@@ -1,5 +1,5 @@
 // ==========================================
-// ÉCRAN PRINCIPAL TABLEAU DE BORD - ROUTER INTERNAL
+// ÉCRAN PRINCIPAL TABLEAU DE BORD - MODAL PREMIUM
 // ==========================================
 
 import React, { useState } from 'react';
@@ -8,9 +8,9 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   Modal,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,32 +21,32 @@ import { useProfile } from '@hooks/useProfile';
 // Importation des composants spécifiques par rôle
 import { TailorDashboard } from '@components/dashboard/TailorDashboard';
 import { ClientDashboard } from '@components/dashboard/ClientDashboard';
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { RootStackParamList } from "@/src/navigation/AppNavigator";
 
-export const DashboardScreen: React.FC = () => {
+type Props = NativeStackScreenProps<RootStackParamList, "Dashboard">;
+
+export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { profile, loading } = useProfile();
   const logout = useAppStore((s) => s.logout);
 
+  // États pour la gestion des Modals
   const [menuVisible, setMenuVisible] = useState(false);
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
 
   // Extraction du rôle de la table (valeur par défaut 'tailor' si indéfini)
   const userRole = profile?.role ?? 'tailor';
 
-  // ── Logout ──
-  const handleLogout = () => {
+  // Déclencheur du nouveau processus de déconnexion
+  const handleLogoutTrigger = () => {
     setMenuVisible(false);
-    Alert.alert(
-        'Déconnexion',
-        'Voulez-vous vraiment vous déconnecter ?',
-        [
-          { text: 'Annuler', style: 'cancel' },
-          {
-            text: 'Déconnexion',
-            style: 'destructive',
-            onPress: () => logout(),
-          },
-        ]
-    );
+    setLogoutModalVisible(true);
+  };
+
+  const confirmLogout = () => {
+    setLogoutModalVisible(false);
+    logout();
   };
 
   // ── Avatar initiales ──
@@ -70,6 +70,7 @@ export const DashboardScreen: React.FC = () => {
 
   return (
       <>
+        <StatusBar barStyle="dark-content" />
         <View style={[styles.container, { paddingTop: insets.top }]}>
 
           {/* ── Top bar commune à tous les profils ── */}
@@ -83,7 +84,6 @@ export const DashboardScreen: React.FC = () => {
                 <Text style={styles.greetingName} numberOfLines={1}>
                   {profile?.display_name ?? 'Utilisateur'}
                 </Text>
-                {/* On n'affiche l'atelier que si l'utilisateur est un couturier */}
                 {userRole === 'tailor' && profile?.atelier_name ? (
                     <Text style={styles.atelierName} numberOfLines={1}>
                       {profile.atelier_name}
@@ -109,7 +109,7 @@ export const DashboardScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* ── Condition de rendu selon le rôle extrait du profil ── */}
+          {/* ── Rendu dynamique par rôle ── */}
           {userRole === 'tailor' ? (
               <TailorDashboard />
           ) : (
@@ -118,7 +118,7 @@ export const DashboardScreen: React.FC = () => {
 
         </View>
 
-        {/* ── Menu Modal commun (logout / paramètres) ── */}
+        {/* ── 1. Menu Contextuel Dropdown Dropdown ── */}
         <Modal
             visible={menuVisible}
             transparent
@@ -131,7 +131,6 @@ export const DashboardScreen: React.FC = () => {
               onPress={() => setMenuVisible(false)}
           >
             <View style={[styles.menuCard, { top: insets.top + 60, right: SPACING.lg }]}>
-
               <View style={styles.menuProfile}>
                 <View style={styles.menuAvatar}>
                   <Text style={styles.menuAvatarText}>{getInitials()}</Text>
@@ -148,10 +147,12 @@ export const DashboardScreen: React.FC = () => {
 
               <View style={styles.menuDivider} />
 
-              {/* Paramètres */}
               <TouchableOpacity
                   style={styles.menuItem}
-                  onPress={() => setMenuVisible(false)}
+                  onPress={() => {
+                    setMenuVisible(false);
+                    navigation.navigate('Profile');
+                  }}
               >
                 <Ionicons name="settings-outline" size={18} color={COLORS.textSecondary} />
                 <Text style={styles.menuItemText}>Paramètres</Text>
@@ -159,16 +160,59 @@ export const DashboardScreen: React.FC = () => {
 
               <View style={styles.menuDivider} />
 
-              {/* Déconnexion */}
-              <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
+              <TouchableOpacity style={styles.menuItem} onPress={handleLogoutTrigger}>
                 <Ionicons name="log-out-outline" size={18} color={COLORS.error} />
                 <Text style={[styles.menuItemText, styles.menuItemLogout]}>
                   Déconnexion
                 </Text>
               </TouchableOpacity>
-
             </View>
           </TouchableOpacity>
+        </Modal>
+
+        {/* ── 2. MODAL DE CONFIRMATION DE LOGOUT DESIGNER ── */}
+        <Modal
+            visible={logoutModalVisible}
+            transparent
+            animationType="slide"
+            statusBarTranslucent
+            onRequestClose={() => setLogoutModalVisible(false)}
+        >
+          <View style={styles.modalAlertOverlay}>
+            <View style={styles.modalAlertCard}>
+
+              {/* Icône d'avertissement stylisée */}
+              <View style={styles.modalAlertIconBg}>
+                <Ionicons name="log-out" size={32} color={COLORS.error} />
+              </View>
+
+              {/* Textes de l'alerte */}
+              <Text style={styles.modalAlertTitle}>Déconnexion</Text>
+              <Text style={styles.modalAlertSubtitle}>
+                Êtes-vous sûr de vouloir vous déconnecter ? Vous devrez ressaisir vos identifiants ou votre biométrie.
+              </Text>
+
+              {/* Grille d'actions */}
+              <View style={styles.modalAlertButtons}>
+                <TouchableOpacity
+                    style={[styles.modalAlertBtn, styles.modalAlertBtnCancel]}
+                    onPress={() => setLogoutModalVisible(false)}
+                    activeOpacity={0.8}
+                >
+                  <Text style={styles.modalAlertTextCancel}>Annuler</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.modalAlertBtn, styles.modalAlertBtnConfirm]}
+                    onPress={confirmLogout}
+                    activeOpacity={0.8}
+                >
+                  <Text style={styles.modalAlertTextConfirm}>Se déconnecter</Text>
+                </TouchableOpacity>
+              </View>
+
+            </View>
+          </View>
         </Modal>
       </>
   );
@@ -257,7 +301,7 @@ const styles = StyleSheet.create({
   },
   menuOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.15)',
   },
   menuCard: {
     position: 'absolute',
@@ -318,5 +362,82 @@ const styles = StyleSheet.create({
   },
   menuItemLogout: {
     color: COLORS.error,
+  },
+
+  // ── styles du nouveau modal de confirmation custom ──
+  modalAlertOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(14, 11, 20, 0.5)', // Ombre douce foncée assortie au thème
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  modalAlertCard: {
+    backgroundColor: COLORS.white,
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.xl,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 15,
+  },
+  modalAlertIconBg: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)', // Rouge léger transparent
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.md,
+  },
+  modalAlertTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.text,
+    marginBottom: SPACING.xs,
+    textAlign: 'center',
+  },
+  modalAlertSubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: SPACING.xl,
+    paddingHorizontal: SPACING.xs,
+  },
+  modalAlertButtons: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    width: '100%',
+  },
+  modalAlertBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  modalAlertBtnCancel: {
+    backgroundColor: COLORS.gray100,
+    borderColor: COLORS.border,
+  },
+  modalAlertBtnConfirm: {
+    backgroundColor: COLORS.error,
+    borderColor: COLORS.error,
+  },
+  modalAlertTextCancel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  modalAlertTextConfirm: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.white,
+    fontWeight: FONT_WEIGHTS.bold,
   },
 });

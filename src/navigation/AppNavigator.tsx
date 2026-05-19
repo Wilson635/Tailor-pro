@@ -40,12 +40,14 @@ import { TailorSetupScreen } from '@components/Tailorsetupscreen';
 import { ClientOrdersScreen } from '@screens/Orders/ClientOrdersScreen';
 import {OnboardingScreen} from "@screens/Onboarding/Onboardingscreen";
 import {BiometricAuthScreen} from "@components/Biometricauthscreen";
+import {ProfileScreen} from "@screens/Userprofile/Profilescreen";
 
 // ==========================================
 // TYPAGES DES PARAMS DE NAVIGATION
 // ==========================================
 
 export type RootStackParamList = {
+    Dashboard: undefined;
     MainTabs: undefined;
     ClientDetails: { clientId: string };
     AddClient: undefined;
@@ -67,6 +69,7 @@ export type RootStackParamList = {
     TailorSetup: undefined;
     Onboarding: undefined;
     BiometricAuth: undefined;
+    Profile: undefined;
 };
 
 export type TailorTabParamList = {
@@ -225,6 +228,7 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
                     <Stack.Screen name="AddOrder" component={AddOrderScreen} />
                     <Stack.Screen name="ModelDetails" component={ModelDetailsScreen} />
                     <Stack.Screen name="Statistics" component={StatisticsScreen} />
+                    <Stack.Screen name="Profile" component={ProfileScreen} />
                 </>
             ) : (
                 // 🔒 UTILISATEUR DÉCONNECTÉ

@@ -21,6 +21,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "@/src/navigation/AppNavigator";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as LocalAuthentication from 'expo-local-authentication';
 
 // ── PALETTE (Harmonisée avec Register) ───────────────────────────
 const C = {
@@ -140,7 +142,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-    const handleLogin = async () => {
+    /*const handleLogin = async () => {
         const localErrors: { email?: string; password?: string } = {};
         if (!email.trim()) localErrors.email = "Champ requis";
         if (!password) localErrors.password = "Champ requis";
@@ -159,6 +161,77 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
         if (error) Alert.alert("Erreur de connexion", error.message);
         setLoading(false);
+    };*/
+
+    const handleLogin = async () => {
+        if (!email || !password) {
+            Alert.alert("Erreur", "Veuillez remplir tous les champs.");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: email.trim(),
+                password: password,
+            });
+
+            if (error) throw error;
+
+            if (data?.user) {
+                const userId = data.user.id;
+
+                //Vérifier si le choix de la biométrie est déjà enregistré pour cet id
+                const isConfigured = await AsyncStorage.getItem(`@biometrics_enabled_${userId}`);
+
+                if (isConfigured === null) {
+                    // L'utilisateur ne s'est encore jamais prononcé : on lui propose l'option
+                    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+                    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+                    if (hasHardware && isEnrolled) {
+                        Alert.alert(
+                            "🔒 Connexion Biométrique",
+                            "Souhaitez-vous activer votre empreinte digitale ou Face ID pour vos prochaines connexions ?",
+                            [
+                                {
+                                    text: "Plus tard",
+                                    style: "cancel",
+                                    onPress: async () => {
+                                        // On marque à false pour ne pas lui demander à CHAQUE connexion
+                                        await AsyncStorage.setItem(`@biometrics_enabled_${userId}`, 'false');
+                                    }
+                                },
+                                {
+                                    text: "Activer",
+                                    fontWeight: "bold",
+                                    onPress: async () => {
+                                        const authTest = await LocalAuthentication.authenticateAsync({
+                                            promptMessage: 'Confirmez votre empreinte / FaceID',
+                                        });
+                                        if (authTest.success) {
+                                            // Sauvegarde des identifiants chiffrés ou d'un flag d'autorisation d'accès direct
+                                            await AsyncStorage.setItem(`@biometrics_enabled_${userId}`, 'true');
+                                            // On sauvegarde l'email pour pouvoir appeler la reconnexion rapide
+                                            await AsyncStorage.setItem(`@last_logged_email`, email.trim());
+                                            Alert.alert("Activé !", "Vous pourrez utiliser la biométrie au prochain démarrage.");
+                                        }
+                                    }
+                                }
+                            ]
+                        );
+                    }
+                } else if (isConfigured === 'true') {
+                    // Met à jour l'email de sauvegarde au cas où il aurait changé
+                    await AsyncStorage.setItem(`@last_logged_email`, email.trim());
+                }
+            }
+
+        } catch (err: any) {
+            Alert.alert("Erreur de connexion", err.message || "Identifiants incorrects.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleForgotPassword = async () => {

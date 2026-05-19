@@ -1,0 +1,503 @@
+// ==========================================
+// PROFIL UTILISATEUR COMPLET - TailorPro
+// ==========================================
+
+import React, { useState } from 'react';
+import {
+    View, Text, TouchableOpacity, StyleSheet,
+    ScrollView, Switch, StatusBar, Image, Alert,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { useAppStore } from '@store/useAppStore';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
+
+const C = {
+    bg:      '#0E0B14',
+    surface: '#1A1528',
+    border:  '#2E2845',
+    text:    '#FFFFFF',
+    sub:     'rgba(255,255,255,0.5)',
+    muted:   'rgba(255,255,255,0.25)',
+    gold:    '#D4AF37',
+    purple:  '#2E0057',
+    success: '#4ADE80',
+    error:   '#EF4444',
+    warning: '#F59E0B',
+};
+
+// ── SOUS-COMPOSANTS ──
+
+const SectionTitle = ({ title }: { title: string }) => (
+    <Text style={sStyles.sectionTitle}>{title}</Text>
+);
+
+const SettingRow = ({
+                        icon, iconBg, iconColor = C.gold,
+                        title, subtitle, right, onPress, danger,
+                    }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    iconBg: string;
+    iconColor?: string;
+    title: string;
+    subtitle?: string;
+    right?: React.ReactNode;
+    onPress?: () => void;
+    danger?: boolean;
+}) => (
+    <TouchableOpacity
+        style={sStyles.row}
+        onPress={onPress}
+        activeOpacity={onPress ? 0.7 : 1}
+    >
+        <View style={[sStyles.rowIcon, { backgroundColor: iconBg }]}>
+            <Ionicons name={icon} size={17} color={iconColor} />
+        </View>
+        <View style={sStyles.rowContent}>
+            <Text style={[sStyles.rowTitle, danger && { color: C.error }]}>{title}</Text>
+            {subtitle && <Text style={sStyles.rowSub}>{subtitle}</Text>}
+        </View>
+        {right ?? (onPress && <Ionicons name="chevron-forward" size={16} color={C.muted} />)}
+    </TouchableOpacity>
+);
+
+const Card = ({ children, style }: { children: React.ReactNode; style?: object }) => (
+    <View style={[sStyles.card, style]}>{children}</View>
+);
+
+const Divider = () => <View style={sStyles.divider} />;
+
+const sStyles = StyleSheet.create({
+    sectionTitle: {
+        fontSize: 11, fontWeight: '700', color: C.muted,
+        letterSpacing: 1.2, textTransform: 'uppercase',
+        marginTop: 24, marginBottom: 10, paddingHorizontal: 2,
+    },
+    card: {
+        backgroundColor: C.surface, borderRadius: 16,
+        borderWidth: 1, borderColor: C.border,
+        overflow: 'hidden',
+    },
+    row: {
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: 16, paddingVertical: 14, gap: 14,
+    },
+    rowIcon: {
+        width: 36, height: 36, borderRadius: 10,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    rowContent: { flex: 1 },
+    rowTitle: { fontSize: 14, fontWeight: '600', color: C.text },
+    rowSub: { fontSize: 12, color: C.sub, marginTop: 2 },
+    divider: { height: 0.5, backgroundColor: C.border, marginLeft: 66 },
+});
+
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+
+export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
+    const insets = useSafeAreaInsets();
+    const { profile, logout } = useAppStore();
+
+    const [biometricEnabled, setBiometricEnabled] = useState(false);
+    const [twoFAEnabled,     setTwoFAEnabled]     = useState(false);
+    const [notifEnabled,     setNotifEnabled]      = useState(true);
+
+    const getInitials = () => {
+        if (!profile?.display_name) return '?';
+        return profile.display_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+    };
+
+    const DEVICES = [
+        { id: '1', name: 'Samsung Galaxy S24', type: 'android', location: 'Yaoundé, CM', current: true,  lastSeen: 'Actif maintenant' },
+        { id: '2', name: 'iPhone 15 Pro',      type: 'ios',     location: 'Douala, CM',  current: false, lastSeen: 'Il y a 2 jours' },
+    ];
+
+    const HISTORY = [
+        { id: '1', action: 'Connexion',         location: 'Yaoundé, CM',  date: 'Aujourd\'hui 09:14',  success: true  },
+        { id: '2', action: 'Mot de passe modifié', location: 'Yaoundé, CM', date: 'Hier 18:32',         success: true  },
+        { id: '3', action: 'Tentative échouée', location: 'Inconnue',      date: '12/06 22:41',         success: false },
+    ];
+
+    return (
+        <View style={[styles.container, { paddingTop: insets.top }]}>
+            <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+
+            {/* ── Header ── */}
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                    <Ionicons name="arrow-back" size={20} color={C.text} />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Mon profil</Text>
+                <TouchableOpacity style={styles.editBtn}>
+                    <Ionicons name="create-outline" size={19} color={C.gold} />
+                </TouchableOpacity>
+            </View>
+
+            <ScrollView
+                contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]}
+                showsVerticalScrollIndicator={false}
+            >
+
+                {/* ── Hero profil ── */}
+                <LinearGradient
+                    colors={['#2E0057', '#1A0033', '#0E0B14']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.heroCard}
+                >
+                    {/* Cercles déco */}
+                    <View style={styles.heroCircle} />
+
+                    {/* Avatar */}
+                    <View style={styles.avatarWrap}>
+                        <LinearGradient
+                            colors={['#D4AF37', '#B8860B']}
+                            style={styles.avatarGradient}
+                        >
+                            <Text style={styles.avatarText}>{getInitials()}</Text>
+                        </LinearGradient>
+                        <TouchableOpacity style={styles.avatarEdit}>
+                            <Ionicons name="camera-outline" size={14} color={C.text} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <Text style={styles.heroName}>{profile?.display_name ?? 'Utilisateur'}</Text>
+                    <Text style={styles.heroAtelier}>{profile?.atelier_name ?? ''}</Text>
+                    <Text style={styles.heroEmail}>{profile?.email ?? ''}</Text>
+
+                    {/* Badge abonnement */}
+                    <View style={styles.planBadge}>
+                        <Ionicons name="diamond-outline" size={13} color={C.gold} />
+                        <Text style={styles.planBadgeText}>Plan Pro · Actif</Text>
+                    </View>
+                </LinearGradient>
+
+                {/* ── Stats rapides ── */}
+                <View style={styles.statsRow}>
+                    {[
+                        { label: 'Clients',   value: '124', icon: 'people-outline' as const },
+                        { label: 'Commandes', value: '36',  icon: 'bag-outline' as const },
+                        { label: 'Ce mois',   value: '1.2M', icon: 'trending-up-outline' as const },
+                    ].map((s, i) => (
+                        <View key={i} style={styles.statCard}>
+                            <Ionicons name={s.icon} size={18} color={C.gold} style={{ marginBottom: 6 }} />
+                            <Text style={styles.statValue}>{s.value}</Text>
+                            <Text style={styles.statLabel}>{s.label}</Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* ── Infos personnelles ── */}
+                <SectionTitle title="Informations" />
+                <Card>
+                    <SettingRow icon="person-outline"    iconBg="#2E1A4A" title="Nom complet"    subtitle={profile?.display_name ?? '—'} onPress={() => {}} />
+                    <Divider />
+                    <SettingRow icon="storefront-outline" iconBg="#2E1A4A" title="Atelier"       subtitle={profile?.atelier_name ?? '—'} onPress={() => {}} />
+                    <Divider />
+                    <SettingRow icon="mail-outline"       iconBg="#2E1A4A" title="Email"          subtitle={profile?.email ?? '—'}        onPress={() => {}} />
+                    <Divider />
+                    <SettingRow icon="call-outline"       iconBg="#2E1A4A" title="Téléphone"      subtitle={profile?.phone ?? '—'}        onPress={() => {}} />
+                </Card>
+
+                {/* ── Abonnement ── */}
+                <SectionTitle title="Abonnement" />
+                <TouchableOpacity activeOpacity={0.85}>
+                    <LinearGradient
+                        colors={['#2E0057', '#1A0033']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.subCard}
+                    >
+                        <View style={styles.subLeft}>
+                            <View style={styles.subIconWrap}>
+                                <Ionicons name="diamond-outline" size={22} color={C.gold} />
+                            </View>
+                            <View>
+                                <Text style={styles.subTitle}>Plan Pro</Text>
+                                <Text style={styles.subRenewal}>Renouvellement le 15 juillet 2026</Text>
+                            </View>
+                        </View>
+                        <View style={styles.subPricePill}>
+                            <Text style={styles.subPrice}>5 000 F</Text>
+                            <Text style={styles.subPeriod}>/mois</Text>
+                        </View>
+                    </LinearGradient>
+                </TouchableOpacity>
+
+                {/* ── Sécurité ── */}
+                <SectionTitle title="Sécurité" />
+                <Card>
+                    <SettingRow
+                        icon="finger-print-outline"
+                        iconBg="#1A2E1A"
+                        iconColor={C.success}
+                        title="Biométrie"
+                        subtitle={biometricEnabled ? 'Activée' : 'Désactivée'}
+                        right={
+                            <Switch
+                                value={biometricEnabled}
+                                onValueChange={setBiometricEnabled}
+                                trackColor={{ false: C.border, true: '#065F46' }}
+                                thumbColor={biometricEnabled ? C.success : C.muted}
+                            />
+                        }
+                    />
+                    <Divider />
+                    <SettingRow
+                        icon="shield-outline"
+                        iconBg="#2E1A00"
+                        iconColor={C.warning}
+                        title="Double authentification (2FA)"
+                        subtitle={twoFAEnabled ? 'Activée' : 'Désactivée'}
+                        right={
+                            <Switch
+                                value={twoFAEnabled}
+                                onValueChange={setTwoFAEnabled}
+                                trackColor={{ false: C.border, true: '#78350F' }}
+                                thumbColor={twoFAEnabled ? C.warning : C.muted}
+                            />
+                        }
+                    />
+                    <Divider />
+                    <SettingRow
+                        icon="key-outline"
+                        iconBg="#1A1A2E"
+                        iconColor={C.gold}
+                        title="Gérer les clés d'accès"
+                        subtitle="Passkeys configurées : 1"
+                        onPress={() => {}}
+                    />
+                    <Divider />
+                    <SettingRow
+                        icon="lock-closed-outline"
+                        iconBg="#2E1A1A"
+                        title="Changer le mot de passe"
+                        onPress={() => {}}
+                    />
+                </Card>
+
+                {/* ── Appareils connectés ── */}
+                <SectionTitle title="Appareils connectés" />
+                <Card>
+                    {DEVICES.map((device, i) => (
+                        <React.Fragment key={device.id}>
+                            <View style={deviceStyles.row}>
+                                <View style={deviceStyles.iconWrap}>
+                                    <Ionicons
+                                        name={device.type === 'ios' ? 'logo-apple' : 'logo-android'}
+                                        size={18}
+                                        color={device.current ? C.gold : C.sub}
+                                    />
+                                </View>
+                                <View style={deviceStyles.info}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <Text style={deviceStyles.name}>{device.name}</Text>
+                                        {device.current && (
+                                            <View style={deviceStyles.currentBadge}>
+                                                <Text style={deviceStyles.currentText}>Cet appareil</Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                    <Text style={deviceStyles.sub}>{device.location} · {device.lastSeen}</Text>
+                                </View>
+                                {!device.current && (
+                                    <TouchableOpacity>
+                                        <Ionicons name="trash-outline" size={17} color={C.error} />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                            {i < DEVICES.length - 1 && <Divider />}
+                        </React.Fragment>
+                    ))}
+                </Card>
+
+                {/* ── Historique connexions ── */}
+                <SectionTitle title="Historique des connexions" />
+                <Card>
+                    {HISTORY.map((h, i) => (
+                        <React.Fragment key={h.id}>
+                            <View style={histStyles.row}>
+                                <View style={[histStyles.dot, { backgroundColor: h.success ? C.success : C.error }]} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={histStyles.action}>{h.action}</Text>
+                                    <Text style={histStyles.sub}>{h.location} · {h.date}</Text>
+                                </View>
+                                <Ionicons
+                                    name={h.success ? 'checkmark-circle' : 'close-circle'}
+                                    size={18}
+                                    color={h.success ? C.success : C.error}
+                                />
+                            </View>
+                            {i < HISTORY.length - 1 && <Divider />}
+                        </React.Fragment>
+                    ))}
+                </Card>
+
+                {/* ── Préférences ── */}
+                <SectionTitle title="Préférences" />
+                <Card>
+                    <SettingRow
+                        icon="notifications-outline"
+                        iconBg="#2E1A4A"
+                        title="Notifications"
+                        subtitle={notifEnabled ? 'Activées' : 'Désactivées'}
+                        right={
+                            <Switch
+                                value={notifEnabled}
+                                onValueChange={setNotifEnabled}
+                                trackColor={{ false: C.border, true: '#4A1D96' }}
+                                thumbColor={notifEnabled ? C.gold : C.muted}
+                            />
+                        }
+                    />
+                    <Divider />
+                    <SettingRow icon="language-outline"    iconBg="#2E1A4A" title="Langue"    subtitle="Français"   onPress={() => {}} />
+                    <Divider />
+                    <SettingRow icon="color-palette-outline" iconBg="#2E1A4A" title="Thème"   subtitle="Sombre"     onPress={() => {}} />
+                </Card>
+
+                {/* ── Déconnexion ── */}
+                <SectionTitle title="Compte" />
+                <Card>
+                    <SettingRow
+                        icon="log-out-outline"
+                        iconBg="#2E1A1A"
+                        iconColor={C.error}
+                        title="Se déconnecter"
+                        danger
+                        onPress={() =>
+                            Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
+                                { text: 'Annuler', style: 'cancel' },
+                                { text: 'Déconnexion', style: 'destructive', onPress: logout },
+                            ])
+                        }
+                    />
+                    <Divider />
+                    <SettingRow
+                        icon="trash-outline"
+                        iconBg="#2E1A1A"
+                        iconColor={C.error}
+                        title="Supprimer le compte"
+                        danger
+                        onPress={() => Alert.alert('Supprimer', 'Cette action est irréversible.', [
+                            { text: 'Annuler', style: 'cancel' },
+                            { text: 'Supprimer', style: 'destructive', onPress: () => {} },
+                        ])}
+                    />
+                </Card>
+
+                <Text style={styles.version}>TailorPro v1.0.0 · Fait avec ♥ pour les tailleurs</Text>
+
+            </ScrollView>
+        </View>
+    );
+};
+
+const deviceStyles = StyleSheet.create({
+    row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+    iconWrap: {
+        width: 36, height: 36, borderRadius: 10,
+        backgroundColor: '#2E2845', alignItems: 'center', justifyContent: 'center',
+    },
+    info: { flex: 1 },
+    name: { fontSize: 14, fontWeight: '600', color: C.text },
+    sub: { fontSize: 12, color: C.sub, marginTop: 2 },
+    currentBadge: {
+        backgroundColor: '#2E0057', borderRadius: 6,
+        paddingHorizontal: 7, paddingVertical: 2,
+    },
+    currentText: { fontSize: 10, fontWeight: '600', color: C.gold },
+});
+
+const histStyles = StyleSheet.create({
+    row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    action: { fontSize: 14, fontWeight: '600', color: C.text },
+    sub: { fontSize: 12, color: C.sub, marginTop: 2 },
+});
+
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: C.bg },
+    header: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: 20, paddingVertical: 12,
+    },
+    backBtn: {
+        width: 40, height: 40, borderRadius: 12,
+        backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { fontSize: 17, fontWeight: '700', color: C.text },
+    editBtn: {
+        width: 40, height: 40, borderRadius: 12,
+        backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center',
+    },
+    scroll: { paddingHorizontal: 20, paddingTop: 8 },
+
+    heroCard: {
+        borderRadius: 24, padding: 24, alignItems: 'center',
+        overflow: 'hidden', position: 'relative',
+    },
+    heroCircle: {
+        position: 'absolute', top: -60, right: -60,
+        width: 200, height: 200, borderRadius: 100,
+        backgroundColor: 'rgba(212,175,55,0.06)',
+    },
+    avatarWrap: { position: 'relative', marginBottom: 12 },
+    avatarGradient: {
+        width: 80, height: 80, borderRadius: 40,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    avatarText: { fontSize: 28, fontWeight: '800', color: '#1A0033' },
+    avatarEdit: {
+        position: 'absolute', bottom: 0, right: 0,
+        width: 26, height: 26, borderRadius: 13,
+        backgroundColor: '#2E0057', alignItems: 'center', justifyContent: 'center',
+        borderWidth: 2, borderColor: C.bg,
+    },
+    heroName: { fontSize: 20, fontWeight: '800', color: C.text, marginBottom: 2 },
+    heroAtelier: { fontSize: 13, color: C.gold, fontWeight: '600', marginBottom: 4 },
+    heroEmail: { fontSize: 12, color: C.sub, marginBottom: 14 },
+    planBadge: {
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        backgroundColor: 'rgba(212,175,55,0.15)',
+        borderRadius: 10, paddingHorizontal: 12, paddingVertical: 5,
+        borderWidth: 1, borderColor: 'rgba(212,175,55,0.3)',
+    },
+    planBadgeText: { fontSize: 12, fontWeight: '700', color: C.gold },
+
+    statsRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+    statCard: {
+        flex: 1, backgroundColor: C.surface, borderRadius: 14,
+        borderWidth: 1, borderColor: C.border,
+        padding: 14, alignItems: 'center',
+    },
+    statValue: { fontSize: 18, fontWeight: '800', color: C.text },
+    statLabel: { fontSize: 11, color: C.sub, marginTop: 2 },
+
+    subCard: {
+        borderRadius: 16, padding: 16,
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    },
+    subLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    subIconWrap: {
+        width: 44, height: 44, borderRadius: 12,
+        backgroundColor: 'rgba(212,175,55,0.15)',
+        alignItems: 'center', justifyContent: 'center',
+    },
+    subTitle: { fontSize: 15, fontWeight: '700', color: C.text },
+    subRenewal: { fontSize: 12, color: C.sub, marginTop: 2 },
+    subPricePill: { alignItems: 'flex-end' },
+    subPrice: { fontSize: 16, fontWeight: '800', color: C.gold },
+    subPeriod: { fontSize: 11, color: C.sub },
+
+    version: {
+        textAlign: 'center', fontSize: 12, color: C.muted,
+        marginTop: 28, marginBottom: 8,
+    },
+});
