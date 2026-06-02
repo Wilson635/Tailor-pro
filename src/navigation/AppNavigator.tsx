@@ -95,11 +95,11 @@ export type RootStackParamList = {
     AddOrder: { clientId?: string };
     ModelDetails: { modelId: string };
     Statistics: undefined;
+    Clients: undefined; // ← ajout
     Login: undefined;
     Register: undefined;
     RegisterClient: undefined;
     ForgotPassword: undefined;
-    Clients: undefined;
     Welcome: undefined;
     ChooseProfile: undefined;
     ClientWelcome: undefined;

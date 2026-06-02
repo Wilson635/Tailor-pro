@@ -239,7 +239,7 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
               <TouchableOpacity
                   style={styles.addBtn}
-                  onPress={() => navigation.navigate('AddOrder', {})}
+                  onPress={() => navigation.navigate('AddOrder', { clientId: undefined })}
               >
                 <Ionicons name="add" size={22} color="#fff" />
               </TouchableOpacity>

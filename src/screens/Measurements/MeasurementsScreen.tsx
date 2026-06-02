@@ -2,7 +2,7 @@
 // ÉCRAN MESURES - TailorPro
 // ==========================================
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,17 +15,15 @@ import { Header, Card, Button } from '@components/ui';
 import { useAppStore } from '@store/useAppStore';
 import { formatDate } from '@utils/formatters';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '@constants/theme';
-import {NativeStackScreenProps} from "@react-navigation/native-stack";
-import {RootStackParamList} from "@/src/types";
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import {RootStackParamList} from "@/src/navigation/AppNavigator";
+import {Measurements} from "@/src/types";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Measurements'>;
 
-interface MeasurementsScreenProps {
-  clientId: string;
-  onBack?: () => void;
-  onEdit?: () => void;
-  onAddNew?: () => void;
-}
+// ==========================================
+// SOUS-COMPOSANT : ligne de mesure
+// ==========================================
 
 interface MeasurementRowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -34,32 +32,40 @@ interface MeasurementRowProps {
 }
 
 const MeasurementRow: React.FC<MeasurementRowProps> = ({ icon, label, value }) => (
-  <View style={styles.measurementRow}>
-    <View style={styles.measurementLeft}>
-      <View style={styles.measurementIcon}>
-        <Ionicons name={icon} size={18} color={COLORS.primary} />
+    <View style={styles.measurementRow}>
+      <View style={styles.measurementLeft}>
+        <View style={styles.measurementIcon}>
+          <Ionicons name={icon} size={18} color={COLORS.primary} />
+        </View>
+        <Text style={styles.measurementLabel}>{label}</Text>
       </View>
-      <Text style={styles.measurementLabel}>{label}</Text>
+      <View style={styles.measurementRight}>
+        <Text style={[styles.measurementValue, !value && styles.measurementValueEmpty]}>
+          {value ?? '-'}
+        </Text>
+        {!!value && <Text style={styles.measurementUnit}>cm</Text>}
+      </View>
     </View>
-    <View style={styles.measurementRight}>
-      <Text style={styles.measurementValue}>{value || '-'}</Text>
-      <Text style={styles.measurementUnit}>cm</Text>
-    </View>
-  </View>
 );
 
-export const MeasurementsScreen: React.FC<MeasurementsScreenProps> = ({
-  clientId,
-  onBack,
-  onEdit,
-  onAddNew,
-}) => {
-  const { getMeasurementsByClient, getClientById } = useAppStore();
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+
+export const MeasurementsScreen: React.FC<Props> = ({ route, navigation }) => {
+  const { clientId } = route.params;
+  const { getMeasurementsByClient, getClientById, loadMeasurements } = useAppStore();
+
   const measurements = getMeasurementsByClient(clientId);
   const client = getClientById(clientId);
 
+  // Charge les mesures depuis Supabase au montage
+  useEffect(() => {
+    loadMeasurements(clientId);
+  }, [clientId]);
+
   const measurementItems: Array<{
-    key: string;
+    key: keyof Measurements;
     icon: keyof typeof Ionicons.glyphMap;
     label: string;
   }> = [
@@ -77,53 +83,62 @@ export const MeasurementsScreen: React.FC<MeasurementsScreenProps> = ({
   ];
 
   return (
-    <View style={styles.container}>
-      <Header
-        title="Mesures"
-        showBack
-        onBackPress={onBack}
-        rightIcon="create-outline"
-        onRightPress={onEdit}
-      />
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Date Header */}
-        {measurements && (
-          <View style={styles.dateHeader}>
-            <Text style={styles.dateLabel}>Mesures enregistrées</Text>
-            <Text style={styles.dateValue}>{formatDate(measurements.recordedAt)}</Text>
-          </View>
-        )}
-
-        {/* Measurements Card */}
-        <Card style={styles.measurementsCard}>
-          {measurementItems.map((item, index) => (
-            <React.Fragment key={item.key}>
-              <MeasurementRow
-                icon={item.icon}
-                label={item.label}
-                value={measurements?.[item.key as keyof typeof measurements] as number | undefined}
-              />
-              {index < measurementItems.length - 1 && <View style={styles.divider} />}
-            </React.Fragment>
-          ))}
-        </Card>
-
-        {/* Add New Button */}
-        <Button
-          title="+ Ajouter de nouvelles mesures"
-          onPress={onAddNew || (() => {})}
-          fullWidth
-          style={styles.addButton}
+      <View style={styles.container}>
+        <Header
+            title={`Mesures${client ? ` · ${client.fullName}` : ''}`}
+            showBack
+            onBackPress={() => navigation.goBack()}
+            rightIcon="create-outline"
+            onRightPress={() => navigation.navigate('AddMeasurements', { clientId })}
         />
-      </ScrollView>
-    </View>
+
+        <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+        >
+          {/* Date d'enregistrement */}
+          {measurements && (
+              <View style={styles.dateHeader}>
+                <View style={styles.dateLeft}>
+                  <Ionicons name="time-outline" size={14} color={COLORS.gray400} />
+                  <Text style={styles.dateLabel}>Dernière mise à jour</Text>
+                </View>
+                <Text style={styles.dateValue}>{formatDate(measurements.recordedAt)}</Text>
+              </View>
+          )}
+
+          {/* Carte des mesures */}
+          <Card style={styles.measurementsCard}>
+            {measurementItems.map((item, index) => (
+                <React.Fragment key={item.key as string}>
+                  <MeasurementRow
+                      icon={item.icon}
+                      label={item.label}
+                      value={measurements?.[item.key] as number | undefined}
+                  />
+                  {index < measurementItems.length - 1 && (
+                      <View style={styles.divider} />
+                  )}
+                </React.Fragment>
+            ))}
+          </Card>
+
+          {/* Bouton mise à jour */}
+          <Button
+              title="Mettre à jour les mesures"
+              onPress={() => navigation.navigate('AddMeasurements', { clientId })}
+              fullWidth
+              style={styles.updateButton}
+          />
+        </ScrollView>
+      </View>
   );
 };
+
+// ==========================================
+// STYLES
+// ==========================================
 
 const styles = StyleSheet.create({
   container: {
@@ -137,13 +152,18 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: SPACING.xxxl,
   },
-  
-  // Date Header
+
+  // Date header
   dateHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.lg,
+  },
+  dateLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   dateLabel: {
     fontSize: FONT_SIZES.sm,
@@ -154,8 +174,8 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
     color: COLORS.text,
   },
-  
-  // Measurements Card
+
+  // Measurements card
   measurementsCard: {
     paddingHorizontal: 0,
     paddingVertical: 0,
@@ -195,6 +215,10 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.semibold,
     color: COLORS.text,
   },
+  measurementValueEmpty: {
+    color: COLORS.gray400,
+    fontWeight: FONT_WEIGHTS.regular,
+  },
   measurementUnit: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.gray400,
@@ -204,9 +228,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray100,
     marginLeft: 64,
   },
-  
-  // Add Button
-  addButton: {
+
+  // Update button
+  updateButton: {
     marginTop: SPACING.xl,
   },
 });

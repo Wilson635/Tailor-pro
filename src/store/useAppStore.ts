@@ -1,7 +1,509 @@
 // ==========================================
 // STORE PRINCIPAL - TailorPro (Supabase)
 // ==========================================
+// ==========================================
+// STORE PRINCIPAL - TailorPro (Supabase)
+// ==========================================
 
+import { create } from 'zustand';
+import { supabase } from '@/src/lib/supabase';
+import {
+  clientService, orderService, activityService,
+  statisticsService, measurementService, mapClient, mapOrder, mapActivity,
+} from '@services/supabaseService';
+import type { Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics } from '../types';
+
+// ==========================================
+// TYPE PROFIL
+// ==========================================
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  display_name: string | null;
+  atelier_name: string | null;
+  phone: string | null;
+  role: 'tailor' | 'client';
+}
+
+// ==========================================
+// TYPES DU STORE
+// ==========================================
+
+interface AppState {
+  // ── Auth & Profil ──
+  isAuthenticated: boolean;
+  userId: string | null;
+  profile: UserProfile | null;
+
+  // ── Données ──
+  clients: Client[];
+  orders: Order[];
+  catalog: CatalogModel[];
+  activities: Activity[];
+  statistics: Statistics;
+  measurements: Record<string, Measurements>;
+  payments: Record<string, Payment[]>;
+
+  // ── UI ──
+  isLoading: boolean;
+  error: string | null;
+  selectedClientFilter: 'all' | 'recent' | 'favorite';
+  selectedCatalogCategory: string;
+  searchQuery: string;
+
+  // ── Actions Auth ──
+  setAuthenticated: (status: boolean, userId?: string) => void;
+  logout: () => Promise<void>;
+  fetchProfile: () => Promise<void>;
+
+  // ── Actions Data (Supabase) ──
+  loadClients: () => Promise<void>;
+  loadOrders: () => Promise<void>;
+  loadActivities: () => Promise<void>;
+  loadStatistics: () => Promise<void>;
+  loadAll: () => Promise<void>;
+
+  // ── Actions Clients (locales + sync) ──
+  addClient: (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Client | null>;
+  updateClient: (clientId: string, data: Partial<Client>) => Promise<void>;
+  deleteClient: (clientId: string) => Promise<void>;
+
+  // ── Actions Orders (locales + sync) ──
+  addOrder: (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Order | null>;
+  updateOrder: (orderId: string, data: Partial<Order>) => Promise<void>;
+  deleteOrder: (orderId: string) => Promise<void>;
+
+  // ── Actions Measurements ──
+  setMeasurements: (clientId: string, measurements: Measurements) => void;
+  loadMeasurements: (clientId: string) => Promise<void>;
+  saveMeasurements: (
+      clientId: string,
+      data: Omit<Measurements, 'id' | 'clientId'>
+  ) => Promise<Measurements | null>;
+
+  // ── Actions Payments ──
+  addPayment: (clientId: string, payment: Payment) => void;
+
+  // ── Actions Catalog (local uniquement pour l'instant) ──
+  setCatalog: (catalog: CatalogModel[]) => void;
+  addCatalogModel: (model: CatalogModel) => void;
+  updateCatalogModel: (modelId: string, data: Partial<CatalogModel>) => void;
+  deleteCatalogModel: (modelId: string) => void;
+  toggleCatalogFavorite: (modelId: string) => void;
+
+  // ── Actions UI ──
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  setClientFilter: (filter: 'all' | 'recent' | 'favorite') => void;
+  setCatalogCategory: (category: string) => void;
+  setSearchQuery: (query: string) => void;
+
+  // ── Helpers ──
+  getClientById: (clientId: string) => Client | undefined;
+  getOrdersByClient: (clientId: string) => Order[];
+  getMeasurementsByClient: (clientId: string) => Measurements | undefined;
+  getPaymentsByClient: (clientId: string) => Payment[];
+}
+
+// ==========================================
+// STATISTIQUES PAR DÉFAUT
+// ==========================================
+
+const DEFAULT_STATISTICS: Statistics = {
+  totalClients: 0,
+  monthlyRevenue: 0,
+  revenueGrowth: 0,
+  ordersInProgress: 0,
+  completedOrders: 0,
+  unpaidInvoices: 0,
+  unpaidAmount: 0,
+  totalExpenses: 0,
+  netProfit: 0,
+};
+
+// ==========================================
+// HELPER : mappe une ligne Supabase → Measurements
+// ==========================================
+
+const mapMeasurements = (row: Record<string, unknown>): Measurements => ({
+  id: row.id as string,
+  clientId: row.client_id as string,
+  recordedAt: new Date(row.recorded_at as string),
+  chestCircumference: row.chest_circumference as number | undefined,
+  waistCircumference: row.waist_circumference as number | undefined,
+  hipCircumference: row.hip_circumference as number | undefined,
+  backWidth: row.back_width as number | undefined,
+  shoulderWidth: row.shoulder_width as number | undefined,
+  sleeveLength: row.sleeve_length as number | undefined,
+  armCircumference: row.arm_circumference as number | undefined,
+  neckCircumference: row.neck_circumference as number | undefined,
+  dressLength: row.dress_length as number | undefined,
+  bustHeight: row.bust_height as number | undefined,
+  thighCircumference: row.thigh_circumference as number | undefined,
+});
+
+// ==========================================
+// STORE
+// ==========================================
+
+export const useAppStore = create<AppState>((set, get) => ({
+
+  // ── État initial ──
+  isAuthenticated: false,
+  userId: null,
+  profile: null,
+
+  clients: [],
+  orders: [],
+  catalog: [],
+  activities: [],
+  statistics: DEFAULT_STATISTICS,
+  measurements: {},
+  payments: {},
+
+  isLoading: false,
+  error: null,
+  selectedClientFilter: 'all',
+  selectedCatalogCategory: 'all',
+  searchQuery: '',
+
+  // ==========================================
+  // AUTH
+  // ==========================================
+
+  setAuthenticated: (status, userId) =>
+      set({ isAuthenticated: status, userId: userId ?? null }),
+
+  logout: async () => {
+    await supabase.auth.signOut();
+    set({
+      isAuthenticated: false,
+      userId: null,
+      profile: null,
+      clients: [],
+      orders: [],
+      activities: [],
+      statistics: DEFAULT_STATISTICS,
+      measurements: {},
+    });
+  },
+
+  fetchProfile: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+        .from('users')
+        .select('id, email, display_name, atelier_name, phone, role')
+        .eq('id', user.id)
+        .single();
+
+    if (!error && data) {
+      set({ profile: data as UserProfile, userId: user.id, isAuthenticated: true });
+    }
+  },
+
+  // ==========================================
+  // CHARGEMENT DONNÉES (SUPABASE)
+  // ==========================================
+
+  loadClients: async () => {
+    const { data, error } = await clientService.getAll();
+    if (error) { set({ error: error.message }); return; }
+    set({ clients: (data ?? []).map(mapClient) });
+  },
+
+  loadOrders: async () => {
+    const { profile, userId } = get();
+    if (!userId) return;
+
+    if (profile?.role === 'client') {
+      const { data, error } = await supabase
+          .from('orders')
+          .select('*, order_items(*)')
+          .eq('client_id', userId);
+      if (error) { set({ error: error.message }); return; }
+      set({ orders: (data ?? []).map(mapOrder) });
+    } else {
+      const { data, error } = await orderService.getAll();
+      if (error) { set({ error: error.message }); return; }
+      set({ orders: (data ?? []).map(mapOrder) });
+    }
+  },
+
+  loadActivities: async () => {
+    const { profile, userId } = get();
+    if (!userId) return;
+
+    if (profile?.role === 'client') {
+      const { data, error } = await supabase
+          .from('activities')
+          .select('*')
+          .eq('client_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+      if (error) { set({ error: error.message }); return; }
+      set({ activities: (data ?? []).map(mapActivity) });
+    } else {
+      const { data, error } = await activityService.getRecent(20);
+      if (error) { set({ error: error.message }); return; }
+      set({ activities: (data ?? []).map(mapActivity) });
+    }
+  },
+
+  loadStatistics: async () => {
+    const { data, error } = await statisticsService.compute();
+    if (error || !data) return;
+    set({ statistics: data });
+  },
+
+  loadAll: async () => {
+    set({ isLoading: true, error: null });
+    await get().fetchProfile();
+    const currentProfile = get().profile;
+
+    if (currentProfile?.role === 'client') {
+      await Promise.all([
+        get().loadOrders(),
+        get().loadActivities(),
+      ]);
+    } else {
+      await Promise.all([
+        get().loadClients(),
+        get().loadOrders(),
+        get().loadActivities(),
+        get().loadStatistics(),
+      ]);
+    }
+    set({ isLoading: false });
+  },
+
+  // ==========================================
+  // CLIENTS
+  // ==========================================
+
+  addClient: async (clientData) => {
+    const { data, error } = await clientService.create(clientData);
+    if (error || !data) { set({ error: error?.message }); return null; }
+
+    const newClient = mapClient(data);
+    set(state => ({ clients: [newClient, ...state.clients] }));
+
+    await activityService.create({
+      type: 'new_client',
+      title: 'Nouveau client',
+      subtitle: newClient.fullName,
+      clientId: newClient.id,
+    });
+
+    get().loadStatistics();
+    get().loadActivities();
+    return newClient;
+  },
+
+  updateClient: async (clientId, updates) => {
+    const { error } = await clientService.update(clientId, updates);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      clients: state.clients.map(c =>
+          c.id === clientId ? { ...c, ...updates, updatedAt: new Date() } : c
+      ),
+    }));
+  },
+
+  deleteClient: async (clientId) => {
+    const { error } = await clientService.delete(clientId);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      clients: state.clients.filter(c => c.id !== clientId),
+    }));
+    get().loadStatistics();
+  },
+
+  // ==========================================
+  // COMMANDES
+  // ==========================================
+
+  addOrder: async (orderData) => {
+    const { data, error } = await orderService.create(orderData);
+    if (error || !data) { set({ error: error?.message }); return null; }
+
+    const newOrder = mapOrder(data);
+    set(state => ({ orders: [newOrder, ...state.orders] }));
+
+    await activityService.create({
+      type: 'new_order',
+      title: 'Nouvelle commande',
+      subtitle: newOrder.clientName,
+      clientId: newOrder.clientId,
+      orderId: newOrder.id,
+    });
+
+    const client = get().getClientById(newOrder.clientId);
+    if (client) {
+      await clientService.update(newOrder.clientId, {
+        balance: client.balance + newOrder.remainingAmount,
+      });
+      set(state => ({
+        clients: state.clients.map(c =>
+            c.id === newOrder.clientId
+                ? { ...c, balance: c.balance + newOrder.remainingAmount }
+                : c
+        ),
+      }));
+    }
+
+    get().loadStatistics();
+    get().loadActivities();
+    return newOrder;
+  },
+
+  updateOrder: async (orderId, updates) => {
+    const { error } = await orderService.update(orderId, updates);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      orders: state.orders.map(o =>
+          o.id === orderId ? { ...o, ...updates, updatedAt: new Date() } : o
+      ),
+    }));
+
+    if (updates.orderStatus === 'completed' || updates.orderStatus === 'delivered') {
+      const order = get().orders.find(o => o.id === orderId);
+      if (order) {
+        await activityService.create({
+          type: 'order_completed',
+          title: 'Commande terminée',
+          subtitle: order.clientName,
+          clientId: order.clientId,
+          orderId: order.id,
+        });
+        get().loadActivities();
+      }
+    }
+
+    get().loadStatistics();
+  },
+
+  deleteOrder: async (orderId) => {
+    const { error } = await orderService.delete(orderId);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      orders: state.orders.filter(o => o.id !== orderId),
+    }));
+    get().loadStatistics();
+  },
+
+  // ==========================================
+  // MESURES
+  // ==========================================
+
+  /** Met à jour les mesures localement dans le store */
+  setMeasurements: (clientId, measurements) =>
+      set(state => ({
+        measurements: { ...state.measurements, [clientId]: measurements },
+      })),
+
+  /** Charge les mesures d'un client depuis Supabase */
+  loadMeasurements: async (clientId: string) => {
+    const { data, error } = await measurementService.getByClient(clientId);
+    // PGRST116 = aucune ligne trouvée (client sans mesures), ce n'est pas une erreur
+    if (error && error.code !== 'PGRST116') {
+      set({ error: error.message });
+      return;
+    }
+    if (data) {
+      const mapped = mapMeasurements(data as Record<string, unknown>);
+      set(state => ({
+        measurements: { ...state.measurements, [clientId]: mapped },
+      }));
+    }
+  },
+
+  /** Crée ou met à jour les mesures dans Supabase puis met à jour le store */
+  saveMeasurements: async (clientId, data) => {
+    const { data: saved, error } = await measurementService.upsert(clientId, data);
+    if (error || !saved) {
+      set({ error: error?.message ?? 'Erreur lors de l\'enregistrement des mesures' });
+      return null;
+    }
+    const mapped = mapMeasurements(saved as Record<string, unknown>);
+    set(state => ({
+      measurements: { ...state.measurements, [clientId]: mapped },
+    }));
+    return mapped;
+  },
+
+  // ==========================================
+  // PAIEMENTS
+  // ==========================================
+
+  addPayment: (clientId, payment) =>
+      set(state => ({
+        payments: {
+          ...state.payments,
+          [clientId]: [...(state.payments[clientId] ?? []), payment],
+        },
+      })),
+
+  // ==========================================
+  // CATALOG (local)
+  // ==========================================
+
+  setCatalog: (catalog) => set({ catalog }),
+  addCatalogModel: (model) =>
+      set(state => ({ catalog: [model, ...state.catalog] })),
+  updateCatalogModel: (modelId, data) =>
+      set(state => ({
+        catalog: state.catalog.map(m => m.id === modelId ? { ...m, ...data } : m),
+      })),
+  deleteCatalogModel: (modelId) =>
+      set(state => ({
+        catalog: state.catalog.filter(m => m.id !== modelId),
+      })),
+  toggleCatalogFavorite: (modelId) =>
+      set(state => ({
+        catalog: state.catalog.map(m =>
+            m.id === modelId ? { ...m, isFavorite: !m.isFavorite } : m
+        ),
+      })),
+
+  // ==========================================
+  // UI
+  // ==========================================
+
+  setLoading: (loading) => set({ isLoading: loading }),
+  setError: (error) => set({ error }),
+  setClientFilter: (filter) => set({ selectedClientFilter: filter }),
+  setCatalogCategory: (category) => set({ selectedCatalogCategory: category }),
+  setSearchQuery: (query) => set({ searchQuery: query }),
+
+  // ==========================================
+  // HELPERS
+  // ==========================================
+
+  getClientById: (clientId) =>
+      get().clients.find(c => c.id === clientId),
+
+  getOrdersByClient: (clientId) =>
+      get().orders.filter(o => o.clientId === clientId),
+
+  getMeasurementsByClient: (clientId) =>
+      get().measurements[clientId],
+
+  getPaymentsByClient: (clientId) =>
+      get().payments[clientId] ?? [],
+}));
+
+
+
+
+
+/*******
 import { create } from 'zustand';
 import { supabase } from '@/src/lib/supabase';
 import {
@@ -195,7 +697,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data, error } = await activityService.getRecent(20);
     if (error) { set({ error: error.message }); return; }
     set({ activities: (data ?? []).map(mapActivity) });
-  },*/
+  },--
 
   loadOrders: async () => {
     const { profile, userId } = get();
@@ -205,7 +707,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Si c'custom client, on filtre les commandes où le client_id correspond à son userId
       const { data, error } = await supabase
           .from('orders')
-          .select('*')
+          .select('*, order_items(*)')
           .eq('client_id', userId); // Ajuste le nom de la colonne si nécessaire (ex: user_id)
 
       if (error) { set({ error: error.message }); return; }
@@ -258,7 +760,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().loadStatistics(),
     ]);
     set({ isLoading: false });
-  },*/
+  },---
 
   loadAll: async () => {
     set({ isLoading: true, error: null });
@@ -479,7 +981,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   getPaymentsByClient: (clientId) =>
       get().payments[clientId] ?? [],
 }));
-
+*/
 
 /***************
 

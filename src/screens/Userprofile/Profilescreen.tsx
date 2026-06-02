@@ -1,5 +1,5 @@
 // ==========================================
-// PROFIL UTILISATEUR COMPLET - TailorPro (Version Claire avec Onglets & Actions)
+// PROFIL UTILISATEUR - TailorPro (Light Premium)
 // ==========================================
 
 import React, { useEffect, useState } from 'react';
@@ -19,21 +19,37 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
+// ==========================================
+// PALETTE LIGHT PREMIUM
+// ==========================================
+
 const C = {
-    bg:      '#F9FAFB',
-    surface: '#FFFFFF',
-    border:  '#E5E7EB',
-    text:    '#111827',
-    sub:     '#4B5563',
-    muted:   '#9CA3AF',
-    gold:    '#B8860B',
-    purple:  '#4C1D95',
-    success: '#10B981',
-    error:   '#EF4444',
-    warning: '#F59E0B',
+    bg:       '#F5F3EE',       // beige ivoire chaud — pas un blanc froid
+    surface:  '#FFFFFF',
+    surfaceAlt: '#FAF8F4',     // surfaces secondaires légèrement chaudes
+    border:   '#E8E3DA',       // bordure beige sable
+    borderMid: '#D4C9B8',
+    text:     '#1A1207',       // presque noir — brun très foncé
+    sub:      '#5C5040',       // brun moyen
+    muted:    '#9C8E7C',       // gris-beige
+    hint:     '#C4B8A6',
+    gold:     '#B8860B',       // gold foncé — lisible sur clair
+    goldBg:   '#FDF5E0',       // fond doré très léger
+    goldRim:  '#E8CC7A',       // bordure gold douce
+    goldDeep: '#8B6508',       // gold profond pour texte
+    purple:   '#3D1A72',       // accent profond
+    purpleBg: '#F0EAF8',
+    success:  '#1A7A4A',
+    successBg:'#E8F5EE',
+    error:    '#C0392B',
+    errorBg:  '#FBE9E7',
+    warning:  '#B5620A',
+    warningBg:'#FEF3E2',
 };
 
-// ── SOUS-COMPOSANTS ──
+// ==========================================
+// SOUS-COMPOSANTS
+// ==========================================
 
 const SectionTitle = ({ title }: { title: string }) => (
     <Text style={sStyles.sectionTitle}>{title}</Text>
@@ -57,7 +73,7 @@ const SettingRow = ({
     <TouchableOpacity
         style={sStyles.row}
         onPress={isEditing ? undefined : onPress}
-        activeOpacity={onPress && !isEditing ? 0.7 : 1}
+        activeOpacity={onPress && !isEditing ? 0.65 : 1}
     >
         <View style={[sStyles.rowIcon, { backgroundColor: iconBg }]}>
             <Ionicons name={icon} size={17} color={iconColor} />
@@ -70,7 +86,9 @@ const SettingRow = ({
                 subtitle && <Text style={sStyles.rowSub}>{subtitle}</Text>
             )}
         </View>
-        {!isEditing && (right ?? (onPress && <Ionicons name="chevron-forward" size={16} color={C.muted} />))}
+        {!isEditing && (right ?? (onPress && (
+            <Ionicons name="chevron-forward" size={15} color={C.hint} />
+        )))}
     </TouchableOpacity>
 );
 
@@ -82,24 +100,64 @@ const Divider = () => <View style={sStyles.divider} />;
 
 const sStyles = StyleSheet.create({
     sectionTitle: {
-        fontSize: 11, fontWeight: '700', color: C.sub,
-        letterSpacing: 1.2, textTransform: 'uppercase',
-        marginTop: 20, marginBottom: 10, paddingHorizontal: 2,
+        fontSize: 10,
+        fontWeight: '700',
+        color: C.muted,
+        letterSpacing: 1.4,
+        textTransform: 'uppercase',
+        marginTop: 24,
+        marginBottom: 10,
+        paddingHorizontal: 2,
     },
     card: {
-        backgroundColor: C.surface, borderRadius: 16,
-        borderWidth: 1, borderColor: C.border,
+        backgroundColor: C.surface,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: C.border,
         overflow: 'hidden',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
+        shadowColor: '#8B6508',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+        elevation: 2,
     },
-    row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 14 },
-    rowIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    row: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        gap: 14,
+    },
+    rowIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     rowContent: { flex: 1 },
-    rowTitle: { fontSize: 13, fontWeight: '500', color: C.muted },
-    rowSub: { fontSize: 14, fontWeight: '600', color: C.text, marginTop: 2 },
-    inputWrapper: { marginTop: 4, borderBottomWidth: 1, borderBottomColor: C.purple, paddingBottom: 2 },
-    divider: { height: 0.5, backgroundColor: C.border, marginLeft: 66 },
+    rowTitle: {
+        fontSize: 13,
+        fontWeight: '500',
+        color: C.muted,
+    },
+    rowSub: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: C.text,
+        marginTop: 2,
+    },
+    inputWrapper: {
+        marginTop: 4,
+        borderBottomWidth: 1.5,
+        borderBottomColor: C.gold,
+        paddingBottom: 2,
+    },
+    divider: {
+        height: 0.5,
+        backgroundColor: C.border,
+        marginLeft: 66,
+    },
 });
 
 // ==========================================
@@ -115,7 +173,6 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
     const { profile, loading: profileLoading } = useProfile();
 
-    // États d'édition
     const [isEditing, setIsEditing] = useState(false);
     const [displayName, setDisplayName] = useState('');
     const [atelierName, setAtelierName] = useState('');
@@ -123,7 +180,6 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [biometricEnabled, setBiometricEnabled] = useState(false);
 
-    // Données locales pour les appareils connectés (simulées pour l'exemple mais dynamiques au retrait)
     const [devices, setDevices] = useState([
         { id: '1', name: 'Samsung Galaxy S24', type: 'android', location: 'Yaoundé, CM', current: true,  lastSeen: 'Actif maintenant' },
         { id: '2', name: 'iPhone 15 Pro',      type: 'ios',     location: 'Douala, CM',  current: false, lastSeen: 'Il y a 2 jours' },
@@ -149,18 +205,15 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         if (!profile) return;
         if (value) {
             const hasHardware = await LocalAuthentication.hasHardwareAsync();
-            const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-
+            const isEnrolled  = await LocalAuthentication.isEnrolledAsync();
             if (!hasHardware || !isEnrolled) {
                 Alert.alert("Indisponible", "Votre appareil ne possède pas de capteur biométrique configuré.");
                 return;
             }
-
             const result = await LocalAuthentication.authenticateAsync({
                 promptMessage: 'Confirmez votre identité pour activer la connexion biométrique',
                 fallbackLabel: 'Utiliser le mot de passe',
             });
-
             if (result.success) {
                 await AsyncStorage.setItem(`@biometrics_enabled_${profile.id}`, 'true');
                 setBiometricEnabled(true);
@@ -175,7 +228,6 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         }
     };
 
-    // Sauvegarde des modifications
     const handleSaveChanges = async () => {
         if (!profile?.id) return;
         setIsSaving(true);
@@ -185,12 +237,10 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                 .update({
                     display_name: displayName,
                     atelier_name: profile.role === 'tailor' ? atelierName : null,
-                    phone: phone
+                    phone,
                 })
                 .eq('id', profile.id);
-
             if (error) throw error;
-
             Alert.alert("Succès", "Votre profil a été mis à jour !");
             setIsEditing(false);
         } catch (error: any) {
@@ -200,11 +250,10 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         }
     };
 
-    // Révocation / Déconnexion d'un appareil connecté
     const handleRevokeDevice = (deviceId: string, deviceName: string) => {
         Alert.alert(
             'Déconnecter l\'appareil',
-            `Voulez-vous vraiment déconnecter l'appareil "${deviceName}" ? Il devra se reconnecter.`,
+            `Voulez-vous vraiment déconnecter "${deviceName}" ?`,
             [
                 { text: 'Annuler', style: 'cancel' },
                 {
@@ -212,32 +261,28 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                     style: 'destructive',
                     onPress: () => {
                         setDevices(prev => prev.filter(d => d.id !== deviceId));
-                        Alert.alert("Succès", "L'appareil a été déconnecté avec succès.");
-                    }
-                }
+                        Alert.alert("Succès", "L'appareil a été déconnecté.");
+                    },
+                },
             ]
         );
     };
 
-    // Demande de réinitialisation de mot de passe via Supabase Auth
     const handleChangePassword = async () => {
         if (!profile?.email) return;
         Alert.alert(
             'Changement de mot de passe',
-            `Un e-mail de réinitialisation va être envoyé à l'adresse : ${profile.email}`,
+            `Un e-mail sera envoyé à : ${profile.email}`,
             [
                 { text: 'Annuler', style: 'cancel' },
                 {
                     text: 'Envoyer',
                     onPress: async () => {
                         const { error } = await supabase.auth.resetPasswordForEmail(profile.email);
-                        if (error) {
-                            Alert.alert("Erreur", error.message);
-                        } else {
-                            Alert.alert("E-mail envoyé", "Veuillez vérifier votre boîte de réception.");
-                        }
-                    }
-                }
+                        if (error) Alert.alert("Erreur", error.message);
+                        else Alert.alert("E-mail envoyé", "Vérifiez votre boîte de réception.");
+                    },
+                },
             ]
         );
     };
@@ -252,76 +297,101 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     };
 
     const HISTORY = [
-        { id: '1', action: 'Connexion',         location: 'Yaoundé, CM',  date: 'Aujourd\'hui 09:14',  success: true  },
-        { id: '2', action: 'Mot de passe modifié', location: 'Yaoundé, CM', date: 'Hier 18:32',         success: true  },
-        { id: '3', action: 'Tentative échouée', location: 'Inconnue',      date: '12/06 22:41',         success: false },
+        { id: '1', action: 'Connexion',            location: 'Yaoundé, CM', date: "Aujourd'hui 09:14", success: true  },
+        { id: '2', action: 'Mot de passe modifié', location: 'Yaoundé, CM', date: 'Hier 18:32',        success: true  },
+        { id: '3', action: 'Tentative échouée',    location: 'Inconnue',     date: '12/06 22:41',       success: false },
     ];
 
     return (
         <View style={[styles.container, { paddingTop: insets.top }]}>
             <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
 
-            {/* ── Header ── */}
+            {/* ── HEADER ── */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <Ionicons name="arrow-back" size={20} color={C.text} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Mon profil</Text>
                 <TouchableOpacity
-                    style={[styles.editBtn, isEditing && { backgroundColor: C.purple }]}
+                    style={[styles.editBtn, isEditing && styles.editBtnActive]}
                     onPress={() => {
-                        if(isEditing) {
-                            setIsEditing(false); // Annuler l'édition
-                        } else {
-                            setIsEditing(true);
-                            setActiveTab('infos'); // Force le focus sur l'onglet infos pour éditer
-                        }
+                        if (isEditing) setIsEditing(false);
+                        else { setIsEditing(true); setActiveTab('infos'); }
                     }}
                 >
-                    <Ionicons name={isEditing ? "close-outline" : "create-outline"} size={19} color={isEditing ? "#FFF" : C.purple} />
+                    <Ionicons
+                        name={isEditing ? "close-outline" : "create-outline"}
+                        size={19}
+                        color={isEditing ? C.surface : C.gold}
+                    />
                 </TouchableOpacity>
             </View>
 
             <ScrollView
-                contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]}
+                contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}
                 showsVerticalScrollIndicator={false}
             >
-                {/* ── Hero profil ── */}
-                <LinearGradient
-                    colors={['#2E0057', '#1A0033', '#110924']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.heroCard}
-                >
-                    <View style={styles.heroCircle} />
+                {/* ── HERO ── */}
+                <View style={styles.heroCard}>
+                    {/* Fond décoratif léger */}
+                    <View style={styles.heroOrb1} />
+                    <View style={styles.heroOrb2} />
+
                     <View style={styles.avatarWrap}>
-                        <LinearGradient colors={['#D4AF37', '#B8860B']} style={styles.avatarGradient}>
+                        <LinearGradient
+                            colors={['#D4AF37', '#8B6508']}
+                            style={styles.avatarGradient}
+                        >
                             <Text style={styles.avatarText}>{getInitials()}</Text>
                         </LinearGradient>
-                        <TouchableOpacity style={styles.avatarEdit} onPress={() => Alert.alert("Photo de profil", "Bientôt disponible !")}>
-                            <Ionicons name="camera-outline" size={14} color="#FFF" />
+                        <TouchableOpacity
+                            style={styles.avatarEdit}
+                            onPress={() => Alert.alert("Photo de profil", "Bientôt disponible !")}
+                        >
+                            <Ionicons name="camera-outline" size={13} color={C.surface} />
                         </TouchableOpacity>
                     </View>
 
                     <Text style={styles.heroName}>{profile?.display_name ?? 'Utilisateur'}</Text>
-                    {profile?.atelier_name && <Text style={styles.heroAtelier}>{profile.atelier_name}</Text>}
+                    {profile?.atelier_name && (
+                        <Text style={styles.heroAtelier}>{profile.atelier_name}</Text>
+                    )}
                     <Text style={styles.heroEmail}>{profile?.email ?? ''}</Text>
 
-                    <View style={styles.planBadge}>
-                        <Ionicons name="diamond-outline" size={13} color="#D4AF37" />
+                    {/*<View style={styles.planBadge}>
+                        <Ionicons name="diamond-outline" size={12} color={C.goldDeep} />
                         <Text style={styles.planBadgeText}>Plan Pro · Actif</Text>
-                    </View>
-                </LinearGradient>
+                    </View> */}
 
-                {/* ── Système d'onglets (Tabs) ── */}
+                    {/* Statistiques */}
+                    <View style={styles.statsRow}>
+                        {[
+                            { val: '48',  lbl: 'Clients' },
+                            { val: '127', lbl: 'Commandes' },
+                        ].map((s, i) => (
+                            <React.Fragment key={s.lbl}>
+                                {i > 0 && <View style={styles.statSep} />}
+                                <View style={styles.statItem}>
+                                    <Text style={styles.statVal}>{s.val}</Text>
+                                    <Text style={styles.statLbl}>{s.lbl}</Text>
+                                </View>
+                            </React.Fragment>
+                        ))}
+                    </View>
+                </View>
+
+                {/* ── TABS ── */}
                 <View style={styles.tabsContainer}>
-                    {(['infos', 'securite', 'preferences'] as const).map((tab) => (
+                    {(['infos', 'securite', 'preferences'] as const).map(tab => (
                         <TouchableOpacity
                             key={tab}
-                            style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]}
+                            style={[
+                                styles.tabButton,
+                                activeTab === tab && styles.tabButtonActive,
+                                isEditing && tab !== 'infos' && { opacity: 0.4 },
+                            ]}
                             onPress={() => !isEditing && setActiveTab(tab)}
-                            disabled={isEditing} // Empêche de changer d'onglet pendant qu'on édite les données
-                            style={[styles.tabButton, activeTab === tab && styles.tabButtonActive, isEditing && { opacity: 0.5 }]}
+                            disabled={isEditing && tab !== 'infos'}
                         >
                             <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
                                 {tab === 'infos' ? 'Infos' : tab === 'securite' ? 'Sécurité' : 'Préférences'}
@@ -330,50 +400,80 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                     ))}
                 </View>
 
-                {/* ── CONTENU DYNAMIQUE SELON L'ONGLET ── */}
-
+                {/* ── ONGLET : INFOS ── */}
                 {activeTab === 'infos' && (
                     <View>
                         <SectionTitle title="Informations personnelles" />
                         <Card style={{ marginBottom: 16 }}>
                             <SettingRow
-                                icon="person-outline" iconBg="#ECECFE" iconColor={C.purple}
+                                icon="person-outline" iconBg={C.goldBg} iconColor={C.gold}
                                 title="Nom complet" subtitle={displayName || '—'}
                                 isEditing={isEditing}
                                 renderInput={() => (
-                                    <TextInput style={styles.textInput} value={displayName} onChangeText={setDisplayName} placeholder="Votre nom" placeholderTextColor={C.muted} />
+                                    <TextInput
+                                        style={styles.textInput}
+                                        value={displayName}
+                                        onChangeText={setDisplayName}
+                                        placeholder="Votre nom"
+                                        placeholderTextColor={C.hint}
+                                    />
                                 )}
                             />
                             <Divider />
                             <SettingRow
-                                icon="storefront-outline" iconBg="#ECECFE" iconColor={C.purple}
+                                icon="storefront-outline" iconBg={C.goldBg} iconColor={C.gold}
                                 title="Atelier" subtitle={atelierName || '—'}
                                 isEditing={isEditing}
                                 renderInput={() => (
-                                    <TextInput style={styles.textInput} value={atelierName} onChangeText={setAtelierName} placeholder="Nom de l'atelier" placeholderTextColor={C.muted} />
+                                    <TextInput
+                                        style={styles.textInput}
+                                        value={atelierName}
+                                        onChangeText={setAtelierName}
+                                        placeholder="Nom de l'atelier"
+                                        placeholderTextColor={C.hint}
+                                    />
                                 )}
                             />
                             <Divider />
-                            <SettingRow icon="mail-outline" iconBg="#ECECFE" iconColor={C.purple} title="Email (Non modifiable)" subtitle={profile?.email ?? '—'} />
+                            <SettingRow
+                                icon="mail-outline" iconBg={C.purpleBg} iconColor={C.purple}
+                                title="Email"
+                                subtitle={profile?.email ?? '—'}
+                                right={
+                                    <View style={styles.fixedBadge}>
+                                        <Text style={styles.fixedBadgeText}>Fixe</Text>
+                                    </View>
+                                }
+                            />
                             <Divider />
                             <SettingRow
-                                icon="call-outline" iconBg="#ECECFE" iconColor={C.purple}
+                                icon="call-outline" iconBg={C.goldBg} iconColor={C.gold}
                                 title="Téléphone" subtitle={phone || '—'}
                                 isEditing={isEditing}
                                 renderInput={() => (
-                                    <TextInput style={styles.textInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Ex: +237..." placeholderTextColor={C.muted} />
+                                    <TextInput
+                                        style={styles.textInput}
+                                        value={phone}
+                                        onChangeText={setPhone}
+                                        keyboardType="phone-pad"
+                                        placeholder="Ex: +237..."
+                                        placeholderTextColor={C.hint}
+                                    />
                                 )}
                             />
                         </Card>
 
-                        {/* Bouton Sauvegarder conditionnel */}
                         {isEditing && (
-                            <TouchableOpacity style={styles.saveBtn} onPress={handleSaveChanges} disabled={isSaving}>
+                            <TouchableOpacity
+                                style={styles.saveBtn}
+                                onPress={handleSaveChanges}
+                                disabled={isSaving}
+                            >
                                 {isSaving ? (
-                                    <ActivityIndicator color="#FFF" size="small" />
+                                    <ActivityIndicator color={C.surface} size="small" />
                                 ) : (
                                     <>
-                                        <Ionicons name="checkmark-outline" size={18} color="#FFF" />
+                                        <Ionicons name="checkmark-outline" size={18} color={C.surface} />
                                         <Text style={styles.saveBtnText}>Enregistrer les modifications</Text>
                                     </>
                                 )}
@@ -383,10 +483,10 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                         <SectionTitle title="Compte" />
                         <Card>
                             <SettingRow
-                                icon="log-out-outline" iconBg="#FEE2E2" iconColor={C.error}
+                                icon="log-out-outline" iconBg={C.errorBg} iconColor={C.error}
                                 title="Se déconnecter" danger
                                 onPress={() =>
-                                    Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter de l\'application ?', [
+                                    Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
                                         { text: 'Annuler', style: 'cancel' },
                                         { text: 'Déconnexion', style: 'destructive', onPress: handleLogout },
                                     ])
@@ -394,50 +494,64 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                             />
                             <Divider />
                             <SettingRow
-                                icon="trash-outline" iconBg="#FEE2E2" iconColor={C.error}
+                                icon="trash-outline" iconBg={C.errorBg} iconColor={C.error}
                                 title="Supprimer le compte" danger
-                                onPress={() => Alert.alert('Supprimer', 'Cette action est définitive et effacera l\'intégralité de vos données TailorPro.', [
-                                    { text: 'Annuler', style: 'cancel' },
-                                    { text: 'Supprimer', style: 'destructive', onPress: () => Alert.alert("Compte", "Demande enregistrée.") },
-                                ])}
+                                onPress={() =>
+                                    Alert.alert('Supprimer', 'Cette action est définitive.', [
+                                        { text: 'Annuler', style: 'cancel' },
+                                        { text: 'Supprimer', style: 'destructive', onPress: () => Alert.alert("Compte", "Demande enregistrée.") },
+                                    ])
+                                }
                             />
                         </Card>
                     </View>
                 )}
 
+                {/* ── ONGLET : SÉCURITÉ ── */}
                 {activeTab === 'securite' && (
                     <View>
                         <SectionTitle title="Verrouillage & Accès" />
                         <Card>
                             <SettingRow
-                                icon="finger-print-outline" iconBg="#E6F4EA" iconColor={C.success}
-                                title="Biométrie" subtitle={biometricEnabled ? 'Activée' : 'Désactivée'}
+                                icon="finger-print-outline" iconBg={C.successBg} iconColor={C.success}
+                                title="Biométrie"
+                                subtitle={biometricEnabled ? 'Activée' : 'Désactivée'}
                                 right={
                                     <Switch
                                         value={biometricEnabled}
                                         onValueChange={handleToggleBiometrics}
-                                        trackColor={{ false: C.border, true: '#10B981' }}
-                                        thumbColor={biometricEnabled ? '#FFF' : C.muted}
+                                        trackColor={{ false: C.border, true: '#1A7A4A' }}
+                                        thumbColor={C.surface}
                                     />
                                 }
                             />
                             <Divider />
                             <SettingRow
-                                icon="shield-outline" iconBg="#FEF3C7" iconColor={C.warning}
-                                title="Double authentification (2FA)" subtitle={twoFAEnabled ? 'Activée' : 'Désactivée'}
+                                icon="shield-outline" iconBg={C.warningBg} iconColor={C.warning}
+                                title="Double authentification (2FA)"
+                                subtitle={twoFAEnabled ? 'Activée' : 'Désactivée'}
                                 right={
                                     <Switch
                                         value={twoFAEnabled}
                                         onValueChange={setTwoFAEnabled}
-                                        trackColor={{ false: C.border, true: '#F59E0B' }}
-                                        thumbColor={twoFAEnabled ? '#FFF' : C.muted}
+                                        trackColor={{ false: C.border, true: C.warning }}
+                                        thumbColor={C.surface}
                                     />
                                 }
                             />
                             <Divider />
-                            <SettingRow icon="key-outline" iconBg="#ECECFE" iconColor={C.purple} title="Gérer les clés d'accès" subtitle="Passkeys configurées : 1" onPress={() => Alert.alert("Passkeys", "Gestionnaire bientôt disponible.")} />
+                            <SettingRow
+                                icon="key-outline" iconBg={C.purpleBg} iconColor={C.purple}
+                                title="Gérer les clés d'accès"
+                                subtitle="Passkeys configurées : 1"
+                                onPress={() => Alert.alert("Passkeys", "Gestionnaire bientôt disponible.")}
+                            />
                             <Divider />
-                            <SettingRow icon="lock-closed-outline" iconBg="#F3F4F6" iconColor={C.sub} title="Changer le mot de passe" onPress={handleChangePassword} />
+                            <SettingRow
+                                icon="lock-closed-outline" iconBg={C.goldBg} iconColor={C.gold}
+                                title="Changer le mot de passe"
+                                onPress={handleChangePassword}
+                            />
                         </Card>
 
                         <SectionTitle title="Appareils connectés" />
@@ -448,11 +562,11 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                                 devices.map((device, i) => (
                                     <React.Fragment key={device.id}>
                                         <View style={deviceStyles.row}>
-                                            <View style={deviceStyles.iconWrap}>
+                                            <View style={[deviceStyles.iconWrap, device.current && deviceStyles.iconWrapActive]}>
                                                 <Ionicons
                                                     name={device.type === 'ios' ? 'logo-apple' : 'logo-android'}
                                                     size={18}
-                                                    color={device.current ? C.purple : C.sub}
+                                                    color={device.current ? C.gold : C.muted}
                                                 />
                                             </View>
                                             <View style={deviceStyles.info}>
@@ -478,7 +592,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                             )}
                         </Card>
 
-                        <SectionTitle title="Historique" />
+                        <SectionTitle title="Historique de connexion" />
                         <Card>
                             {HISTORY.map((h, i) => (
                                 <React.Fragment key={h.id}>
@@ -501,26 +615,38 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                     </View>
                 )}
 
+                {/* ── ONGLET : PRÉFÉRENCES ── */}
                 {activeTab === 'preferences' && (
                     <View>
                         <SectionTitle title="Application" />
                         <Card>
                             <SettingRow
-                                icon="notifications-outline" iconBg="#ECECFE" iconColor={C.purple}
-                                title="Notifications" subtitle={notifEnabled ? 'Activées' : 'Désactivées'}
+                                icon="notifications-outline" iconBg={C.purpleBg} iconColor={C.purple}
+                                title="Notifications"
+                                subtitle={notifEnabled ? 'Activées' : 'Désactivées'}
                                 right={
                                     <Switch
                                         value={notifEnabled}
                                         onValueChange={setNotifEnabled}
                                         trackColor={{ false: C.border, true: C.purple }}
-                                        thumbColor={notifEnabled ? '#FFF' : C.muted}
+                                        thumbColor={C.surface}
                                     />
                                 }
                             />
                             <Divider />
-                            <SettingRow icon="language-outline" iconBg="#ECECFE" iconColor={C.purple} title="Langue" subtitle="Français" onPress={() => Alert.alert("Langue", "Le support multi-langue arrive prochainement.")} />
+                            <SettingRow
+                                icon="language-outline" iconBg={C.goldBg} iconColor={C.gold}
+                                title="Langue"
+                                subtitle="Français"
+                                onPress={() => Alert.alert("Langue", "Multi-langue arrive prochainement.")}
+                            />
                             <Divider />
-                            <SettingRow icon="color-palette-outline" iconBg="#ECECFE" iconColor={C.purple} title="Thème" subtitle="Clair" onPress={() => Alert.alert("Thème", "Le thème sombre manuel sera disponible dans la prochaine mise à jour.")} />
+                            <SettingRow
+                                icon="color-palette-outline" iconBg={C.goldBg} iconColor={C.gold}
+                                title="Thème"
+                                subtitle="Clair"
+                                onPress={() => Alert.alert("Thème", "Le thème sombre sera disponible prochainement.")}
+                            />
                         </Card>
                     </View>
                 )}
@@ -531,60 +657,71 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     );
 };
 
-// ── STYLES ──
+// ==========================================
+// STYLES
+// ==========================================
 
 const deviceStyles = StyleSheet.create({
-    row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
-    iconWrap: {
-        width: 36, height: 36, borderRadius: 10,
-        backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center',
-    },
-    info: { flex: 1 },
-    name: { fontSize: 14, fontWeight: '600', color: C.text },
-    sub: { fontSize: 12, color: C.sub, marginTop: 2 },
-    currentBadge: {
-        backgroundColor: 'rgba(76,29,149,0.1)', borderRadius: 6,
-        paddingHorizontal: 7, paddingVertical: 2,
-    },
-    currentText: { fontSize: 10, fontWeight: '600', color: C.purple },
+    row:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+    iconWrap:{ width: 38, height: 38, borderRadius: 11, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border },
+    iconWrapActive: { backgroundColor: C.goldBg, borderColor: C.goldRim },
+    info:    { flex: 1 },
+    name:    { fontSize: 14, fontWeight: '600', color: C.text },
+    sub:     { fontSize: 12, color: C.muted, marginTop: 2 },
+    currentBadge: { backgroundColor: C.goldBg, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1, borderColor: C.goldRim },
+    currentText:  { fontSize: 10, fontWeight: '700', color: C.goldDeep },
 });
 
 const histStyles = StyleSheet.create({
-    row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
-    dot: { width: 8, height: 8, borderRadius: 4 },
+    row:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+    dot:    { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
     action: { fontSize: 14, fontWeight: '600', color: C.text },
-    sub: { fontSize: 12, color: C.sub, marginTop: 2 },
+    sub:    { fontSize: 12, color: C.muted, marginTop: 2 },
 });
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: C.bg },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 },
-    backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border },
+    container:   { flex: 1, backgroundColor: C.bg },
+
+    header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
+    backBtn:     { width: 40, height: 40, borderRadius: 12, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 1 },
     headerTitle: { fontSize: 17, fontWeight: '700', color: C.text },
-    editBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border },
-    scroll: { paddingHorizontal: 20, paddingTop: 8 },
+    editBtn:     { width: 40, height: 40, borderRadius: 12, backgroundColor: C.goldBg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.goldRim },
+    editBtnActive: { backgroundColor: C.gold, borderColor: C.gold },
 
-    heroCard: { borderRadius: 24, padding: 24, alignItems: 'center', overflow: 'hidden', position: 'relative', shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 5 },
-    heroCircle: { position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(212,175,55,0.08)' },
-    avatarWrap: { position: 'relative', marginBottom: 12 },
-    avatarGradient: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
-    avatarText: { fontSize: 28, fontWeight: '800', color: '#FFF' },
-    avatarEdit: { position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13, backgroundColor: '#4C1D95', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#110924' },
-    heroName: { fontSize: 20, fontWeight: '800', color: '#FFF', marginBottom: 2 },
-    heroAtelier: { fontSize: 13, color: '#D4AF37', fontWeight: '600', marginBottom: 4 },
-    heroEmail: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 14 },
-    planBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(212,175,55,0.2)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: 'rgba(212,175,55,0.4)' },
-    planBadgeText: { fontSize: 12, fontWeight: '700', color: '#D4AF37' },
+    scroll: { paddingHorizontal: 20, paddingTop: 4 },
 
-    tabsContainer: { flexDirection: 'row', backgroundColor: '#E5E7EB', borderRadius: 12, padding: 4, marginTop: 20, marginBottom: 10 },
-    tabButton: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
-    tabButtonActive: { backgroundColor: C.surface, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
-    tabText: { fontSize: 13, fontWeight: '600', color: C.sub },
-    tabTextActive: { color: C.purple, fontWeight: '700' },
+    // Hero
+    heroCard:     { borderRadius: 24, padding: 24, alignItems: 'center', backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, marginBottom: 16, overflow: 'hidden', position: 'relative', shadowColor: '#B8860B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 3 },
+    heroOrb1:     { position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: C.goldBg, opacity: 0.8 },
+    heroOrb2:     { position: 'absolute', bottom: -30, left: -30, width: 120, height: 120, borderRadius: 60, backgroundColor: C.purpleBg, opacity: 0.5 },
+    avatarWrap:   { position: 'relative', marginBottom: 12, zIndex: 1 },
+    avatarGradient: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: C.goldRim },
+    avatarText:   { fontSize: 28, fontWeight: '800', color: C.surface },
+    avatarEdit:   { position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.surface },
+    heroName:     { fontSize: 20, fontWeight: '800', color: C.text, zIndex: 1 },
+    heroAtelier:  { fontSize: 13, color: C.gold, fontWeight: '600', marginBottom: 4, zIndex: 1 },
+    heroEmail:    { fontSize: 12, color: C.muted, marginBottom: 14, zIndex: 1 },
+    planBadge:    { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.goldBg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: C.goldRim, marginBottom: 20, zIndex: 1 },
+    planBadgeText:{ fontSize: 12, fontWeight: '700', color: C.goldDeep },
+
+    statsRow:  { flexDirection: 'row', width: '100%', backgroundColor: C.surfaceAlt, borderRadius: 14, borderWidth: 1, borderColor: C.border, overflow: 'hidden', zIndex: 1 },
+    statSep:   { width: 1, backgroundColor: C.border },
+    statItem:  { flex: 1, alignItems: 'center', paddingVertical: 12 },
+    statVal:   { fontSize: 18, fontWeight: '800', color: C.gold },
+    statLbl:   { fontSize: 10, color: C.muted, letterSpacing: 0.3, marginTop: 2 },
+
+    // Tabs
+    tabsContainer:  { flexDirection: 'row', backgroundColor: C.surfaceAlt, borderRadius: 14, padding: 4, marginBottom: 4, borderWidth: 1, borderColor: C.border },
+    tabButton:      { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+    tabButtonActive:{ backgroundColor: C.surface, borderWidth: 1, borderColor: C.goldRim, shadowColor: '#B8860B', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 1 },
+    tabText:        { fontSize: 13, fontWeight: '600', color: C.muted },
+    tabTextActive:  { color: C.goldDeep, fontWeight: '700' },
 
     textInput: { fontSize: 14, color: C.text, paddingVertical: 2, fontWeight: '600' },
-    saveBtn: { backgroundColor: C.purple, borderRadius: 12, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, shadowColor: C.purple, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
-    saveBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-    emptyText: { textAlign: 'center', color: C.muted, paddingVertical: 16, fontSize: 13 },
-    version: { textAlign: 'center', fontSize: 12, color: C.muted, marginTop: 28, marginBottom: 8 },
+    fixedBadge: { backgroundColor: C.goldBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: C.goldRim },
+    fixedBadgeText: { fontSize: 10, fontWeight: '700', color: C.goldDeep },
+    saveBtn:   { backgroundColor: C.gold, borderRadius: 14, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 4, shadowColor: '#B8860B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 4 },
+    saveBtnText: { color: C.surface, fontSize: 15, fontWeight: '700' },
+    emptyText: { textAlign: 'center', color: C.muted, paddingVertical: 20, fontSize: 13 },
+    version:   { textAlign: 'center', fontSize: 11, color: C.hint, marginTop: 32, marginBottom: 8, letterSpacing: 0.5 },
 });

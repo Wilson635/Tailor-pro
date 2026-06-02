@@ -89,9 +89,9 @@ export const clientService = {
 // COMMANDES
 // ==========================================
 
-export const orderService = {
+/*export const orderService = {
 
-    /** Récupère toutes les commandes de l'utilisateur */
+    /** Récupère toutes les commandes de l'utilisateur
     getAll: async () => {
         const userId = await getUserId();
         const { data, error } = await supabase
@@ -102,7 +102,7 @@ export const orderService = {
         return { data, error };
     },
 
-    /** Récupère les commandes d'un client */
+    /** Récupère les commandes d'un client
     getByClient: async (clientId: string) => {
         const { data, error } = await supabase
             .from('orders')
@@ -112,7 +112,7 @@ export const orderService = {
         return { data, error };
     },
 
-    /** Crée une commande */
+    /** Crée une commande
     create: async (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => {
         const userId = await getUserId();
         const { data, error } = await supabase
@@ -136,7 +136,7 @@ export const orderService = {
         return { data, error };
     },
 
-    /** Met à jour une commande */
+    /** Met à jour une commande
     update: async (orderId: string, updates: Partial<Order>) => {
         const { data, error } = await supabase
             .from('orders')
@@ -154,6 +154,89 @@ export const orderService = {
             })
             .eq('id', orderId)
             .select()
+            .single();
+        return { data, error };
+    },
+
+    /** Supprime une commande
+    delete: async (orderId: string) => {
+        const { error } = await supabase
+            .from('orders')
+            .delete()
+            .eq('id', orderId);
+        return { error };
+    },
+};*/
+
+// ==========================================
+// COMMANDES (Mis à jour avec order_items)
+// ==========================================
+
+export const orderService = {
+
+    /** Récupère toutes les commandes de l'utilisateur avec leurs items */
+    getAll: async () => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*, order_items(*)') // <── Jointure ici
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+        return { data, error };
+    },
+
+    /** Récupère les commandes d'un client avec leurs items */
+    getByClient: async (clientId: string) => {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*, order_items(*)') // <── Jointure ici
+            .eq('client_id', clientId)
+            .order('created_at', { ascending: false });
+        return { data, error };
+    },
+
+    /** Crée une commande et retourne l'objet complet avec ses items */
+    create: async (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('orders')
+            .insert({
+                user_id: userId,
+                client_id: order.clientId,
+                client_name: order.clientName,
+                clothing_type: order.clothingType,
+                description: order.description,
+                delivery_date: order.deliveryDate?.toISOString(),
+                urgency_level: order.urgencyLevel,
+                total_price: order.totalPrice,
+                advance_payment: order.advancePayment,
+                remaining_amount: order.remainingAmount,
+                payment_status: order.paymentStatus,
+                order_status: order.orderStatus,
+            })
+            .select('*, order_items(*)') // <── Récupère l'état complet après insertion
+            .single();
+        return { data, error };
+    },
+
+    /** Met à jour une commande */
+    update: async (orderId: string, updates: Partial<Order>) => {
+        const { data, error } = await supabase
+            .from('orders')
+            .update({
+                clothing_type: updates.clothingType,
+                description: updates.description,
+                delivery_date: updates.deliveryDate?.toISOString(),
+                urgency_level: updates.urgencyLevel,
+                total_price: updates.totalPrice,
+                advance_payment: updates.advancePayment,
+                remaining_amount: updates.remainingAmount,
+                payment_status: updates.paymentStatus,
+                order_status: updates.orderStatus,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', orderId)
+            .select('*, order_items(*)') // <── Récupère également ici lors d'un rafraîchissement
             .single();
         return { data, error };
     },
@@ -374,7 +457,7 @@ export const mapClient = (row: any): Client => ({
 });
 
 /** Convertit une ligne DB orders → type Order de l'app */
-export const mapOrder = (row: any): Order => ({
+/*export const mapOrder = (row: any): Order => ({
     id: row.id,
     clientId: row.client_id,
     clientName: row.client_name,
@@ -391,7 +474,42 @@ export const mapOrder = (row: any): Order => ({
     orderStatus: row.order_status,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
-});
+});*/
+
+/** Convertit une ligne DB orders → type Order de l'app */
+export const mapOrder = (row: any): Order => {
+    // Extraction des photos depuis les order_items imbriqués s'ils existent
+    const items = row.order_items || [];
+
+    const fabricPhotos = items
+        .filter((item: any) => item.item_type === 'fabric')
+        .map((item: any) => item.photo_url)
+        .filter(Boolean);
+
+    const inspirationPhotos = items
+        .filter((item: any) => item.item_type === 'inspiration' || item.item_type === 'model')
+        .map((item: any) => item.photo_url)
+        .filter(Boolean);
+
+    return {
+        id: row.id,
+        clientId: row.client_id,
+        clientName: row.client_name,
+        clothingType: row.clothing_type,
+        description: row.description ?? '',
+        fabricPhotos: fabricPhotos,            // Rempli dynamiquement
+        inspirationPhotos: inspirationPhotos,  // Rempli dynamiquement
+        deliveryDate: row.delivery_date ? new Date(row.delivery_date) : new Date(),
+        urgencyLevel: row.urgency_level,
+        totalPrice: Number(row.total_price ?? 0),
+        advancePayment: Number(row.advance_payment ?? 0),
+        remainingAmount: Number(row.remaining_amount ?? 0),
+        paymentStatus: row.payment_status,
+        orderStatus: row.order_status,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
+    };
+};
 
 /** Convertit une ligne DB activities → type Activity de l'app */
 export const mapActivity = (row: any) => ({

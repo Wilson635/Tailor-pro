@@ -2,7 +2,7 @@
 // ÉCRAN AJOUTER UNE COMMANDE - TailorPro (redesign)
 // ==========================================
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
   Alert,
   Image,
   Platform,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +28,9 @@ import {
 import type { ClothingType, RootStackParamList, UrgencyLevel } from '../../types';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { supabase } from "@/src/lib/supabase";
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddOrder'>;
 
@@ -116,12 +121,12 @@ const StyledInput = ({
 
 export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
-  const { addOrder, getClientById } = useAppStore();
+  const { addOrder, getClientById, clients } = useAppStore();
 
   const preselectedClientId = route.params?.clientId ?? '';
 
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedClientId] = useState(preselectedClientId);
+  const [selectedClientId, setSelectedClientId] = useState(preselectedClientId);
   const [clothingType, setClothingType] = useState<ClothingType>('robe_longue');
   const [urgency, setUrgency] = useState<UrgencyLevel>('medium');
   const [description, setDescription] = useState('');
@@ -135,12 +140,25 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
+  // ── États modal client ──
+  const [clientModalVisible, setClientModalVisible] = useState(false);
+  const [clientSearch, setClientSearch] = useState('');
+
   const selectedClient = selectedClientId ? getClientById(selectedClientId) : null;
 
   const total = parseInt(totalPrice) || 0;
   const advance = parseInt(advancePayment) || 0;
   const remaining = Math.max(0, total - advance);
   const paymentStatus = getPaymentStatus(total, advance);
+
+  // ── Liste filtrée pour le modal ──
+  const filteredClients = useMemo(() =>
+          clients.filter(c =>
+              c.fullName.toLowerCase().includes(clientSearch.toLowerCase()) ||
+              c.phone.includes(clientSearch)
+          ),
+      [clients, clientSearch]
+  );
 
   const pickImage = async (type: 'fabric' | 'inspiration') => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -165,56 +183,153 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
     else setInspirationPhotos(prev => prev.filter(p => p !== uri));
   };
 
-  const handleSubmit = async () => {
-    if (!selectedClientId) {
-      Alert.alert('Erreur', 'Veuillez sélectionner un client');
-      return;
+  const toSupabaseDate = (date: string | Date | null): string | null => {
+    if (!date) return null;
+    const str = date.toString();
+    const parts = str.split('/');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
     }
-    if (!totalPrice || total === 0) {
-      Alert.alert('Erreur', 'Veuillez entrer le montant total');
+    return str;
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedClientId || !clothingType || !totalPrice) {
+      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires (Client, Type de vêtement, Prix total).');
       return;
     }
 
     setIsLoading(true);
+
     try {
-      let parsedDeliveryDate: Date;
-      if (deliveryDate) {
-        const [day, month, year] = deliveryDate.split('/');
-        parsedDeliveryDate = new Date(Number(year), Number(month) - 1, Number(day));
-        if (isNaN(parsedDeliveryDate.getTime())) {
-          parsedDeliveryDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Utilisateur non connecté");
+
+      const parsedTotalPrice = parseFloat(totalPrice);
+      const parsedAdvancePayment = parseFloat(advancePayment) || 0;
+      const remainingAmount = parsedTotalPrice - parsedAdvancePayment;
+
+      let paymentStatus: 'unpaid' | 'partial' | 'paid' = 'unpaid';
+      if (parsedAdvancePayment >= parsedTotalPrice) paymentStatus = 'paid';
+      else if (parsedAdvancePayment > 0) paymentStatus = 'partial';
+
+      // 1. Création de la commande sur Supabase
+      const { data: newOrder, error: orderError } = await supabase
+          .from('orders')
+          .insert({
+            user_id: user.id,
+            client_id: selectedClientId,
+            client_name: selectedClient?.fullName ?? '',
+            clothing_type: clothingType,
+            description: description || null,
+            delivery_date: toSupabaseDate(deliveryDate),
+            urgency_level: urgency,
+            total_price: parsedTotalPrice,
+            advance_payment: parsedAdvancePayment,
+            remaining_amount: remainingAmount,
+            payment_status: paymentStatus,
+            order_status: 'pending',
+          })
+          .select()
+          .single();
+
+      if (orderError) throw orderError;
+
+      // 2. Traitement des photos d'inspiration
+      if (inspirationPhotos && inspirationPhotos.length > 0) {
+        for (const photoUri of inspirationPhotos) {
+
+          const { data: newCatalogModel, error: catalogError } = await supabase
+              .from('catalog')
+              .insert({
+                user_id: user.id,
+                name: `Modèle ${CLOTHING_TYPE_LABELS[clothingType] || clothingType} - ${selectedClient?.fullName ?? ''}`,
+                category: clothingType,
+                price: parsedTotalPrice,
+                description: `Ajouté automatiquement depuis la commande de ${selectedClient?.fullName ?? ''}`,
+                is_favorite: false
+              })
+              .select()
+              .single();
+
+          if (catalogError) {
+            console.error("Erreur création catalogue auto:", catalogError);
+            continue;
+          }
+
+          const fileExt = photoUri.split('.').pop() || 'jpg';
+          const fileName = `${user.id}/${newCatalogModel.id}-${Date.now()}.${fileExt}`;
+          const contentType = `image/${fileExt === 'png' ? 'png' : 'jpeg'}`;
+
+          try {
+            const base64Data = await FileSystem.readAsStringAsync(photoUri, {
+              encoding: 'base64',
+            });
+            const arrayBuffer = decode(base64Data);
+
+            const { error: uploadError } = await supabase.storage
+                .from('catalog-photos')
+                .upload(fileName, arrayBuffer, { contentType, upsert: true });
+
+            if (uploadError) {
+              console.error("Erreur upload storage:", uploadError);
+              continue;
+            }
+          } catch (fileError) {
+            console.error("Erreur lors de la lecture ou de l'upload du fichier:", fileError);
+            continue;
+          }
+
+          const { data: { publicUrl } } = supabase.storage
+              .from('catalog-photos')
+              .getPublicUrl(fileName);
+
+          const { data: addedPhoto, error: photoError } = await supabase
+              .from('catalog_photos')
+              .insert({
+                catalog_id: newCatalogModel.id,
+                user_id: user.id,
+                photo_url: publicUrl
+              })
+              .select()
+              .single();
+
+          if (photoError) {
+            console.error("Erreur insertion catalog_photos:", photoError);
+          }
+
+          const { error: orderItemError } = await supabase
+              .from('order_items')
+              .insert({
+                order_id: newOrder.id,
+                user_id: user.id,
+                item_type: 'inspiration',
+                photo_url: publicUrl,
+                catalog_id: newCatalogModel.id
+              });
+
+          if (orderItemError) {
+            console.error("Erreur insertion order_items:", orderItemError);
+          }
+
+          const modelWithPhoto = {
+            ...newCatalogModel,
+            catalog_photos: addedPhoto ? [addedPhoto] : [{ photo_url: publicUrl }]
+          };
+          useAppStore.getState().addCatalogModel(modelWithPhoto);
         }
-      } else {
-        parsedDeliveryDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       }
 
-      const payStatus = remaining === 0 ? 'paid' as const
-          : advance > 0 ? 'partial' as const
-              : 'unpaid' as const;
+      // 3. Mise à jour du store Zustand
+      useAppStore.getState().addOrder(newOrder);
 
-      const newOrder = await addOrder({
-        clientId: selectedClientId,
-        clientName: selectedClient?.fullName ?? '',
-        clothingType,
-        description,
-        fabricPhotos,
-        inspirationPhotos,
-        deliveryDate: parsedDeliveryDate,
-        urgencyLevel: urgency,
-        totalPrice: total,
-        advancePayment: advance,
-        remainingAmount: remaining,
-        paymentStatus: payStatus,
-        orderStatus: 'pending',
-      });
+      Alert.alert('Succès', 'La commande a bien été enregistrée et votre catalogue enrichi.', [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
 
-      if (!newOrder) {
-        Alert.alert('Erreur', 'Impossible de créer la commande');
-        return;
-      }
-      navigation.goBack();
-    } catch {
-      Alert.alert('Erreur', 'Impossible de créer la commande');
+    } catch (error: any) {
+      console.error(error);
+      Alert.alert('Erreur', error.message || "Une erreur est survenue lors de l'enregistrement.");
     } finally {
       setIsLoading(false);
     }
@@ -251,10 +366,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
 
         <ScrollView
             style={styles.scroll}
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingBottom: insets.bottom + 120 },
-            ]}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
         >
@@ -268,7 +380,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           >
             <TouchableOpacity
                 style={styles.clientRow}
-                onPress={() => navigation.navigate('Clients')}
+                onPress={() => setClientModalVisible(true)}
                 activeOpacity={0.7}
             >
               {selectedClient ? (
@@ -358,10 +470,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                   {fabricPhotos.map(uri => (
                       <View key={uri} style={styles.photoPreviewWrap}>
                         <Image source={{ uri }} style={styles.photoPreview} />
-                        <TouchableOpacity
-                            style={styles.removePhotoBtn}
-                            onPress={() => removePhoto(uri, 'fabric')}
-                        >
+                        <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(uri, 'fabric')}>
                           <Ionicons name="close" size={14} color="#fff" />
                         </TouchableOpacity>
                       </View>
@@ -387,10 +496,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                   {inspirationPhotos.map(uri => (
                       <View key={uri} style={styles.photoPreviewWrap}>
                         <Image source={{ uri }} style={styles.photoPreview} />
-                        <TouchableOpacity
-                            style={styles.removePhotoBtn}
-                            onPress={() => removePhoto(uri, 'inspiration')}
-                        >
+                        <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(uri, 'inspiration')}>
                           <Ionicons name="close" size={14} color="#fff" />
                         </TouchableOpacity>
                       </View>
@@ -495,7 +601,6 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               </View>
             </View>
 
-            {/* Résumé paiement */}
             <View style={styles.pricingSummary}>
               <View style={styles.pricingLeft}>
                 <View style={styles.pricingIconWrap}>
@@ -532,6 +637,137 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* ══════════════════════════════════════
+          MODAL SÉLECTION CLIENT
+      ══════════════════════════════════════ */}
+        <Modal
+            visible={clientModalVisible}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onRequestClose={() => setClientModalVisible(false)}
+        >
+          <View style={styles.modalContainer}>
+
+            {/* ── Header modal ── */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <Text style={styles.modalTitle}>Choisir un client</Text>
+                <Text style={styles.modalSubtitle}>{clients.length} client{clients.length > 1 ? 's' : ''} disponible{clients.length > 1 ? 's' : ''}</Text>
+              </View>
+              <TouchableOpacity
+                  style={styles.modalCloseBtn}
+                  onPress={() => {
+                    setClientModalVisible(false);
+                    setClientSearch('');
+                  }}
+              >
+                <Ionicons name="close" size={20} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Barre de recherche ── */}
+            <View style={styles.modalSearchWrap}>
+              <Ionicons name="search-outline" size={16} color={COLORS.gray400} />
+              <TextInput
+                  style={styles.modalSearchInput}
+                  placeholder="Rechercher par nom ou téléphone..."
+                  placeholderTextColor={COLORS.gray400}
+                  value={clientSearch}
+                  onChangeText={setClientSearch}
+                  autoFocus
+              />
+              {clientSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setClientSearch('')} style={{ padding: 2 }}>
+                    <Ionicons name="close-circle" size={16} color={COLORS.gray400} />
+                  </TouchableOpacity>
+              )}
+            </View>
+
+            {/* ── Résultat filtré ── */}
+            {clientSearch.length > 0 && (
+                <Text style={styles.modalResultCount}>
+                  {filteredClients.length} résultat{filteredClients.length > 1 ? 's' : ''}
+                </Text>
+            )}
+
+            {/* ── Liste des clients ── */}
+            <FlatList
+                data={filteredClients}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.modalList}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                ItemSeparatorComponent={() => <View style={styles.modalDivider} />}
+                ListEmptyComponent={
+                  <View style={styles.modalEmpty}>
+                    <View style={styles.modalEmptyIcon}>
+                      <Ionicons name="people-outline" size={32} color={COLORS.gray300} />
+                    </View>
+                    <Text style={styles.modalEmptyTitle}>Aucun client trouvé</Text>
+                    <Text style={styles.modalEmptyText}>
+                      {clientSearch ? `Aucun résultat pour "${clientSearch}"` : 'Votre carnet de clients est vide'}
+                    </Text>
+                  </View>
+                }
+                renderItem={({ item }) => {
+                  const isSelected = selectedClientId === item.id;
+                  return (
+                      <TouchableOpacity
+                          style={[styles.modalClientRow, isSelected && styles.modalClientRowActive]}
+                          onPress={() => {
+                            setSelectedClientId(item.id);
+                            setClientModalVisible(false);
+                            setClientSearch('');
+                          }}
+                          activeOpacity={0.7}
+                      >
+                        {/* Avatar */}
+                        <View style={[styles.modalAvatar, isSelected && styles.modalAvatarActive]}>
+                          <Text style={[styles.modalAvatarText, isSelected && styles.modalAvatarTextActive]}>
+                            {getInitials(item.fullName)}
+                          </Text>
+                        </View>
+
+                        {/* Infos */}
+                        <View style={styles.modalClientInfo}>
+                          <Text style={[styles.modalClientName, isSelected && { color: COLORS.primary }]}>
+                            {item.fullName}
+                          </Text>
+                          <View style={styles.modalClientMeta}>
+                            <Ionicons name="call-outline" size={11} color={COLORS.gray400} />
+                            <Text style={styles.modalClientSub}>{item.phone}</Text>
+                            {item.neighborhood ? (
+                                <>
+                                  <Text style={styles.modalClientDot}>·</Text>
+                                  <Ionicons name="location-outline" size={11} color={COLORS.gray400} />
+                                  <Text style={styles.modalClientSub}>{item.neighborhood}</Text>
+                                </>
+                            ) : null}
+                          </View>
+                          {item.isFavorite && (
+                              <View style={styles.modalFavBadge}>
+                                <Ionicons name="star" size={10} color="#92400E" />
+                                <Text style={styles.modalFavText}>Cliente fidèle</Text>
+                              </View>
+                          )}
+                        </View>
+
+                        {/* Check ou chevron */}
+                        {isSelected ? (
+                            <View style={styles.modalCheckWrap}>
+                              <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+                            </View>
+                        ) : (
+                            <Ionicons name="chevron-forward" size={16} color={COLORS.gray300} />
+                        )}
+                      </TouchableOpacity>
+                  );
+                }}
+            />
+          </View>
+        </Modal>
+
       </View>
   );
 };
@@ -542,7 +778,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
 
-  // Header courbé
+  // ── Header ──
   headerWrap: {
     backgroundColor: COLORS.primary,
     borderBottomLeftRadius: 28,
@@ -579,7 +815,7 @@ const styles = StyleSheet.create({
     marginTop: -SPACING.md,
   },
 
-  // Card
+  // ── Card ──
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 20,
@@ -620,7 +856,7 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
 
-  // Client
+  // ── Client row ──
   clientRow: {
     flexDirection: 'row', alignItems: 'center',
     gap: SPACING.md,
@@ -646,41 +882,28 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
-  // Types
-  typesScroll: {
-    paddingVertical: SPACING.xs,
-    gap: SPACING.sm,
-  },
+  // ── Types ──
+  typesScroll: { paddingVertical: SPACING.xs, gap: SPACING.sm },
   typeChip: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: SPACING.md, paddingVertical: 9,
     borderRadius: BORDER_RADIUS.full,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: 1, borderColor: COLORS.border,
     backgroundColor: COLORS.gray50,
   },
   typeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   typeChipText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
   typeChipTextActive: { color: '#fff', fontWeight: FONT_WEIGHTS.semibold },
 
-  // Photos
+  // ── Photos ──
   photosContainer: { gap: SPACING.md },
   photoSection: { gap: SPACING.sm },
   photoSectionHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  photoTitle: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.text,
-  },
+  photoTitle: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
   photoCount: { fontSize: 11, color: COLORS.textSecondary },
-  photoDivider: {
-    height: 0.5,
-    backgroundColor: COLORS.border,
-  },
+  photoDivider: { height: 0.5, backgroundColor: COLORS.border },
   photoAdd: {
     width: 90, height: 90,
     borderRadius: BORDER_RADIUS.md,
@@ -696,10 +919,7 @@ const styles = StyleSheet.create({
   },
   photoAddLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: FONT_WEIGHTS.medium },
   photoPreviewWrap: { position: 'relative' },
-  photoPreview: {
-    width: 90, height: 90,
-    borderRadius: BORDER_RADIUS.md,
-  },
+  photoPreview: { width: 90, height: 90, borderRadius: BORDER_RADIUS.md },
   removePhotoBtn: {
     position: 'absolute', top: -6, right: -6,
     width: 24, height: 24, borderRadius: 12,
@@ -708,7 +928,7 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: COLORS.white,
   },
 
-  // Field / inputs
+  // ── Field / inputs ──
   field: { gap: 6 },
   fieldLabel: {
     fontSize: FONT_SIZES.xs,
@@ -735,7 +955,7 @@ const styles = StyleSheet.create({
   },
   inputIconRight: { position: 'absolute', right: SPACING.md, top: '50%', marginTop: -9 },
 
-  // Urgency
+  // ── Urgency ──
   urgencyRow: { flexDirection: 'row', gap: SPACING.sm },
   urgencyChip: {
     flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
@@ -748,7 +968,7 @@ const styles = StyleSheet.create({
   urgencyDot: { width: 8, height: 8, borderRadius: 4 },
   urgencyLabel: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
 
-  // Pricing
+  // ── Pricing ──
   twoCol: { flexDirection: 'row', gap: SPACING.md },
   pricingSummary: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -770,7 +990,7 @@ const styles = StyleSheet.create({
   },
   statusPillText: { fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.semibold },
 
-  // Footer flottant
+  // ── Footer flottant ──
   footer: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: COLORS.white,
@@ -795,4 +1015,175 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   submitText: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: '#fff' },
+
+  // ══════════════════════════════════════
+  // STYLES MODAL CLIENT
+  // ══════════════════════════════════════
+  modalContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  // Header
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
+  },
+  modalHeaderLeft: {
+    gap: 2,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  modalSubtitle: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+  },
+  modalCloseBtn: {
+    width: 36, height: 36,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.gray100,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Recherche
+  modalSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    margin: SPACING.lg,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    height: 44,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    height: '100%',
+  },
+  modalResultCount: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+
+  // Liste
+  modalList: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xxxl,
+  },
+  modalDivider: {
+    height: 0.5,
+    backgroundColor: COLORS.border,
+  },
+
+  // Item client
+  modalClientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  modalClientRowActive: {
+    backgroundColor: '#F5F3FF',
+  },
+  modalAvatar: {
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  modalAvatarActive: {
+    backgroundColor: COLORS.primary,
+  },
+  modalAvatarText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.primary,
+  },
+  modalAvatarTextActive: {
+    color: '#fff',
+  },
+  modalClientInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  modalClientName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  modalClientMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  modalClientSub: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+  },
+  modalClientDot: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray300,
+  },
+  modalFavBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEF3C7',
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
+  modalFavText: {
+    fontSize: 10,
+    color: '#92400E',
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  modalCheckWrap: {
+    flexShrink: 0,
+  },
+
+  // Empty state
+  modalEmpty: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xxxl,
+    gap: SPACING.sm,
+  },
+  modalEmptyIcon: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: COLORS.gray100,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
+  modalEmptyTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+  },
+  modalEmptyText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray400,
+    textAlign: 'center',
+  },
 });
