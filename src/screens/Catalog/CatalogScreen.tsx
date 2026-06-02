@@ -2,7 +2,7 @@
 // ÉCRAN CATALOGUE - TailorPro
 // ==========================================
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,206 +12,322 @@ import {
   Image,
   Dimensions,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SearchBar, Badge } from '../../components/ui';
-import { useAppStore } from '../../store/useAppStore';
-import { formatCurrency } from '../../utils/formatters';
-import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
-import { CATEGORY_LABELS } from '../../constants/theme';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useAppStore } from '@store/useAppStore';
+import { formatCurrency } from '@utils/formatters';
+import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '@constants/theme';
+import {
+  CATALOG_FILTER_CATEGORIES,
+  CATALOG_CATEGORY_LABELS,
+  CATALOG_CATEGORY_ICONS,
+} from '@constants/catalogConstants';
 import type { CatalogModel, CatalogCategory } from '../../types';
+import { RootStackParamList } from '@/src/navigation/AppNavigator';
+
+// ==========================================
+// TYPES
+// ==========================================
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2;
 
-interface CatalogScreenProps {
-  onModelPress?: (modelId: string) => void;
-  onAddPress?: () => void;
-}
+// CATEGORIES et CATEGORY_ICONS viennent de @constants/catalogConstants
 
-export const CatalogScreen: React.FC<CatalogScreenProps> = ({
-  onModelPress,
-  onAddPress,
-}) => {
+// ==========================================
+// SOUS-COMPOSANT : carte modèle
+// ==========================================
+
+const ModelCard = ({
+                     item,
+                     onPress,
+                     onFavorite,
+                   }: {
+  item: CatalogModel;
+  onPress: () => void;
+  onFavorite: () => void;
+}) => (
+    <TouchableOpacity style={styles.modelCard} onPress={onPress} activeOpacity={0.85}>
+      <View style={styles.modelImageContainer}>
+        {item.photos.length > 0 ? (
+            <Image source={{ uri: item.photos[0] }} style={styles.modelImage} />
+        ) : (
+            <View style={[styles.modelImage, styles.modelImagePlaceholder]}>
+              <Ionicons name="image-outline" size={32} color={COLORS.gray300} />
+            </View>
+        )}
+
+        <TouchableOpacity
+            style={styles.favoriteButton}
+            onPress={onFavorite}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+              name={item.isFavorite ? 'heart' : 'heart-outline'}
+              size={18}
+              color={item.isFavorite ? '#EF4444' : '#fff'}
+          />
+        </TouchableOpacity>
+
+        <View style={styles.categoryBadge}>
+          <Text style={styles.categoryBadgeText}>
+            {CATALOG_CATEGORY_LABELS[item.category] ?? item.category}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.modelInfo}>
+        <Text style={styles.modelName} numberOfLines={1}>{item.name}</Text>
+        {item.price > 0 && (
+            <Text style={styles.modelPrice}>{formatCurrency(item.price)}</Text>
+        )}
+      </View>
+    </TouchableOpacity>
+);
+
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+
+export const CatalogScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const { catalog, searchQuery, setSearchQuery, selectedCatalogCategory, setCatalogCategory, toggleCatalogFavorite } = useAppStore();
+  const navigation = useNavigation<NavigationProp>();
+  const { catalog, toggleCatalogFavorite } = useAppStore();
+
+  const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
-
-  const categories: CatalogCategory[] = ['all', 'robes', 'costumes', 'chemises', 'enfants'];
-
-  const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
-    all: 'grid-outline',
-    robes: 'woman-outline',
-    costumes: 'shirt-outline',
-    chemises: 'shirt-outline',
-    enfants: 'happy-outline',
-    mariage: 'heart-outline',
-    traditionnel: 'earth-outline',
-    casual: 'sunny-outline',
-    luxe: 'diamond-outline',
-  };
 
   const filteredModels = useMemo(() => {
     let result = catalog;
 
-    // Filter by search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
       result = result.filter(
-        (model) =>
-          model.name.toLowerCase().includes(query) ||
-          model.description?.toLowerCase().includes(query)
+          (m) =>
+              m.name.toLowerCase().includes(q) ||
+              m.description?.toLowerCase().includes(q)
       );
     }
 
-    // Filter by category
     if (activeCategory !== 'all') {
-      result = result.filter((model) => model.category === activeCategory);
+      result = result.filter((m) => m.category === activeCategory);
     }
 
     return result;
   }, [catalog, searchQuery, activeCategory]);
 
-  const renderModelItem = ({ item }: { item: CatalogModel }) => (
-    <TouchableOpacity
-      style={styles.modelCard}
-      onPress={() => onModelPress?.(item.id)}
-      activeOpacity={0.8}
-    >
-      <View style={styles.modelImageContainer}>
-        <Image
-          source={{ uri: item.photos[0] || 'https://via.placeholder.com/200' }}
-          style={styles.modelImage}
-        />
-        <TouchableOpacity
-          style={styles.favoriteButton}
-          onPress={() => toggleCatalogFavorite(item.id)}
-        >
-          <Ionicons
-            name={item.isFavorite ? 'heart' : 'heart-outline'}
-            size={20}
-            color={item.isFavorite ? COLORS.error : COLORS.white}
-          />
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.modelInfo}>
-        <Text style={styles.modelName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.modelPrice}>{formatCurrency(item.price)}</Text>
-      </View>
-    </TouchableOpacity>
+  const favoriteCount = useMemo(
+      () => catalog.filter((m) => m.isFavorite).length,
+      [catalog]
+  );
+
+  const handleFavorite = useCallback(
+      (modelId: string) => toggleCatalogFavorite(modelId),
+      [toggleCatalogFavorite]
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity>
-          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Catalogue</Text>
-        <TouchableOpacity onPress={onAddPress}>
-          <Ionicons name="search" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-      </View>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
 
-      {/* Category Tabs */}
-      <View style={styles.categoriesContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoriesContent}
-        >
-          {categories.map((category) => (
-            <TouchableOpacity
-              key={category}
-              style={[
-                styles.categoryTab,
-                activeCategory === category && styles.categoryTabActive,
-              ]}
-              onPress={() => setActiveCategory(category)}
-            >
-              <View
-                style={[
-                  styles.categoryIcon,
-                  activeCategory === category && styles.categoryIconActive,
-                ]}
-              >
-                <Ionicons
-                  name={categoryIcons[category] || 'grid-outline'}
-                  size={20}
-                  color={activeCategory === category ? COLORS.white : COLORS.gray500}
-                />
-              </View>
-              <Text
-                style={[
-                  styles.categoryLabel,
-                  activeCategory === category && styles.categoryLabelActive,
-                ]}
-              >
-                {CATEGORY_LABELS[category]}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* Models Grid */}
-      <FlatList
-        data={filteredModels}
-        keyExtractor={(item) => item.id}
-        renderItem={renderModelItem}
-        numColumns={2}
-        columnWrapperStyle={styles.gridRow}
-        contentContainerStyle={styles.gridContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="images-outline" size={48} color={COLORS.gray300} />
-            <Text style={styles.emptyText}>Aucun modèle trouvé</Text>
+        {/* ── Header ── */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerTitle}>Mon Catalogue</Text>
+            <Text style={styles.headerSub}>
+              {catalog.length} modèle{catalog.length !== 1 ? 's' : ''}
+              {favoriteCount > 0 ? ` · ${favoriteCount} favori${favoriteCount !== 1 ? 's' : ''}` : ''}
+            </Text>
           </View>
-        }
-      />
-    </View>
+          <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => navigation.navigate('AddCatalogModel')}
+              activeOpacity={0.8}
+          >
+            <Ionicons name="add" size={22} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Barre de recherche ── */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search-outline" size={16} color={COLORS.gray400} style={styles.searchIcon} />
+          <TextInput
+              style={styles.searchInput}
+              placeholder="Rechercher un modèle…"
+              placeholderTextColor={COLORS.gray400}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={16} color={COLORS.gray400} />
+              </TouchableOpacity>
+          )}
+        </View>
+
+        {/* ── Filtres catégories ── */}
+        <View style={styles.categoriesWrapper}>
+          <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoriesContent}
+          >
+            {CATALOG_FILTER_CATEGORIES.map((cat) => (
+                <TouchableOpacity
+                    key={cat}
+                    style={[styles.catChip, activeCategory === cat && styles.catChipActive]}
+                    onPress={() => setActiveCategory(cat)}
+                    activeOpacity={0.7}
+                >
+                  <View style={[styles.catIconWrap, activeCategory === cat && styles.catIconWrapActive]}>
+                    <Ionicons
+                        name={CATALOG_CATEGORY_ICONS[cat]}
+                        size={18}
+                        color={activeCategory === cat ? '#fff' : COLORS.gray500}
+                    />
+                  </View>
+                  <Text style={[styles.catLabel, activeCategory === cat && styles.catLabelActive]}>
+                    {CATALOG_CATEGORY_LABELS[cat]}
+                  </Text>
+                </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* ── Grille modèles ── */}
+        <FlatList
+            data={filteredModels}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+                <ModelCard
+                    item={item}
+                    onPress={() => navigation.navigate('ModelDetails', { modelId: item.id })}
+                    onFavorite={() => handleFavorite(item.id)}
+                />
+            )}
+            numColumns={2}
+            columnWrapperStyle={styles.gridRow}
+            contentContainerStyle={[
+              styles.gridContent,
+              filteredModels.length === 0 && styles.gridContentEmpty,
+            ]}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="images-outline" size={52} color={COLORS.gray300} />
+                <Text style={styles.emptyTitle}>
+                  {searchQuery || activeCategory !== 'all'
+                      ? 'Aucun modèle trouvé'
+                      : 'Catalogue vide'}
+                </Text>
+                <Text style={styles.emptySubtitle}>
+                  {searchQuery || activeCategory !== 'all'
+                      ? 'Essayez d\'autres filtres'
+                      : 'Appuyez sur + pour ajouter votre premier modèle'}
+                </Text>
+                {!searchQuery && activeCategory === 'all' && (
+                    <TouchableOpacity
+                        style={styles.emptyBtn}
+                        onPress={() => navigation.navigate('AddCatalogModel')}
+                    >
+                      <Ionicons name="add" size={18} color="#fff" />
+                      <Text style={styles.emptyBtnText}>Ajouter un modèle</Text>
+                    </TouchableOpacity>
+                )}
+              </View>
+            }
+        />
+      </View>
   );
 };
+
+// ==========================================
+// STYLES
+// ==========================================
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
+
+  // ── Header ──
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     backgroundColor: COLORS.white,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
   },
   headerTitle: {
     fontSize: FONT_SIZES.lg,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.text,
   },
-  
-  // Categories
-  categoriesContainer: {
+  headerSub: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  addBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Recherche ──
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.white,
-    paddingBottom: SPACING.md,
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    height: 42,
+  },
+  searchIcon: {
+    marginRight: SPACING.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    height: '100%',
+  },
+
+  // ── Catégories ──
+  categoriesWrapper: {
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
   },
   categoriesContent: {
     paddingHorizontal: SPACING.lg,
-    gap: SPACING.md,
-  },
-  categoryTab: {
-    alignItems: 'center',
     paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
   },
-  categoryTabActive: {},
-  categoryIcon: {
+  catChip: {
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+  },
+  catChipActive: {},
+  catIconWrap: {
     width: 44,
     height: 44,
     borderRadius: BORDER_RADIUS.md,
@@ -220,30 +336,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: SPACING.xs,
   },
-  categoryIconActive: {
+  catIconWrapActive: {
     backgroundColor: COLORS.primary,
   },
-  categoryLabel: {
-    fontSize: FONT_SIZES.xs,
+  catLabel: {
+    fontSize: 11,
     color: COLORS.gray500,
     textAlign: 'center',
   },
-  categoryLabelActive: {
+  catLabelActive: {
     color: COLORS.primary,
     fontWeight: FONT_WEIGHTS.medium,
   },
-  
-  // Grid
+
+  // ── Grille ──
   gridContent: {
     padding: SPACING.lg,
     paddingBottom: SPACING.xxxl,
+  },
+  gridContentEmpty: {
+    flexGrow: 1,
   },
   gridRow: {
     justifyContent: 'space-between',
     marginBottom: SPACING.md,
   },
-  
-  // Model Card
+
+  // ── Carte modèle ──
   modelCard: {
     width: CARD_WIDTH,
     backgroundColor: COLORS.white,
@@ -259,41 +378,84 @@ const styles = StyleSheet.create({
     height: CARD_WIDTH * 1.3,
     resizeMode: 'cover',
   },
+  modelImagePlaceholder: {
+    backgroundColor: COLORS.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   favoriteButton: {
     position: 'absolute',
     top: SPACING.sm,
     right: SPACING.sm,
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  categoryBadge: {
+    position: 'absolute',
+    bottom: SPACING.sm,
+    left: SPACING.sm,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  categoryBadgeText: {
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: FONT_WEIGHTS.medium,
   },
   modelInfo: {
     padding: SPACING.md,
   },
   modelName: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontWeight: FONT_WEIGHTS.semibold,
     color: COLORS.text,
-    marginBottom: SPACING.xs / 2,
+    marginBottom: 3,
   },
   modelPrice: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontWeight: FONT_WEIGHTS.medium,
     color: COLORS.primary,
   },
-  
-  // Empty
+
+  // ── Vide ──
   emptyContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.xxxl * 2,
+    gap: SPACING.sm,
   },
-  emptyText: {
+  emptyTitle: {
     fontSize: FONT_SIZES.md,
-    color: COLORS.gray400,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.text,
+    marginTop: SPACING.sm,
+  },
+  emptySubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  emptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
     marginTop: SPACING.md,
+  },
+  emptyBtnText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#fff',
   },
 });

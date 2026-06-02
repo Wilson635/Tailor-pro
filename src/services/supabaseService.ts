@@ -5,7 +5,7 @@
 // Chaque fonction retourne { data, error }.
 
 import { supabase } from '@/src/lib/supabase';
-import type { Client, Order, Measurements, Payment, Statistics } from '../types';
+import type { Client, Order, Measurements, Payment, Statistics, CatalogModel } from '../types';
 
 // ==========================================
 // HELPERS INTERNES
@@ -437,6 +437,114 @@ export const statisticsService = {
         }
     },
 };
+
+
+// ==========================================
+// CATALOGUE
+// ==========================================
+
+export const catalogService = {
+
+    /** Récupère tous les modèles du tailleur */
+    getAll: async () => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('catalog')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+        return { data, error };
+    },
+
+    /** Crée un nouveau modèle */
+    create: async (model: Omit<CatalogModel, 'id' | 'createdAt'>) => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('catalog')
+            .insert({
+                user_id: userId,
+                name: model.name,
+                category: model.category,
+                price: model.price,
+                description: model.description ?? null,
+                photos: model.photos,
+                is_favorite: model.isFavorite ?? false,
+            })
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    /** Met à jour un modèle */
+    update: async (modelId: string, updates: Partial<CatalogModel>) => {
+        const { data, error } = await supabase
+            .from('catalog')
+            .update({
+                name: updates.name,
+                category: updates.category,
+                price: updates.price,
+                description: updates.description,
+                photos: updates.photos,
+                is_favorite: updates.isFavorite,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', modelId)
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    /** Supprime un modèle */
+    delete: async (modelId: string) => {
+        const { error } = await supabase
+            .from('catalog')
+            .delete()
+            .eq('id', modelId);
+        return { error };
+    },
+
+    /** Upload une image vers Supabase Storage et retourne l'URL publique */
+    uploadPhoto: async (localUri: string, fileName: string): Promise<string | null> => {
+        const userId = await getUserId();
+        try {
+            const response = await fetch(localUri);
+            const blob = await response.blob();
+            const path = `${userId}/catalog/${Date.now()}_${fileName}`;
+
+            const { error } = await supabase.storage
+                .from('catalog-photos')
+                .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+
+            if (error) return null;
+
+            const { data } = supabase.storage
+                .from('catalog-photos')
+                .getPublicUrl(path);
+
+            return data.publicUrl;
+        } catch {
+            return null;
+        }
+    },
+};
+
+// ==========================================
+// HELPER MAPPING — À AJOUTER en bas du fichier
+// (avec mapClient, mapOrder, mapActivity)
+// ==========================================
+
+/** Convertit une ligne DB catalog → type CatalogModel de l'app */
+export const mapCatalogModel = (row: any): CatalogModel => ({
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    price: Number(row.price ?? 0),
+    description: row.description ?? undefined,
+    photos: Array.isArray(row.photos) ? row.photos : [],
+    isFavorite: row.is_favorite ?? false,
+    createdAt: new Date(row.created_at),
+});
+
 
 // ==========================================
 // HELPERS — MAPPING DB → APP

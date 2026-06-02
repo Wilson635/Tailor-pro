@@ -40,6 +40,9 @@ import {
     StatisticsScreen,
 } from '../screens';
 
+// ── Nouveaux écrans catalogue ──
+import { AddCatalogModelScreen } from '@screens/Catalog/AddCatalogModel';
+
 // ── Écrans auth & onboarding ──
 import { WelcomeScreen } from '@screens/Welcome/WelcomeScreen';
 import { LoginScreen } from '@components/Auth';
@@ -63,8 +66,6 @@ const PALETTE = {
     border:  '#2E2845',
     text:    '#FFFFFF',
     sub:     'rgba(255,255,255,0.5)',
-    // ❌ AVANT : 'rgba(255,255,255,0.25)' -> Invisible sur fond blanc !
-    // ✅ APRÈS : Un gris/violet doux et visible sur fond blanc
     muted:   '#8A8594',
     gold:    '#D4AF37',
     goldBg:  'rgba(212,175,55,0.12)',
@@ -73,8 +74,6 @@ const PALETTE = {
     success: '#4ADE80',
     error:   '#EF4444',
     warning: '#F59E0B',
-
-    // nav bar (fond blanc demandé)
     navBg:   '#FFFFFF',
     navBorder: 'rgba(0,0,0,0.07)',
 };
@@ -93,9 +92,12 @@ export type RootStackParamList = {
     Payments: { clientId: string };
     AddPayment: { clientId: string; orderId?: string };
     AddOrder: { clientId?: string };
+    // ── Catalogue ──
     ModelDetails: { modelId: string };
+    AddCatalogModel: undefined;
+    // ──────────────
     Statistics: undefined;
-    Clients: undefined; // ← ajout
+    Clients: undefined;
     Login: undefined;
     Register: undefined;
     RegisterClient: undefined;
@@ -124,7 +126,7 @@ export type ClientTabParamList = {
     Mesures: { clientId: string };
 };
 
-const Stack    = createNativeStackNavigator<RootStackParamList>();
+const Stack     = createNativeStackNavigator<RootStackParamList>();
 const TailorTab = createBottomTabNavigator<TailorTabParamList>();
 const ClientTab = createBottomTabNavigator<ClientTabParamList>();
 
@@ -167,7 +169,6 @@ const PlusMenu: React.FC<PlusMenuProps> = ({ visible, onClose, items }) => {
 
             <View style={styles.menuContainer} pointerEvents="box-none">
                 {items.map((item, i) => {
-                    const delay = i * 40;
                     const translateY = anim.interpolate({
                         inputRange: [0, 1],
                         outputRange: [16, 0],
@@ -183,7 +184,6 @@ const PlusMenu: React.FC<PlusMenuProps> = ({ visible, onClose, items }) => {
                             style={[
                                 styles.menuItemWrap,
                                 { opacity, transform: [{ translateY }] },
-                                // stagger via native driver workaround
                             ]}
                         >
                             <TouchableOpacity
@@ -474,14 +474,27 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
                                 : <TailorTabNavigator {...props} />
                         }
                     </Stack.Screen>
+
+                    {/* ── Clients ── */}
                     <Stack.Screen name="ClientDetails"   component={ClientDetailsScreen} />
                     <Stack.Screen name="AddClient"       component={AddClientScreen} />
+
+                    {/* ── Mesures ── */}
                     <Stack.Screen name="Measurements"    component={MeasurementsScreen} />
                     <Stack.Screen name="AddMeasurements" component={AddMeasurementsScreen} />
+
+                    {/* ── Paiements ── */}
                     <Stack.Screen name="Payments"        component={PaymentsScreen} />
                     <Stack.Screen name="AddPayment"      component={AddPaymentScreen} />
+
+                    {/* ── Commandes ── */}
                     <Stack.Screen name="AddOrder"        component={AddOrderScreen} />
+
+                    {/* ── Catalogue ── */}
                     <Stack.Screen name="ModelDetails"    component={ModelDetailsScreen} />
+                    <Stack.Screen name="AddCatalogModel" component={AddCatalogModelScreen} />
+
+                    {/* ── Divers ── */}
                     <Stack.Screen name="Statistics"      component={StatisticsScreen} />
                     <Stack.Screen name="Profile"         component={ProfileScreen} />
                 </>
@@ -501,6 +514,8 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
         </Stack.Navigator>
     );
 };
+
+export default AppNavigator;
 
 // ==========================================
 // STYLES
@@ -578,7 +593,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: -20,
-        // ombre légère pour le décoller de la barre
         ...Platform.select({
             ios: {
                 shadowColor: PALETTE.bg,
@@ -654,5 +668,3 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
 });
-
-export default AppNavigator;

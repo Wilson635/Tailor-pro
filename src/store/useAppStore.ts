@@ -8,8 +8,8 @@
 import { create } from 'zustand';
 import { supabase } from '@/src/lib/supabase';
 import {
-  clientService, orderService, activityService,
-  statisticsService, measurementService, mapClient, mapOrder, mapActivity,
+  clientService, orderService, activityService, catalogService,
+  statisticsService, measurementService, mapClient, mapOrder, mapActivity, mapCatalogModel
 } from '@services/supabaseService';
 import type { Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics } from '../types';
 
@@ -86,11 +86,18 @@ interface AppState {
   addPayment: (clientId: string, payment: Payment) => void;
 
   // ── Actions Catalog (local uniquement pour l'instant) ──
-  setCatalog: (catalog: CatalogModel[]) => void;
+  loadCatalog: () => Promise<void>;
+  addCatalogModel: (model: Omit<CatalogModel, 'id' | 'createdAt'>) => Promise<CatalogModel | null>;
+  updateCatalogModel: (modelId: string, data: Partial<CatalogModel>) => Promise<void>;
+  deleteCatalogModel: (modelId: string) => Promise<void>;
+  toggleCatalogFavorite: (modelId: string) => Promise<void>;
+
+
+  /*setCatalog: (catalog: CatalogModel[]) => void;
   addCatalogModel: (model: CatalogModel) => void;
   updateCatalogModel: (modelId: string, data: Partial<CatalogModel>) => void;
   deleteCatalogModel: (modelId: string) => void;
-  toggleCatalogFavorite: (modelId: string) => void;
+  toggleCatalogFavorite: (modelId: string) => void;*/
 
   // ── Actions UI ──
   setLoading: (loading: boolean) => void;
@@ -273,6 +280,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().loadClients(),
         get().loadOrders(),
         get().loadActivities(),
+        get().loadCatalog(),
         get().loadStatistics(),
       ]);
     }
@@ -454,6 +462,56 @@ export const useAppStore = create<AppState>((set, get) => ({
   // CATALOG (local)
   // ==========================================
 
+  loadCatalog: async () => {
+    const { data, error } = await catalogService.getAll();
+    if (error) { set({ error: error.message }); return; }
+    set({ catalog: (data ?? []).map(mapCatalogModel) });
+  },
+
+  addCatalogModel: async (modelData: Omit<CatalogModel, 'id' | 'createdAt'>) => {
+    const { data, error } = await catalogService.create(modelData);
+    if (error || !data) { set({ error: error?.message }); return null; }
+
+    const newModel = mapCatalogModel(data);
+    set((state: any) => ({ catalog: [newModel, ...state.catalog] }));
+    return newModel;
+  },
+
+  updateCatalogModel: async (modelId: string, updates: Partial<CatalogModel>) => {
+    const { error } = await catalogService.update(modelId, updates);
+    if (error) { set({ error: error.message }); return; }
+
+    set((state: any) => ({
+      catalog: state.catalog.map((m: CatalogModel) =>
+          m.id === modelId ? { ...m, ...updates } : m
+      ),
+    }));
+  },
+
+  deleteCatalogModel: async (modelId: string) => {
+    const { error } = await catalogService.delete(modelId);
+    if (error) { set({ error: error.message }); return; }
+
+    set((state: any) => ({
+      catalog: state.catalog.filter((m: CatalogModel) => m.id !== modelId),
+    }));
+  },
+
+  toggleCatalogFavorite: async (modelId: string) => {
+    const model = get().catalog.find((m: CatalogModel) => m.id === modelId);
+    if (!model) return;
+
+    const newFav = !model.isFavorite;
+    // Mise à jour optimiste
+    set((state: any) => ({
+      catalog: state.catalog.map((m: CatalogModel) =>
+          m.id === modelId ? { ...m, isFavorite: newFav } : m
+      ),
+    }));
+    // Persistance
+    await catalogService.update(modelId, { isFavorite: newFav });
+  },
+  /*
   setCatalog: (catalog) => set({ catalog }),
   addCatalogModel: (model) =>
       set(state => ({ catalog: [model, ...state.catalog] })),
@@ -471,7 +529,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             m.id === modelId ? { ...m, isFavorite: !m.isFavorite } : m
         ),
       })),
-
+*/
   // ==========================================
   // UI
   // ==========================================
