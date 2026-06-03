@@ -9,7 +9,7 @@ import { create } from 'zustand';
 import { supabase } from '@/src/lib/supabase';
 import {
   clientService, orderService, activityService, catalogService,
-  statisticsService, measurementService, mapClient, mapOrder, mapActivity, mapCatalogModel
+  statisticsService, measurementService, mapClient, mapOrder, mapActivity, mapCatalogModel, paymentService
 } from '@services/supabaseService';
 import type { Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics } from '../types';
 
@@ -83,7 +83,16 @@ interface AppState {
   ) => Promise<Measurements | null>;
 
   // ── Actions Payments ──
-  addPayment: (clientId: string, payment: Payment) => void;
+  ///addPayment: (clientId: string, payment: Payment) => void;
+  addPayment: (params: {
+    orderId: string;
+    clientId: string;
+    amount: number;
+    method: 'cash' | 'mobile_money' | 'bank_transfer' | 'other';
+    notes?: string;
+  }) => Promise<Payment | null>;
+
+  loadPaymentsForOrder: (orderId: string) => Promise<void>;
 
   // ── Actions Catalog (local uniquement pour l'instant) ──
   loadCatalog: () => Promise<void>;
@@ -450,13 +459,113 @@ export const useAppStore = create<AppState>((set, get) => ({
   // PAIEMENTS
   // ==========================================
 
-  addPayment: (clientId, payment) =>
+  /*addPayment: (clientId, payment) =>
       set(state => ({
         payments: {
           ...state.payments,
           [clientId]: [...(state.payments[clientId] ?? []), payment],
         },
-      })),
+      })),*/
+  addPayment: async ({ orderId, clientId, amount, method, notes }) => {
+    // 1. Persiste dans Supabase
+    const { data, error } = await paymentService.create({
+      orderId,
+      amount,
+      method,
+      notes,
+    });
+
+    if (error || !data) {
+      set({ error: error?.message ?? 'Erreur lors de l\'enregistrement du paiement' });
+      return null;
+    }
+
+    const newPayment: Payment = {
+      id:            data.id,
+      orderId,
+      clientId,
+      amount,
+      method,
+      notes,
+      date:          new Date(data.payment_date),
+      createdAt:     new Date(data.created_at),
+      updatedAt:     new Date(data.created_at),
+    };
+
+    // 2. Met à jour le store local (keyed by orderId)
+    set(state => ({
+      payments: {
+        ...state.payments,
+        [orderId]: [...(state.payments[orderId] ?? []), newPayment],
+      },
+    }));
+
+    // 3. Recalcule remaining_amount et payment_status de la commande
+    const order = get().orders.find(o => o.id === orderId);
+    if (order) {
+      const newRemaining = Math.max(0, order.remainingAmount - amount);
+      const newPayStatus =
+          newRemaining <= 0 ? 'paid' :
+              newRemaining < order.totalPrice ? 'partial' :
+                  'unpaid';
+
+      await get().updateOrder(orderId, {
+        remainingAmount: newRemaining,
+        paymentStatus:   newPayStatus,
+      });
+
+      // 4. Met à jour la balance du client
+      const client = get().getClientById(clientId);
+      if (client) {
+        await clientService.update(clientId, {
+          balance: Math.max(0, client.balance - amount),
+        });
+        set(state => ({
+          clients: state.clients.map(c =>
+              c.id === clientId
+                  ? { ...c, balance: Math.max(0, c.balance - amount) }
+                  : c
+          ),
+        }));
+      }
+    }
+
+    // 5. Activité + stats
+    await activityService.create({
+      type:     'payment_received',
+      title:    'Paiement reçu',
+      subtitle: order?.clientName,
+      amount,
+      clientId,
+      orderId,
+    });
+
+    get().loadStatistics();
+    get().loadActivities();
+
+    return newPayment;
+  },
+
+  loadPaymentsForOrder: async (orderId: string) => {
+    const { data, error } = await paymentService.getByOrder(orderId);
+    if (error || !data) return;
+
+    const mapped: Payment[] = (data as any[]).map(p => ({
+      id:        p.id,
+      orderId:   p.order_id,
+      clientId:  '', // non stocké dans payments table, à compléter si besoin
+      amount:    Number(p.amount),
+      method:    p.payment_method,
+      notes:     p.notes ?? undefined,
+      date:      new Date(p.payment_date),
+      createdAt: new Date(p.created_at),
+      updatedAt: new Date(p.created_at),
+    }));
+
+    set(state => ({
+      payments: { ...state.payments, [orderId]: mapped },
+    }));
+  },
 
   // ==========================================
   // CATALOG (local)

@@ -36,6 +36,12 @@ export interface Measurements {
   thighCircumference?: number;      // Tour de cuisse
 }
 
+export interface OrderItem {
+  id:       string;
+  itemType: 'fabric' | 'inspiration';
+  photoUrl: string;
+}
+
 // Commande
 export interface Order {
   id: string;
@@ -54,6 +60,7 @@ export interface Order {
   orderStatus: OrderStatus;
   createdAt: Date;
   updatedAt: Date;
+  orderItems?:     OrderItem[];
 }
 
 export type UrgencyLevel =
@@ -70,6 +77,8 @@ export interface Payment {
   date: Date;
   method?: 'cash' | 'mobile_money' | 'bank_transfer' | 'other';
   notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // Modèle de catalogue

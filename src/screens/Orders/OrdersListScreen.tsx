@@ -1,5 +1,6 @@
 // ==========================================
-// ÉCRAN LISTE DES COMMANDES - TailorPro (Redesign)
+// ÉCRAN LISTE DES COMMANDES - TailorPro
+// Design original restauré + navigation OrderDetails
 // ==========================================
 
 import React, { useState, useMemo } from 'react';
@@ -140,14 +141,15 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
   // ==========================================
 
   const renderOrderItem = ({ item }: { item: Order }) => {
-    const palette = getAvatarPalette(item.clientId);
+    const palette     = getAvatarPalette(item.clientId);
     const statusStyle = ORDER_STATUS_STYLE[item.orderStatus] ?? ORDER_STATUS_STYLE.pending;
-    const payStyle = PAYMENT_STATUS_STYLE[item.paymentStatus] ?? PAYMENT_STATUS_STYLE.unpaid;
+    const payStyle    = PAYMENT_STATUS_STYLE[item.paymentStatus] ?? PAYMENT_STATUS_STYLE.unpaid;
 
     return (
         <TouchableOpacity
             style={styles.orderCard}
-            onPress={() => {}}
+            // ── Navigation vers les détails ──
+            onPress={() => navigation.navigate('OrderDetails', { orderId: item.id })}
             activeOpacity={0.7}
         >
           {/* ── Top : avatar + nom + statut ── */}
@@ -228,15 +230,9 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.topBar}>
           <View style={styles.topBarRow}>
             <View style={styles.topBarLeft}>
-              <TouchableOpacity style={styles.iconBtn}>
-                <Ionicons name="menu" size={20} color={COLORS.text} />
-              </TouchableOpacity>
               <Text style={styles.screenTitle}>Commandes</Text>
             </View>
             <View style={styles.topBarRight}>
-              <TouchableOpacity style={styles.iconBtn}>
-                <Ionicons name="options-outline" size={20} color={COLORS.text} />
-              </TouchableOpacity>
               <TouchableOpacity
                   style={styles.addBtn}
                   onPress={() => navigation.navigate('AddOrder', { clientId: undefined })}
@@ -325,7 +321,7 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 // ==========================================
-// STYLES
+// STYLES — Design original (sans ombres)
 // ==========================================
 
 const styles = StyleSheet.create({
@@ -394,19 +390,12 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     height: 40,
   },
-  searchIcon: { marginRight: SPACING.sm },
-  searchInput: {
-    flex: 1,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    height: '100%',
-  },
-  clearBtn: { padding: 4 },
+  searchIcon:  { marginRight: SPACING.sm },
+  searchInput: { flex: 1, fontSize: FONT_SIZES.md, color: COLORS.text, height: '100%' },
+  clearBtn:    { padding: 4 },
 
   // ── Tabs ──
-  tabsRow: {
-    flexDirection: 'row',
-  },
+  tabsRow: { flexDirection: 'row' },
   tab: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -414,17 +403,9 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
     marginBottom: -0.5,
   },
-  tabActive: {
-    borderBottomColor: COLORS.primary,
-  },
-  tabText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  tabTextActive: {
-    color: COLORS.primary,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
+  tabActive:     { borderBottomColor: COLORS.primary },
+  tabText:       { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  tabTextActive: { color: COLORS.primary, fontWeight: FONT_WEIGHTS.semibold },
 
   // ── Stats ──
   statsRow: {
@@ -442,21 +423,9 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: COLORS.border,
   },
-  statLabel: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
-    marginBottom: 3,
-  },
-  statVal: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.text,
-  },
-  statSub: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.primary,
-    marginTop: 2,
-  },
+  statLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginBottom: 3 },
+  statVal:   { fontSize: FONT_SIZES.xxl, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  statSub:   { fontSize: FONT_SIZES.xs, color: COLORS.primary, marginTop: 2 },
 
   // ── Section label ──
   sectionLabel: {
@@ -471,9 +440,7 @@ const styles = StyleSheet.create({
   },
 
   // ── List ──
-  listContent: {
-    paddingBottom: SPACING.xxxl * 2,
-  },
+  listContent: { paddingBottom: SPACING.xxxl * 2 },
 
   // ── Order Card ──
   orderCard: {
@@ -501,34 +468,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  ocAvatarText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  ocInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  ocName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.text,
-  },
-  ocType: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
-    marginTop: 1,
-  },
+  ocAvatarText: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold },
+  ocInfo:       { flex: 1, minWidth: 0 },
+  ocName:       { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  ocType:       { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 1 },
   statusPill: {
     borderRadius: BORDER_RADIUS.full,
     paddingHorizontal: 9,
     paddingVertical: 3,
     flexShrink: 0,
   },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: FONT_WEIGHTS.medium,
-  },
+  statusPillText: { fontSize: 11, fontWeight: FONT_WEIGHTS.medium },
 
   // Meta
   ocMeta: {
@@ -540,20 +490,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5,
     borderTopColor: COLORS.border,
   },
-  ocMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  ocMetaText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
-  },
-  urgencyDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
+  ocMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ocMetaText: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
+  urgencyDot: { width: 7, height: 7, borderRadius: 4 },
 
   // Footer
   ocFooter: {
@@ -566,31 +505,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5,
     borderTopColor: COLORS.border,
   },
-  ocRemain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ocRemainLabel: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
-  },
-  ocRemainVal: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: '#991B1B',
-  },
-  ocRemainPaid: {
-    color: '#065F46',
-  },
-  payPill: {
-    borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-  },
-  payPillText: {
-    fontSize: 11,
-    fontWeight: FONT_WEIGHTS.medium,
-  },
+  ocRemain:      { flexDirection: 'row', alignItems: 'center' },
+  ocRemainLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
+  ocRemainVal:   { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: '#991B1B' },
+  ocRemainPaid:  { color: '#065F46' },
+  payPill:       { borderRadius: BORDER_RADIUS.full, paddingHorizontal: 9, paddingVertical: 3 },
+  payPillText:   { fontSize: 11, fontWeight: FONT_WEIGHTS.medium },
 
   // ── Empty ──
   emptyContainer: {
@@ -598,9 +518,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING.xxxl * 2,
   },
-  emptyText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.gray400,
-    marginTop: SPACING.md,
-  },
+  emptyText: { fontSize: FONT_SIZES.md, color: COLORS.gray400, marginTop: SPACING.md },
 });

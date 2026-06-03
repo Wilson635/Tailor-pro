@@ -55,6 +55,7 @@ import { ClientOrdersScreen } from '@screens/Orders/ClientOrdersScreen';
 import { OnboardingScreen } from '@screens/Onboarding/Onboardingscreen';
 import { BiometricAuthScreen } from '@components/Biometricauthscreen';
 import { ProfileScreen } from '@screens/Userprofile/Profilescreen';
+import {OrderDetailsScreen} from "@screens/Orders/OrderDetailsScreen";
 
 // ==========================================
 // PALETTE
@@ -92,6 +93,7 @@ export type RootStackParamList = {
     Payments: { clientId: string };
     AddPayment: { clientId: string; orderId?: string };
     AddOrder: { clientId?: string };
+    OrderDetails: { orderId: string };
     // ── Catalogue ──
     ModelDetails: { modelId: string };
     AddCatalogModel: undefined;
@@ -489,6 +491,7 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
 
                     {/* ── Commandes ── */}
                     <Stack.Screen name="AddOrder"        component={AddOrderScreen} />
+                    <Stack.Screen name="OrderDetails"  component={OrderDetailsScreen} />
 
                     {/* ── Catalogue ── */}
                     <Stack.Screen name="ModelDetails"    component={ModelDetailsScreen} />

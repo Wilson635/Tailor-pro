@@ -616,6 +616,11 @@ export const mapOrder = (row: any): Order => {
         orderStatus: row.order_status,
         createdAt: new Date(row.created_at),
         updatedAt: new Date(row.updated_at),
+        orderItems: (row.order_items ?? []).map((item: any) => ({
+            id:        item.id,
+            itemType:  item.item_type,   // 'fabric' | 'inspiration'
+            photoUrl:  item.photo_url,
+        })),
     };
 };
 
