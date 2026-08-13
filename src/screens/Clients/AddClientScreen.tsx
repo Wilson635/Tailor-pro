@@ -717,10 +717,10 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
     setIsLoading(true);
     try {
       const newClient = await addClient({
-        fullName:     formData.fullName.trim(),
-        phone:        `${selectedCountry.dial} ${formData.phone.trim()}`,
-        neighborhood: formData.neighborhood.trim(),
-        gender:       formData.gender,
+        nom:     formData.fullName.trim(),
+        telephone:        `${selectedCountry.dial} ${formData.phone.trim()}`,
+        adresse: formData.neighborhood.trim(),
+        sexe:       formData.gender === 'female' ? 'femme' : 'homme',
         photo:        photo ?? undefined,
         isFavorite:   false,
         balance:      0,

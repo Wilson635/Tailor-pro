@@ -59,8 +59,9 @@ const FILTERS: { key: FilterType; label: string }[] = [
 // HELPERS
 // ==========================================
 
-const getInitials = (name: string): string => {
-  const parts = name.trim().split(' ');
+const getInitials = (name: string | null | undefined): string => {
+  if (!name || typeof name !== 'string') return '?';
+  const parts = name.trim().split(' ').filter(Boolean);
   if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   return name.slice(0, 2).toUpperCase();
 };
@@ -77,17 +78,6 @@ const isNewClient = (createdAt: Date): boolean => {
 // ==========================================
 // SOUS-COMPOSANTS
 // ==========================================
-
-/*const ClientAvatar = ({ client }: { client: Client }) => {
-  const palette = getAvatarPalette(client.id);
-  return (
-      <View style={[styles.avatar, { backgroundColor: palette.bg }]}>
-        <Text style={[styles.avatarText, { color: palette.text }]}>
-          {getInitials(client.fullName)}
-        </Text>
-      </View>
-  );
-};*/
 
 const ClientAvatar = ({ client }: { client: Client }) => {
   const palette = getAvatarPalette(client.id);
@@ -108,7 +98,7 @@ const ClientAvatar = ({ client }: { client: Client }) => {
   return (
       <View style={[styles.avatar, { backgroundColor: palette.bg }]}>
         <Text style={[styles.avatarText, { color: palette.text }]}>
-          {getInitials(client.fullName)}
+          {getInitials(client.nom)}
         </Text>
       </View>
   );
@@ -154,9 +144,9 @@ export const ClientsListScreen: React.FC<Props> = ({ navigation }) => {
       const q = searchQuery.toLowerCase();
       result = result.filter(
           (c) =>
-              c.fullName.toLowerCase().includes(q) ||
-              c.phone.includes(q) ||
-              c.neighborhood.toLowerCase().includes(q)
+              (c.nom ?? '').toLowerCase().includes(q) ||
+              (c.telephone ?? '').includes(q) ||
+              (c.adresse ?? '').toLowerCase().includes(q)
       );
     }
 
@@ -193,7 +183,7 @@ export const ClientsListScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.clientInfo}>
             <View style={styles.clientNameRow}>
               <Text style={styles.clientName} numberOfLines={1}>
-                {item.fullName}
+                {item.nom}
               </Text>
               {item.isFavorite && (
                   <View style={styles.badgeFidele}>
@@ -207,12 +197,12 @@ export const ClientsListScreen: React.FC<Props> = ({ navigation }) => {
               )}
             </View>
 
-            <Text style={styles.clientPhone}>{formatPhone(item.phone)}</Text>
+            <Text style={styles.clientPhone}>{formatPhone(item.telephone)}</Text>
 
             <View style={styles.clientLocRow}>
               <Ionicons name="location-outline" size={11} color={COLORS.gray400} />
               <Text style={styles.clientLoc} numberOfLines={1}>
-                {item.neighborhood}
+                {item.adresse}
               </Text>
             </View>
           </View>

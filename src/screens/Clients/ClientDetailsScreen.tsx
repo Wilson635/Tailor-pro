@@ -189,16 +189,16 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   ];
 
   const handleCall = () =>
-      Linking.openURL(`tel:${client.phone.replace(/\s/g, '')}`);
+      Linking.openURL(`tel:${client.telephone.replace(/\s/g, '')}`);
   const handleWhatsApp = () => {
-    const phone = client.phone.replace(/\s/g, '').replace('+', '');
+    const phone = client.telephone.replace(/\s/g, '').replace('+', '');
     Linking.openURL(`whatsapp://send?phone=${phone}`);
   };
   const handleSMS = () =>
-      Linking.openURL(`sms:${client.phone.replace(/\s/g, '')}`);
+      Linking.openURL(`sms:${client.telephone.replace(/\s/g, '')}`);
   const handleDirections = () =>
       Linking.openURL(
-          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.neighborhood)}`
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.adresse)}`
       );
 
   const orderStatusColor: Record<string, string> = {
@@ -241,9 +241,9 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           {/* ── Hero ── */}
           <View style={styles.hero}>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>{getInitials(client.fullName)}</Text>
+              <Text style={styles.avatarText}>{getInitials(client.nom)}</Text>
             </View>
-            <Text style={styles.heroName}>{client.fullName}</Text>
+            <Text style={styles.heroName}>{client.nom}</Text>
             {client.isFavorite && (
                 <View style={styles.heroBadge}>
                   <Ionicons name="star" size={11} color="#fff" style={{ marginRight: 4 }} />
@@ -253,11 +253,11 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             <View style={styles.heroMeta}>
               <View style={styles.heroMetaItem}>
                 <Ionicons name="call-outline" size={12} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.heroMetaText}>{formatPhone(client.phone)}</Text>
+                <Text style={styles.heroMetaText}>{formatPhone(client.telephone)}</Text>
               </View>
               <View style={styles.heroMetaItem}>
                 <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.heroMetaText}>{client.neighborhood}</Text>
+                <Text style={styles.heroMetaText}>{client.adresse}</Text>
               </View>
             </View>
           </View>
@@ -405,7 +405,7 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               <InfoRow
                   icon="location-outline"
                   label="Quartier"
-                  value={client.neighborhood}
+                  value={client.adresse}
               />
               <InfoRow
                   icon="wallet-outline"

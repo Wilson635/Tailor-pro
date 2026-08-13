@@ -26,6 +26,7 @@ import { TailorDashboard } from '@components/dashboard/TailorDashboard';
 import { ClientDashboard } from '@components/dashboard/ClientDashboard';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { nativeDriver } from '@utils/animation';
 
 // ── Palette ──
 const P = {
@@ -81,13 +82,13 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   const openMenu = () => {
     setMenuVisible(true);
     Animated.spring(menuAnim, {
-      toValue: 1, useNativeDriver: true, tension: 80, friction: 12,
+      toValue: 1, useNativeDriver: nativeDriver, tension: 80, friction: 12,
     }).start();
   };
 
   const closeMenu = () => {
     Animated.timing(menuAnim, {
-      toValue: 0, duration: 160, useNativeDriver: true,
+      toValue: 0, duration: 160, useNativeDriver: nativeDriver,
     }).start(() => setMenuVisible(false));
   };
 

@@ -1,3 +1,5 @@
+// services/supabaseServices.ts
+
 // ==========================================
 // SERVICE SUPABASE - TailorPro
 // ==========================================
@@ -5,7 +7,7 @@
 // Chaque fonction retourne { data, error }.
 
 import { supabase } from '@/src/lib/supabase';
-import type { Client, Order, Measurements, Payment, Statistics, CatalogModel } from '../types';
+import type { Client, Order, Measurements, Payment, Statistics, CatalogModel, FicheMensuration, TypeVetement } from '../types';
 
 // ==========================================
 // HELPERS INTERNES
@@ -24,31 +26,40 @@ const getUserId = async (): Promise<string> => {
 
 export const clientService = {
 
-    /** Récupère tous les clients de l'utilisateur */
+    /** Récupère tous les clients du couturier connecté (hors supprimés) */
     getAll: async () => {
         const userId = await getUserId();
         const { data, error } = await supabase
             .from('clients')
             .select('*')
-            .eq('user_id', userId)
+            .eq('couturier_id', userId)
+            .is('deleted_at', null)
             .order('created_at', { ascending: false });
         return { data, error };
     },
 
     /** Crée un nouveau client */
-    create: async (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => {
+    create: async (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) => {
         const userId = await getUserId();
         const { data, error } = await supabase
             .from('clients')
             .insert({
-                user_id: userId,
-                full_name: client.fullName,
-                phone: client.phone,
-                neighborhood: client.neighborhood,
-                gender: client.gender,
-                photo_url: client.photo ?? null,
-                is_favorite: client.isFavorite ?? false,
-                balance: client.balance ?? 0,
+                couturier_id:   userId,
+                nom:            client.nom,
+                telephone:          client.telephone,
+                whatsapp:       client.whatsapp ?? null,
+                email:          client.email ?? null,
+                adresse:        client.adresse ?? null,
+                sexe:           client.sexe ?? 'femme',
+                date_naissance: client.dateNaissance
+                    ? (client.dateNaissance instanceof Date
+                        ? client.dateNaissance.toISOString().split('T')[0]
+                        : client.dateNaissance)
+                    : null,
+                photo_url:      client.photo ?? null,
+                notes_internes: client.notesInternes ?? null,
+                is_favorite:    client.isFavorite ?? false,
+                balance:        client.balance ?? 0,
             })
             .select()
             .single();
@@ -57,29 +68,37 @@ export const clientService = {
 
     /** Met à jour un client */
     update: async (clientId: string, updates: Partial<Client>) => {
+        const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+        if (updates.nom            !== undefined) payload.nom            = updates.nom;
+        if (updates.telephone      !== undefined) payload.phone          = updates.telephone;
+        if (updates.whatsapp       !== undefined) payload.whatsapp       = updates.whatsapp;
+        if (updates.email          !== undefined) payload.email          = updates.email;
+        if (updates.adresse        !== undefined) payload.adresse        = updates.adresse;
+        if (updates.sexe           !== undefined) payload.sexe           = updates.sexe;
+        if (updates.dateNaissance  !== undefined) payload.date_naissance = updates.dateNaissance
+            ? (updates.dateNaissance instanceof Date
+                ? updates.dateNaissance.toISOString().split('T')[0]
+                : updates.dateNaissance)
+            : null;
+        if (updates.photo          !== undefined) payload.photo_url      = updates.photo;
+        if (updates.notesInternes  !== undefined) payload.notes_internes = updates.notesInternes;
+        if (updates.isFavorite     !== undefined) payload.is_favorite    = updates.isFavorite;
+        if (updates.balance        !== undefined) payload.balance        = updates.balance;
+
         const { data, error } = await supabase
             .from('clients')
-            .update({
-                full_name: updates.fullName,
-                phone: updates.phone,
-                neighborhood: updates.neighborhood,
-                gender: updates.gender,
-                photo_url: updates.photo,
-                is_favorite: updates.isFavorite,
-                balance: updates.balance,
-                updated_at: new Date().toISOString(),
-            })
+            .update(payload)
             .eq('id', clientId)
             .select()
             .single();
         return { data, error };
     },
 
-    /** Supprime un client */
+    /** Soft-delete : marque deleted_at plutôt que supprimer physiquement */
     delete: async (clientId: string) => {
         const { error } = await supabase
             .from('clients')
-            .delete()
+            .update({ deleted_at: new Date().toISOString() })
             .eq('id', clientId);
         return { error };
     },
@@ -297,6 +316,110 @@ export const measurementService = {
 };
 
 // ==========================================
+// FICHES DE MENSURATION (Module 3)
+// ==========================================
+
+export const mapFiche = (row: Record<string, unknown>): FicheMensuration => ({
+    id:           row.id as string,
+    clientId:     row.client_id as string,
+    couturierId:  row.couturier_id as string,
+    typeVetement: row.type_vetement as TypeVetement,
+    datePrise:    new Date(row.date_prise as string),
+    mesures:      (row.mesures ?? {}) as Record<string, number>,
+    unite:        row.unite as 'cm' | 'pouces',
+    notes:        row.notes as string | undefined,
+    isActive:     row.is_active as boolean,
+    createdAt:    new Date(row.created_at as string),
+});
+
+export const ficheService = {
+
+    /** Récupère toutes les fiches d'un client (non archivées) */
+    getAll: async (clientId: string) => {
+        const { data, error } = await supabase
+            .from('fiches_mensuration')
+            .select('*')
+            .eq('client_id', clientId)
+            .order('date_prise', { ascending: false });
+        return { data, error };
+    },
+
+    /** Crée une nouvelle fiche */
+    create: async (
+        clientId: string,
+        ficheData: Omit<FicheMensuration, 'id' | 'createdAt' | 'couturierId' | 'clientId'>,
+    ) => {
+        const userId = await getUserId();
+        // Si la fiche est active, désactiver les autres du même type pour ce client
+        if (ficheData.isActive) {
+            await supabase
+                .from('fiches_mensuration')
+                .update({ is_active: false })
+                .eq('client_id', clientId)
+                .eq('type_vetement', ficheData.typeVetement);
+        }
+        const { data, error } = await supabase
+            .from('fiches_mensuration')
+            .insert({
+                client_id:     clientId,
+                couturier_id:  userId,
+                type_vetement: ficheData.typeVetement,
+                date_prise:    ficheData.datePrise.toISOString().split('T')[0],
+                mesures:       ficheData.mesures,
+                unite:         ficheData.unite,
+                notes:         ficheData.notes ?? null,
+                is_active:     ficheData.isActive,
+            })
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    /** Duplique une fiche existante (nouvelle date = aujourd'hui, statut non actif) */
+    duplicate: async (fiche: FicheMensuration) => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('fiches_mensuration')
+            .insert({
+                client_id:     fiche.clientId,
+                couturier_id:  userId,
+                type_vetement: fiche.typeVetement,
+                date_prise:    new Date().toISOString().split('T')[0],
+                mesures:       fiche.mesures,
+                unite:         fiche.unite,
+                notes:         fiche.notes ? `Copie · ${fiche.notes}` : null,
+                is_active:     false,
+            })
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    /** Marque une fiche comme référence active (désactive les autres du même type) */
+    setActive: async (ficheId: string, clientId: string, typeVetement: TypeVetement) => {
+        await supabase
+            .from('fiches_mensuration')
+            .update({ is_active: false })
+            .eq('client_id', clientId)
+            .eq('type_vetement', typeVetement);
+        const { error } = await supabase
+            .from('fiches_mensuration')
+            .update({ is_active: true })
+            .eq('id', ficheId);
+        return { error };
+    },
+
+    /** Supprime définitivement une fiche */
+    delete: async (ficheId: string) => {
+        const { error } = await supabase
+            .from('fiches_mensuration')
+            .delete()
+            .eq('id', ficheId);
+        return { error };
+    },
+};
+
+// ==========================================
 // PAIEMENTS
 // ==========================================
 
@@ -445,30 +568,36 @@ export const statisticsService = {
 
 export const catalogService = {
 
-    /** Récupère tous les modèles du tailleur */
+    /** Récupère tous les modèles non archivés du couturier */
     getAll: async () => {
         const userId = await getUserId();
         const { data, error } = await supabase
             .from('catalog')
             .select('*')
-            .eq('user_id', userId)
+            .or(`couturier_id.eq.${userId},user_id.eq.${userId}`)
+            .is('deleted_at', null)
             .order('created_at', { ascending: false });
         return { data, error };
     },
 
     /** Crée un nouveau modèle */
-    create: async (model: Omit<CatalogModel, 'id' | 'createdAt'>) => {
+    create: async (model: Omit<CatalogModel, 'id' | 'createdAt' | 'couturierId' | 'deletedAt'>) => {
         const userId = await getUserId();
         const { data, error } = await supabase
             .from('catalog')
             .insert({
-                user_id: userId,
-                name: model.name,
-                category: model.category,
-                price: model.price,
-                description: model.description ?? null,
-                photos: model.photos,
-                is_favorite: model.isFavorite ?? false,
+                couturier_id:             userId,
+                name:                     model.nom,
+                category:                 model.categorie,
+                price:                    model.prixIndicatif,
+                description:              model.description ?? null,
+                photos:                   model.photos,
+                is_favorite:              model.isFavorite ?? false,
+                difficulte:               model.difficulte ?? 'moyen',
+                temps_moyen_realisation:  model.tempsMoyenRealisation ?? null,
+                tissus_recommandes:       model.tissusRecommandes ?? [],
+                accessoires_necessaires:  model.accessoiresNecessaires ?? [],
+                statut:                   model.statut ?? 'prive',
             })
             .select()
             .single();
@@ -477,30 +606,69 @@ export const catalogService = {
 
     /** Met à jour un modèle */
     update: async (modelId: string, updates: Partial<CatalogModel>) => {
+        const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+        if (updates.nom               !== undefined) payload.name                    = updates.nom;
+        if (updates.categorie         !== undefined) payload.category                = updates.categorie;
+        if (updates.prixIndicatif     !== undefined) payload.price                   = updates.prixIndicatif;
+        if (updates.description       !== undefined) payload.description             = updates.description;
+        if (updates.photos            !== undefined) payload.photos                  = updates.photos;
+        if (updates.isFavorite        !== undefined) payload.is_favorite             = updates.isFavorite;
+        if (updates.difficulte        !== undefined) payload.difficulte              = updates.difficulte;
+        if (updates.tempsMoyenRealisation !== undefined) payload.temps_moyen_realisation = updates.tempsMoyenRealisation;
+        if (updates.tissusRecommandes !== undefined) payload.tissus_recommandes      = updates.tissusRecommandes;
+        if (updates.accessoiresNecessaires !== undefined) payload.accessoires_necessaires = updates.accessoiresNecessaires;
+        if (updates.statut            !== undefined) payload.statut                  = updates.statut;
+        if (updates.deletedAt         !== undefined) payload.deleted_at              = updates.deletedAt?.toISOString() ?? null;
+
         const { data, error } = await supabase
             .from('catalog')
-            .update({
-                name: updates.name,
-                category: updates.category,
-                price: updates.price,
-                description: updates.description,
-                photos: updates.photos,
-                is_favorite: updates.isFavorite,
-                updated_at: new Date().toISOString(),
-            })
+            .update(payload)
             .eq('id', modelId)
             .select()
             .single();
         return { data, error };
     },
 
-    /** Supprime un modèle */
+    /** Soft delete : archive le modèle (ne pas le supprimer physiquement si des commandes y font référence) */
+    archive: async (modelId: string) => {
+        const { error } = await supabase
+            .from('catalog')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', modelId);
+        return { error };
+    },
+
+    /** Suppression physique (admin uniquement, à n'utiliser que si aucune commande ne référence ce modèle) */
     delete: async (modelId: string) => {
         const { error } = await supabase
             .from('catalog')
             .delete()
             .eq('id', modelId);
         return { error };
+    },
+
+    /** Duplique un modèle → "Copie de …", statut privé */
+    duplicate: async (model: CatalogModel) => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('catalog')
+            .insert({
+                couturier_id:             userId,
+                name:                     `Copie de ${model.nom}`,
+                category:                 model.categorie,
+                price:                    model.prixIndicatif,
+                description:              model.description ?? null,
+                photos:                   [...model.photos],
+                is_favorite:              false,
+                difficulte:               model.difficulte,
+                temps_moyen_realisation:  model.tempsMoyenRealisation ?? null,
+                tissus_recommandes:       [...model.tissusRecommandes],
+                accessoires_necessaires:  [...model.accessoiresNecessaires],
+                statut:                   'prive',
+            })
+            .select()
+            .single();
+        return { data, error };
     },
 
     /** Upload une image vers Supabase Storage et retourne l'URL publique */
@@ -535,14 +703,21 @@ export const catalogService = {
 
 /** Convertit une ligne DB catalog → type CatalogModel de l'app */
 export const mapCatalogModel = (row: any): CatalogModel => ({
-    id: row.id,
-    name: row.name,
-    category: row.category,
-    price: Number(row.price ?? 0),
-    description: row.description ?? undefined,
-    photos: Array.isArray(row.photos) ? row.photos : [],
-    isFavorite: row.is_favorite ?? false,
-    createdAt: new Date(row.created_at),
+    id:                      row.id,
+    couturierId:             row.couturier_id ?? row.user_id ?? '',
+    nom:                     row.name ?? '',
+    categorie:               row.category ?? 'casual',
+    description:             row.description ?? undefined,
+    photos:                  Array.isArray(row.photos) ? row.photos : [],
+    prixIndicatif:           Number(row.price ?? 0),
+    difficulte:              row.difficulte ?? 'moyen',
+    tempsMoyenRealisation:   row.temps_moyen_realisation ?? null,
+    tissusRecommandes:       Array.isArray(row.tissus_recommandes) ? row.tissus_recommandes : [],
+    accessoiresNecessaires:  Array.isArray(row.accessoires_necessaires) ? row.accessoires_necessaires : [],
+    statut:                  row.statut ?? 'prive',
+    isFavorite:              row.is_favorite ?? false,
+    createdAt:               new Date(row.created_at),
+    deletedAt:               row.deleted_at ? new Date(row.deleted_at) : null,
 });
 
 
@@ -552,16 +727,22 @@ export const mapCatalogModel = (row: any): CatalogModel => ({
 
 /** Convertit une ligne DB clients → type Client de l'app */
 export const mapClient = (row: any): Client => ({
-    id: row.id,
-    fullName: row.full_name,
-    phone: row.phone ?? '',
-    neighborhood: row.neighborhood ?? '',
-    gender: row.gender,
-    photo: row.photo_url ?? undefined,
-    isFavorite: row.is_favorite ?? false,
-    balance: Number(row.balance ?? 0),
-    createdAt: new Date(row.created_at),
-    updatedAt: new Date(row.updated_at),
+    id:            row.id,
+    couturierId:   row.couturier_id ?? row.user_id ?? '',
+    nom:           row.nom ?? row.full_name ?? '',
+    telephone:     row.telephone ?? '',
+    whatsapp:      row.whatsapp ?? null,
+    email:         row.email ?? null,
+    adresse:       row.adresse ?? row.neighborhood ?? null,
+    sexe:          row.sexe ?? row.gender ?? 'femme',
+    dateNaissance: row.date_naissance ? new Date(row.date_naissance) : null,
+    photo:         row.photo_url ?? null,
+    notesInternes: row.notes_internes ?? null,
+    isFavorite:    row.is_favorite ?? false,
+    balance:       Number(row.balance ?? 0),
+    createdAt:     new Date(row.created_at),
+    updatedAt:     new Date(row.updated_at ?? row.created_at),
+    deletedAt:     row.deleted_at ? new Date(row.deleted_at) : null,
 });
 
 /** Convertit une ligne DB orders → type Order de l'app */
@@ -621,6 +802,9 @@ export const mapOrder = (row: any): Order => {
             itemType:  item.item_type,   // 'fabric' | 'inspiration'
             photoUrl:  item.photo_url,
         })),
+        // Module 7
+        numeroCommande:      row.numero_commande       ?? undefined,
+        dateLivraisonReelle: row.date_livraison_reelle ? new Date(row.date_livraison_reelle) : undefined,
     };
 };
 
@@ -635,3 +819,412 @@ export const mapActivity = (row: any) => ({
     orderId: row.order_id ?? undefined,
     timestamp: new Date(row.created_at),
 });
+// ==========================================
+// RÉALISATIONS (Module 5)
+// ==========================================
+
+import type { Realisation, StatutRealisation } from '../types';
+
+export const mapRealisation = (row: any): Realisation => ({
+    id:                  row.id,
+    couturierId:         row.couturier_id,
+    clientId:            row.client_id,
+    commandeId:          row.commande_id        ?? undefined,
+    modeleId:            row.modele_id           ?? undefined,
+    ficheMensurationId:  row.fiche_mensuration_id ?? undefined,
+    tissuId:             row.tissu_id            ?? undefined,
+    tissuLabel:          row.tissu_label         ?? undefined,
+    couleur:             row.couleur             ?? '',
+    accessoires:         row.accessoires         ?? [],
+    photos:              row.photos              ?? [],
+    observations:        row.observations        ?? undefined,
+    statut:              row.statut as StatutRealisation,
+    dateCreation:        row.date_creation,
+    dateEssayage:        row.date_essayage       ?? undefined,
+    dateLivraison:       row.date_livraison      ?? undefined,
+    createdAt:           new Date(row.created_at),
+});
+
+export const realisationService = {
+    getAll: async (clientId: string) => {
+        const userId = await getUserId();
+        return supabase
+            .from('realisations')
+            .select('*')
+            .eq('couturier_id', userId)
+            .eq('client_id', clientId)
+            .order('created_at', { ascending: false });
+    },
+
+    getByCommande: async (commandeId: string) => {
+        const userId = await getUserId();
+        return supabase
+            .from('realisations')
+            .select('*')
+            .eq('couturier_id', userId)
+            .eq('commande_id', commandeId)
+            .order('created_at', { ascending: false });
+    },
+
+    create: async (
+        clientId: string,
+        data: Omit<Realisation, 'id' | 'createdAt' | 'couturierId' | 'clientId'>,
+    ) => {
+        const userId = await getUserId();
+        return supabase
+            .from('realisations')
+            .insert({
+                couturier_id:         userId,
+                client_id:            clientId,
+                commande_id:          data.commandeId          ?? null,
+                modele_id:            data.modeleId            ?? null,
+                fiche_mensuration_id: data.ficheMensurationId  ?? null,
+                tissu_id:             data.tissuId             ?? null,
+                tissu_label:          data.tissuLabel          ?? null,
+                couleur:              data.couleur,
+                accessoires:          data.accessoires,
+                photos:               data.photos,
+                observations:         data.observations        ?? null,
+                statut:               data.statut,
+                date_creation:        data.dateCreation,
+                date_essayage:        data.dateEssayage        ?? null,
+                date_livraison:       data.dateLivraison       ?? null,
+            })
+            .select()
+            .single();
+    },
+
+    update: async (
+        realisationId: string,
+        data: Partial<Omit<Realisation, 'id' | 'createdAt' | 'couturierId'>>,
+    ) => {
+        const patch: Record<string, unknown> = {};
+        if (data.modeleId           !== undefined) patch.modele_id            = data.modeleId ?? null;
+        if (data.ficheMensurationId !== undefined) patch.fiche_mensuration_id = data.ficheMensurationId ?? null;
+        if (data.tissuId            !== undefined) patch.tissu_id             = data.tissuId ?? null;
+        if (data.tissuLabel         !== undefined) patch.tissu_label          = data.tissuLabel;
+        if (data.couleur            !== undefined) patch.couleur              = data.couleur;
+        if (data.accessoires        !== undefined) patch.accessoires          = data.accessoires;
+        if (data.photos             !== undefined) patch.photos               = data.photos;
+        if (data.observations       !== undefined) patch.observations         = data.observations ?? null;
+        if (data.statut             !== undefined) patch.statut               = data.statut;
+        if (data.dateEssayage       !== undefined) patch.date_essayage        = data.dateEssayage ?? null;
+        if (data.dateLivraison      !== undefined) patch.date_livraison       = data.dateLivraison ?? null;
+        return supabase.from('realisations').update(patch).eq('id', realisationId).select().single();
+    },
+
+    updateStatut: async (realisationId: string, statut: StatutRealisation) =>
+        supabase.from('realisations').update({ statut }).eq('id', realisationId).select().single(),
+
+    delete: async (realisationId: string) =>
+        supabase.from('realisations').delete().eq('id', realisationId),
+
+    addPhoto: async (realisationId: string, photoUrl: string) => {
+        const { data } = await supabase
+            .from('realisations').select('photos').eq('id', realisationId).single();
+        const photos = [...((data?.photos as string[]) ?? []), photoUrl];
+        return supabase.from('realisations').update({ photos }).eq('id', realisationId).select().single();
+    },
+
+    removePhoto: async (realisationId: string, photoUrl: string) => {
+        const { data } = await supabase
+            .from('realisations').select('photos').eq('id', realisationId).single();
+        const photos = ((data?.photos as string[]) ?? []).filter(p => p !== photoUrl);
+        return supabase.from('realisations').update({ photos }).eq('id', realisationId).select().single();
+    },
+};
+
+// ── Supabase Storage — Photos réalisations ──────────────────────────
+export const uploadRealisationPhoto = async (
+    localUri: string,
+    couturierId: string,
+    realisationId: string,
+): Promise<{ publicUrl: string | null; error: Error | null }> => {
+    try {
+        const ext      = (localUri.split('.').pop()?.toLowerCase() ?? 'jpg').split('?')[0];
+        const fileName = `${couturierId}/${realisationId}/${Date.now()}.${ext}`;
+        const response = await fetch(localUri);
+        const blob     = await response.blob();
+        const buffer   = await blob.arrayBuffer();
+        const { error } = await supabase.storage
+            .from('realisation-photos')
+            .upload(fileName, buffer, { contentType: `image/${ext}`, upsert: false });
+        if (error) return { publicUrl: null, error };
+        const { data } = supabase.storage.from('realisation-photos').getPublicUrl(fileName);
+        return { publicUrl: data.publicUrl, error: null };
+    } catch (e) {
+        return { publicUrl: null, error: e as Error };
+    }
+};
+
+export const deleteRealisationPhoto = async (
+    publicUrl: string,
+): Promise<{ error: Error | null }> => {
+    try {
+        const match = publicUrl.match(/realisation-photos\/(.+)$/);
+        if (!match) return { error: new Error('URL invalide') };
+        const { error } = await supabase.storage.from('realisation-photos').remove([match[1]]);
+        return { error: error ?? null };
+    } catch (e) {
+        return { error: e as Error };
+    }
+};
+
+// ==========================================
+// TISSUS (Module 6)
+// ==========================================
+
+import type { Tissu } from '../types';
+
+export const mapTissu = (row: any): Tissu => ({
+    id:               row.id,
+    couturierId:      row.couturier_id,
+    typeTissu:        row.type_tissu,
+    nomCommercial:    row.nom_commercial,
+    couleur:          row.couleur       ?? '',
+    fournisseur:      row.fournisseur   ?? undefined,
+    prixUnitaire:     Number(row.prix_unitaire)       ?? 0,
+    quantiteUtilisee: Number(row.quantite_utilisee)   ?? 0,
+    photo:            row.photo         ?? undefined,
+    createdAt:        new Date(row.created_at),
+    updatedAt:        new Date(row.updated_at),
+});
+
+export const tissuService = {
+    getAll: async () => {
+        const userId = await getUserId();
+        return supabase
+            .from('tissus')
+            .select('*')
+            .eq('couturier_id', userId)
+            .order('created_at', { ascending: false });
+    },
+
+    create: async (
+        data: Omit<Tissu, 'id' | 'createdAt' | 'updatedAt' | 'couturierId'>,
+    ) => {
+        const userId = await getUserId();
+        return supabase
+            .from('tissus')
+            .insert({
+                couturier_id:      userId,
+                type_tissu:        data.typeTissu,
+                nom_commercial:    data.nomCommercial,
+                couleur:           data.couleur,
+                fournisseur:       data.fournisseur    ?? null,
+                prix_unitaire:     data.prixUnitaire,
+                quantite_utilisee: data.quantiteUtilisee,
+                photo:             data.photo          ?? null,
+            })
+            .select()
+            .single();
+    },
+
+    update: async (
+        tissuId: string,
+        data: Partial<Omit<Tissu, 'id' | 'createdAt' | 'updatedAt' | 'couturierId'>>,
+    ) => {
+        const patch: Record<string, unknown> = {};
+        if (data.typeTissu        !== undefined) patch.type_tissu        = data.typeTissu;
+        if (data.nomCommercial    !== undefined) patch.nom_commercial    = data.nomCommercial;
+        if (data.couleur          !== undefined) patch.couleur           = data.couleur;
+        if (data.fournisseur      !== undefined) patch.fournisseur       = data.fournisseur ?? null;
+        if (data.prixUnitaire     !== undefined) patch.prix_unitaire     = data.prixUnitaire;
+        if (data.quantiteUtilisee !== undefined) patch.quantite_utilisee = data.quantiteUtilisee;
+        if (data.photo            !== undefined) patch.photo             = data.photo ?? null;
+        return supabase.from('tissus').update(patch).eq('id', tissuId).select().single();
+    },
+
+    delete: async (tissuId: string) =>
+        supabase.from('tissus').delete().eq('id', tissuId),
+};
+
+// ── Supabase Storage — Photos tissus ────────────────────────────────
+export const uploadTissuPhoto = async (
+    localUri: string,
+    couturierId: string,
+    tissuId: string,
+): Promise<{ publicUrl: string | null; error: Error | null }> => {
+    try {
+        const ext      = (localUri.split('.').pop()?.toLowerCase() ?? 'jpg').split('?')[0];
+        const fileName = `${couturierId}/${tissuId}/${Date.now()}.${ext}`;
+        const response = await fetch(localUri);
+        const blob     = await response.blob();
+        const buffer   = await blob.arrayBuffer();
+        const { error } = await supabase.storage
+            .from('tissu-photos')
+            .upload(fileName, buffer, { contentType: `image/${ext}`, upsert: true });
+        if (error) return { publicUrl: null, error };
+        const { data } = supabase.storage.from('tissu-photos').getPublicUrl(fileName);
+        return { publicUrl: data.publicUrl, error: null };
+    } catch (e) {
+        return { publicUrl: null, error: e as Error };
+    }
+};
+
+// ==========================================
+// HISTORIQUE STATUTS COMMANDE (Module 7)
+// ==========================================
+
+export const historiqueStatutService = {
+    create: async (
+        commandeId: string,
+        ancienStatut: string | undefined,
+        nouveauStatut: string,
+        commentaire?: string,
+    ) => {
+        const userId = await getUserId();
+        return supabase.from('historique_statuts_commande').insert({
+            commande_id:    commandeId,
+            couturier_id:   userId,
+            ancien_statut:  ancienStatut ?? null,
+            nouveau_statut: nouveauStatut,
+            commentaire:    commentaire ?? null,
+        });
+    },
+
+    getByCommande: async (commandeId: string) =>
+        supabase
+            .from('historique_statuts_commande')
+            .select('*')
+            .eq('commande_id', commandeId)
+            .order('created_at', { ascending: false }),
+};
+
+// ==========================================
+// PAIEMENTS — extensions Module 8
+// ==========================================
+
+/** Mapper enrichi (inclut type Module 8) */
+const mapPaymentM8 = (row: any) => ({
+    id:            row.id,
+    orderId:       row.order_id,
+    amount:        Number(row.amount),
+    typePaiement:  (row.type ?? 'acompte') as string,
+    paymentMethod: row.payment_method,
+    paymentDate:   row.payment_date,
+    notes:         row.notes ?? undefined,
+});
+
+/** Tous les paiements d'un client (toutes commandes) */
+export const paiementClientService = {
+    getByClient: async (clientId: string, allOrderIds: string[]) => {
+        if (allOrderIds.length === 0) return { data: [], error: null };
+        return supabase
+            .from('payments')
+            .select('*')
+            .in('order_id', allOrderIds)
+            .order('payment_date', { ascending: false });
+    },
+};
+
+/** Crée un paiement avec type Module 8 */
+export const createPaiementM8 = async (params: {
+    orderId: string;
+    amount: number;
+    method: string;
+    typePaiement?: string;
+    notes?: string;
+}) => {
+    const userId = await getUserId();
+    return supabase
+        .from('payments')
+        .insert({
+            order_id:       params.orderId,
+            user_id:        userId,
+            amount:         params.amount,
+            payment_method: params.method,
+            type:           params.typePaiement ?? 'acompte',
+            notes:          params.notes ?? null,
+            payment_date:   new Date().toISOString(),
+        })
+        .select()
+        .single();
+};
+
+// ==========================================
+// COMPTABILITÉ (Module 9)
+// ==========================================
+
+export const comptabiliteService = {
+    /** Charge tous les paiements du couturier (sans filtre date) */
+    getAllPayments: async () => {
+        const userId = await getUserId();
+        return supabase
+            .from('payments')
+            .select('id, order_id, amount, type, payment_method, payment_date, notes, created_at')
+            .eq('user_id', userId)
+            .order('payment_date', { ascending: false });
+    },
+
+    /** Charge toutes les commandes avec client_name, remaining_amount */
+    getAllOrders: async () => {
+        const userId = await getUserId();
+        return supabase
+            .from('orders')
+            .select('id, client_id, client_name, total_price, remaining_amount, payment_status, order_status, created_at, numero_commande, advance_payment')
+            .eq('user_id', userId)
+            .neq('order_status', 'cancelled');
+    },
+};
+
+// ==========================================
+// RECHERCHE GLOBALE (Module 10)
+// ==========================================
+
+export interface ResultatRecherche {
+    realisationId:  string;
+    clientId:       string;
+    clientNom:      string;
+    tissuLabel?:    string;
+    couleur?:       string;
+    statut:         string;
+    dateCreation:   string;     // ISO date
+    commandeId?:    string;
+    numeroCommande?: string;
+    rank:           number;
+}
+
+export const rechercheService = {
+    /**
+     * Recherche full-text sur les réalisations.
+     * Utilise la fonction PostgreSQL `rechercher_realisations`
+     * qui s'appuie sur websearch_to_tsquery (PAS de LIKE).
+     */
+    search: async (params: {
+        query?:    string;
+        statut?:   string;
+        dateFrom?: string;   // YYYY-MM-DD
+        dateTo?:   string;   // YYYY-MM-DD
+    }): Promise<{ data: ResultatRecherche[]; error: any }> => {
+        try {
+            const { data, error } = await supabase.rpc('rechercher_realisations', {
+                p_query:     params.query     || null,
+                p_couturier: null,             // resolved from JWT in the function
+                p_statut:    params.statut    || null,
+                p_date_from: params.dateFrom  || null,
+                p_date_to:   params.dateTo    || null,
+            });
+
+            if (error) return { data: [], error };
+
+            return {
+                data: (data as any[]).map(r => ({
+                    realisationId:  r.realisation_id,
+                    clientId:       r.client_id,
+                    clientNom:      r.client_nom ?? '—',
+                    tissuLabel:     r.tissu_label ?? undefined,
+                    couleur:        r.couleur     ?? undefined,
+                    statut:         r.statut,
+                    dateCreation:   r.date_creation,
+                    commandeId:     r.commande_id   ?? undefined,
+                    numeroCommande: r.numero_commande ?? undefined,
+                    rank:           Number(r.rank ?? 0),
+                })),
+                error: null,
+            };
+        } catch (e) {
+            return { data: [], error: e };
+        }
+    },
+};

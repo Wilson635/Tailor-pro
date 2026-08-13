@@ -31,6 +31,22 @@ import {
     AddClientScreen,
     MeasurementsScreen,
     AddMeasurementsScreen,
+    FicheDetailsScreen,
+    CompareFichesScreen,
+    RealisationsScreen,
+    AddRealisationScreen,
+    RealisationDetailsScreen,
+    EditRealisationScreen,
+    GalerieScreen,
+    RechercheScreen,
+    ComptabiliteScreen,
+    ClientPaiementsScreen,
+    RecuScreen,
+    //CommandeKanbanScreen,
+    TissusScreen,
+    AddTissuScreen,
+    TissuDetailsScreen,
+    EditTissuScreen,
     PaymentsScreen,
     AddPaymentScreen,
     OrdersListScreen,
@@ -42,6 +58,7 @@ import {
 
 // ── Nouveaux écrans catalogue ──
 import { AddCatalogModelScreen } from '@screens/Catalog/AddCatalogModel';
+import { EditCatalogModelScreen } from '@screens/Catalog/EditCatalogModelScreen';
 
 // ── Écrans auth & onboarding ──
 import { WelcomeScreen } from '@screens/Welcome/WelcomeScreen';
@@ -55,7 +72,10 @@ import { ClientOrdersScreen } from '@screens/Orders/ClientOrdersScreen';
 import { OnboardingScreen } from '@screens/Onboarding/Onboardingscreen';
 import { BiometricAuthScreen } from '@components/Biometricauthscreen';
 import { ProfileScreen } from '@screens/Userprofile/Profilescreen';
+import { EditClientScreen } from '@screens/Clients/EditClientScreen';
+import { SettingsScreen } from '@screens/Settings/SettingsScreen';
 import {OrderDetailsScreen} from "@screens/Orders/OrderDetailsScreen";
+import { nativeDriver } from '@utils/animation';
 
 // ==========================================
 // PALETTE
@@ -88,15 +108,45 @@ export type RootStackParamList = {
     MainTabs: undefined;
     ClientDetails: { clientId: string };
     AddClient: undefined;
+    EditClient: { clientId: string };
     Measurements: { clientId: string };
-    AddMeasurements: { clientId: string };
+    AddMeasurements: { clientId: string; typeVetement?: string };
+    FicheDetails: { ficheId: string; clientId: string };
+    CompareFiches: { ficheId1: string; ficheId2: string; clientId: string };
     Payments: { clientId: string };
     AddPayment: { clientId: string; orderId?: string };
     AddOrder: { clientId?: string };
     OrderDetails: { orderId: string };
+    // ── Module 11 Galerie ──
+    Galerie: undefined;
+    // ── Module 10 Recherche globale ──
+    Recherche: undefined;
+    // ── Module 9 Comptabilité ──
+    Comptabilite: undefined;
+    // ── Module 8 Paiements ──
+    ClientPaiements: { clientId: string };
+    Recu: {
+        amount: number; typePaiement: string; modePaiement: string;
+        date: string; notes?: string; clientName: string;
+        commandeNumero?: string; totalAmount: number;
+        paidAmount: number; remaining: number;
+    };
+    // ── Kanban commandes ──
+    CommandeKanban: undefined;
+    // ── Tissus ──
+    Tissus: undefined;
+    AddTissu: { preType?: string };
+    TissuDetails: { tissuId: string };
+    EditTissu: { tissuId: string };
+    // ── Réalisations ──
+    Realisations: { clientId: string };
+    AddRealisation: { clientId: string; commandeId?: string; modeleId?: string };
+    RealisationDetails: { realisationId: string; clientId: string };
+    EditRealisation: { realisationId: string; clientId: string };
     // ── Catalogue ──
     ModelDetails: { modelId: string };
     AddCatalogModel: undefined;
+    EditCatalogModel: { modelId: string };
     // ──────────────
     Statistics: undefined;
     Clients: undefined;
@@ -111,6 +161,7 @@ export type RootStackParamList = {
     Onboarding: undefined;
     BiometricAuth: undefined;
     Profile: undefined;
+    Settings: undefined;
 };
 
 export type TailorTabParamList = {
@@ -155,7 +206,7 @@ const PlusMenu: React.FC<PlusMenuProps> = ({ visible, onClose, items }) => {
     React.useEffect(() => {
         Animated.spring(anim, {
             toValue: visible ? 1 : 0,
-            useNativeDriver: true,
+            useNativeDriver: nativeDriver,
             tension: 80,
             friction: 12,
         }).start();
@@ -243,7 +294,7 @@ const PlusTabButton: React.FC<PlusTabButtonProps> = ({ onPress, isOpen }) => {
     React.useEffect(() => {
         Animated.spring(rotate, {
             toValue: isOpen ? 1 : 0,
-            useNativeDriver: true,
+            useNativeDriver: nativeDriver,
             tension: 100,
             friction: 10,
         }).start();
@@ -289,6 +340,24 @@ const TailorTabNavigator = ({ navigation }: any) => {
     const insets = useSafeAreaInsets();
 
     const plusItems: PlusMenuItem[] = [
+        {
+            key: 'galerie',
+            label: 'Galerie',
+            icon: 'image',
+            onPress: () => { setPlusOpen(false); navigation.navigate('Galerie'); },
+        },
+        {
+            key: 'recherche',
+            label: 'Recherche',
+            icon: 'search',
+            onPress: () => { setPlusOpen(false); navigation.navigate('Recherche'); },
+        },
+        {
+            key: 'comptabilite',
+            label: 'Comptabilité',
+            icon: 'trending-up',
+            onPress: () => { setPlusOpen(false); navigation.navigate('Comptabilite'); },
+        },
         {
             key: 'statistics',
             label: 'Statistiques',
@@ -480,10 +549,27 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
                     {/* ── Clients ── */}
                     <Stack.Screen name="ClientDetails"   component={ClientDetailsScreen} />
                     <Stack.Screen name="AddClient"       component={AddClientScreen} />
+                    <Stack.Screen name="EditClient"      component={EditClientScreen} />
 
                     {/* ── Mesures ── */}
                     <Stack.Screen name="Measurements"    component={MeasurementsScreen} />
                     <Stack.Screen name="AddMeasurements" component={AddMeasurementsScreen} />
+                    <Stack.Screen name="FicheDetails"    component={FicheDetailsScreen} />
+                    <Stack.Screen name="CompareFiches"   component={CompareFichesScreen} />
+                    <Stack.Screen name="Galerie"             component={GalerieScreen} />
+                    <Stack.Screen name="Recherche"           component={RechercheScreen} />
+                    <Stack.Screen name="Comptabilite"        component={ComptabiliteScreen} />
+                    <Stack.Screen name="ClientPaiements"     component={ClientPaiementsScreen} />
+                    <Stack.Screen name="Recu"                component={RecuScreen} />
+                    {/*<Stack.Screen name="CommandeKanban"      component={CommandeKanbanScreen} />*/}
+                    <Stack.Screen name="Tissus"              component={TissusScreen} />
+                    <Stack.Screen name="AddTissu"            component={AddTissuScreen} />
+                    <Stack.Screen name="TissuDetails"        component={TissuDetailsScreen} />
+                    <Stack.Screen name="EditTissu"           component={EditTissuScreen} />
+                    <Stack.Screen name="Realisations"        component={RealisationsScreen} />
+                    <Stack.Screen name="AddRealisation"      component={AddRealisationScreen} />
+                    <Stack.Screen name="RealisationDetails"  component={RealisationDetailsScreen} />
+                    <Stack.Screen name="EditRealisation"     component={EditRealisationScreen} />
 
                     {/* ── Paiements ── */}
                     <Stack.Screen name="Payments"        component={PaymentsScreen} />
@@ -494,12 +580,14 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
                     <Stack.Screen name="OrderDetails"  component={OrderDetailsScreen} />
 
                     {/* ── Catalogue ── */}
-                    <Stack.Screen name="ModelDetails"    component={ModelDetailsScreen} />
-                    <Stack.Screen name="AddCatalogModel" component={AddCatalogModelScreen} />
+                    <Stack.Screen name="ModelDetails"     component={ModelDetailsScreen} />
+                    <Stack.Screen name="AddCatalogModel"  component={AddCatalogModelScreen} />
+                    <Stack.Screen name="EditCatalogModel" component={EditCatalogModelScreen} />
 
                     {/* ── Divers ── */}
                     <Stack.Screen name="Statistics"      component={StatisticsScreen} />
                     <Stack.Screen name="Profile"         component={ProfileScreen} />
+                    <Stack.Screen name="Settings"        component={SettingsScreen} />
                 </>
             ) : (
                 <>

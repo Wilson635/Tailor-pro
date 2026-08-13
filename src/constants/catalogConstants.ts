@@ -1,37 +1,39 @@
 // ==========================================
 // CONSTANTES CATALOGUE - TailorPro
-// À placer dans : src/constants/catalogConstants.ts
 // ==========================================
 
 import type { CatalogCategory } from '../types';
+import type { Ionicons } from '@expo/vector-icons';
 
 // ──────────────────────────────────────────
-// LISTE DES CATÉGORIES (filtre + formulaire)
-// TypeScript vérifie que chaque entrée est
-// bien un CatalogCategory valide.
+// CATÉGORIES
 // ──────────────────────────────────────────
 
-/** Toutes les catégories incluant "all" (pour les filtres) */
+/** Toutes les catégories incluant "all" (filtres de la liste) */
 export const CATALOG_FILTER_CATEGORIES: CatalogCategory[] = [
     'all',
-    'robes',
-    'costumes',
-    'chemises',
-    'traditionnel',
+    'homme',
+    'femme',
+    'enfant',
+    'robe',
+    'costume',
+    'chemise',
     'mariage',
-    'enfants',
+    'traditionnel',
     'casual',
     'luxe',
 ];
 
-/** Catégories pour un modèle (sans "all") */
+/** Catégories disponibles lors de la création d'un modèle (sans "all") */
 export const CATALOG_MODEL_CATEGORIES: Exclude<CatalogCategory, 'all'>[] = [
-    'robes',
-    'costumes',
-    'chemises',
-    'traditionnel',
+    'homme',
+    'femme',
+    'enfant',
+    'robe',
+    'costume',
+    'chemise',
     'mariage',
-    'enfants',
+    'traditionnel',
     'casual',
     'luxe',
 ];
@@ -42,12 +44,14 @@ export const CATALOG_MODEL_CATEGORIES: Exclude<CatalogCategory, 'all'>[] = [
 
 export const CATALOG_CATEGORY_LABELS: Record<CatalogCategory, string> = {
     all:          'Tous',
-    robes:        'Robes',
-    costumes:     'Costumes',
-    chemises:     'Chemises',
-    traditionnel: 'Traditionnel',
+    homme:        'Homme',
+    femme:        'Femme',
+    enfant:       'Enfant',
+    robe:         'Robes',
+    costume:      'Costumes',
+    chemise:      'Chemises',
     mariage:      'Mariage',
-    enfants:      'Enfants',
+    traditionnel: 'Traditionnel',
     casual:       'Casual',
     luxe:         'Luxe',
 };
@@ -56,16 +60,54 @@ export const CATALOG_CATEGORY_LABELS: Record<CatalogCategory, string> = {
 // ICÔNES IONICONS PAR CATÉGORIE
 // ──────────────────────────────────────────
 
-import type { Ionicons } from '@expo/vector-icons';
-
 export const CATALOG_CATEGORY_ICONS: Record<CatalogCategory, keyof typeof Ionicons.glyphMap> = {
     all:          'grid-outline',
-    robes:        'woman-outline',
-    costumes:     'shirt-outline',
-    chemises:     'shirt-outline',
-    traditionnel: 'earth-outline',
+    homme:        'man-outline',
+    femme:        'woman-outline',
+    enfant:       'happy-outline',
+    robe:         'woman-outline',
+    costume:      'shirt-outline',
+    chemise:      'shirt-outline',
     mariage:      'heart-outline',
-    enfants:      'happy-outline',
+    traditionnel: 'earth-outline',
     casual:       'sunny-outline',
     luxe:         'diamond-outline',
 };
+
+// ──────────────────────────────────────────
+// DIFFICULTÉ
+// ──────────────────────────────────────────
+
+export type Difficulte = 'facile' | 'moyen' | 'difficile';
+
+export const DIFFICULTE_LABELS: Record<Difficulte, string> = {
+    facile:    'Facile',
+    moyen:     'Moyen',
+    difficile: 'Difficile',
+};
+
+export const DIFFICULTE_COLORS: Record<Difficulte, { bg: string; text: string }> = {
+    facile:    { bg: '#D1FAE5', text: '#065F46' },
+    moyen:     { bg: '#FEF3C7', text: '#92400E' },
+    difficile: { bg: '#FEE2E2', text: '#991B1B' },
+};
+
+// ──────────────────────────────────────────
+// TISSUS COURANTS (suggestions)
+// ──────────────────────────────────────────
+
+export const TISSUS_COMMUNS: string[] = [
+    'Wax', 'Bazin', 'Bogolan', 'Kente', 'Pagne',
+    'Soie', 'Coton', 'Lin', 'Satin', 'Velours',
+    'Dentelle', 'Mousseline', 'Jersey', 'Jacquard',
+];
+
+// ──────────────────────────────────────────
+// ACCESSOIRES COURANTS (suggestions)
+// ──────────────────────────────────────────
+
+export const ACCESSOIRES_COMMUNS: string[] = [
+    'Boutons', 'Fermeture éclair', 'Broderie', 'Galon',
+    'Doublure', 'Élastique', 'Biais', 'Ceinture',
+    'Bretelles', 'Épaulettes', 'Dentelle', 'Fronces',
+];
