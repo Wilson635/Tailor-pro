@@ -234,6 +234,12 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
             </View>
             <View style={styles.topBarRight}>
               <TouchableOpacity
+                  style={[styles.addBtn, { backgroundColor: '#EDE9FE', marginRight: 8 }]}
+                  onPress={() => navigation.navigate('CommandeKanban')}
+              >
+                <Ionicons name="grid-outline" size={20} color="#6B21A8" />
+              </TouchableOpacity>
+              <TouchableOpacity
                   style={styles.addBtn}
                   onPress={() => navigation.navigate('AddOrder', { clientId: undefined })}
               >
@@ -328,6 +334,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+    fontFamily: 'PlusJakartaSans_500Medium'
   },
 
   // ── TopBar ──

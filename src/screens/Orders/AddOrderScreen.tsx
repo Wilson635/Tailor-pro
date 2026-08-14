@@ -31,6 +31,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from "@/src/lib/supabase";
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
+import {useToast} from "@/src/context/ToastContext";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddOrder'>;
 
@@ -121,6 +122,7 @@ const StyledInput = ({
 
 export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
   const { addOrder, getClientById, clients } = useAppStore();
 
   const preselectedClientId = route.params?.clientId ?? '';
@@ -154,8 +156,8 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   // ── Liste filtrée pour le modal ──
   const filteredClients = useMemo(() =>
           clients.filter(c =>
-              c.fullName.toLowerCase().includes(clientSearch.toLowerCase()) ||
-              c.phone.includes(clientSearch)
+              c.nom.toLowerCase().includes(clientSearch.toLowerCase()) ||
+              c.telephone.includes(clientSearch)
           ),
       [clients, clientSearch]
   );
@@ -195,7 +197,11 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const handleSubmit = async () => {
     if (!selectedClientId || !clothingType || !totalPrice) {
-      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires (Client, Type de vêtement, Prix total).');
+      showToast({
+        type: 'error',
+        message: 'Veuillez remplir les champs obligatoires.',
+      });
+      //Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires (Client, Type de vêtement, Prix total).');
       return;
     }
 
@@ -217,9 +223,9 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
       const { data: newOrder, error: orderError } = await supabase
           .from('orders')
           .insert({
-            user_id: user.id,
+            couturier_id: user.id,
             client_id: selectedClientId,
-            client_name: selectedClient?.fullName ?? '',
+            client_name: selectedClient?.nom ?? '',
             clothing_type: clothingType,
             description: description || null,
             delivery_date: toSupabaseDate(deliveryDate),
@@ -242,11 +248,11 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           const { data: newCatalogModel, error: catalogError } = await supabase
               .from('catalog')
               .insert({
-                user_id: user.id,
-                name: `Modèle ${CLOTHING_TYPE_LABELS[clothingType] || clothingType} - ${selectedClient?.fullName ?? ''}`,
+                couturier_id: user.id,
+                name: `Modèle ${CLOTHING_TYPE_LABELS[clothingType] || clothingType} - ${selectedClient?.nom ?? ''}`,
                 category: clothingType,
                 price: parsedTotalPrice,
-                description: `Ajouté automatiquement depuis la commande de ${selectedClient?.fullName ?? ''}`,
+                description: `Ajouté automatiquement depuis la commande de ${selectedClient?.nom ?? ''}`,
                 is_favorite: false
               })
               .select()
@@ -288,7 +294,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               .from('catalog_photos')
               .insert({
                 catalog_id: newCatalogModel.id,
-                user_id: user.id,
+                couturier_id: user.id,
                 photo_url: publicUrl
               })
               .select()
@@ -302,7 +308,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               .from('order_items')
               .insert({
                 order_id: newOrder.id,
-                user_id: user.id,
+                couturier_id: user.id,
                 item_type: 'inspiration',
                 photo_url: publicUrl,
                 catalog_id: newCatalogModel.id
@@ -323,13 +329,18 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
       // 3. Mise à jour du store Zustand
       useAppStore.getState().addOrder(newOrder);
 
-      Alert.alert('Succès', 'La commande a bien été enregistrée et votre catalogue enrichi.', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      showToast({
+        type: 'success',
+        message: 'La commande a bien été enregistrée ! et votre catalogue enrichi',
+      });
 
     } catch (error: any) {
       console.error(error);
-      Alert.alert('Erreur', error.message || "Une erreur est survenue lors de l'enregistrement.");
+      showToast({
+        type: 'error',
+        message: 'Une erreur est survenue lors de l\'enregistrement.',
+      });
+      //Alert.alert('Erreur', error.message || "Une erreur est survenue lors de l'enregistrement.");
     } finally {
       setIsLoading(false);
     }
@@ -386,13 +397,13 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               {selectedClient ? (
                   <>
                     <View style={styles.clientAvatar}>
-                      <Text style={styles.clientAvatarText}>{getInitials(selectedClient.fullName)}</Text>
+                      <Text style={styles.clientAvatarText}>{getInitials(selectedClient.nom)}</Text>
                     </View>
                     <View style={styles.clientInfo}>
-                      <Text style={styles.clientName}>{selectedClient.fullName}</Text>
+                      <Text style={styles.clientName}>{selectedClient.nom}</Text>
                       <View style={styles.clientSubRow}>
                         <Ionicons name="location-outline" size={12} color={COLORS.textSecondary} />
-                        <Text style={styles.clientSub}>{selectedClient.neighborhood}</Text>
+                        <Text style={styles.clientSub}>{selectedClient.adresse ?? '—'}</Text>
                       </View>
                     </View>
                   </>
@@ -725,23 +736,23 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                         {/* Avatar */}
                         <View style={[styles.modalAvatar, isSelected && styles.modalAvatarActive]}>
                           <Text style={[styles.modalAvatarText, isSelected && styles.modalAvatarTextActive]}>
-                            {getInitials(item.fullName)}
+                            {getInitials(item.nom)}
                           </Text>
                         </View>
 
                         {/* Infos */}
                         <View style={styles.modalClientInfo}>
                           <Text style={[styles.modalClientName, isSelected && { color: COLORS.primary }]}>
-                            {item.fullName}
+                            {item.nom}
                           </Text>
                           <View style={styles.modalClientMeta}>
                             <Ionicons name="call-outline" size={11} color={COLORS.gray400} />
-                            <Text style={styles.modalClientSub}>{item.phone}</Text>
-                            {item.neighborhood ? (
+                            <Text style={styles.modalClientSub}>{item.telephone}</Text>
+                            {item.adresse ? (
                                 <>
                                   <Text style={styles.modalClientDot}>·</Text>
                                   <Ionicons name="location-outline" size={11} color={COLORS.gray400} />
-                                  <Text style={styles.modalClientSub}>{item.neighborhood}</Text>
+                                  <Text style={styles.modalClientSub}>{item.adresse}</Text>
                                 </>
                             ) : null}
                           </View>

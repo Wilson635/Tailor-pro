@@ -630,10 +630,15 @@ const fieldStyles = StyleSheet.create({
 
 // ── INTERFACE FORMDATA ────────────────────────────────────────────
 interface FormData {
-  fullName: string;
-  phone: string;
-  neighborhood: string;
-  gender: 'female' | 'male';
+  nom: string;
+  telephone: string;
+  whatsapp: string;
+  whatsappSameAsPhone: boolean;
+  email: string;
+  adresse: string;
+  sexe: 'femme' | 'homme' | 'autre';
+  dateNaissance: string;  // DD/MM/YYYY
+  notesInternes: string;
 }
 
 // ==========================================
@@ -655,11 +660,35 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
       COUNTRY_CODES.find(c => c.code === 'CM')!
   );
   const [formData, setFormData] = useState<FormData>({
-    fullName: '', phone: '', neighborhood: '', gender: 'female',
+    nom: '', telephone: '', whatsapp: '', whatsappSameAsPhone: true,
+    email: '', adresse: '', sexe: 'femme', dateNaissance: '', notesInternes: '',
   });
 
-  const update = (field: keyof FormData) => (value: string) =>
+  const update = (field: keyof FormData) => (value: string | boolean) =>
       setFormData(prev => ({ ...prev, [field]: value }));
+
+  // Sync whatsapp quand "same as phone" est actif
+  const handlePhoneChange = (value: string) => {
+    const formatted = formatPhoneNumber(value, selectedCountry.format);
+    setFormData(prev => ({
+      ...prev,
+      telephone: formatted,
+      ...(prev.whatsappSameAsPhone ? { whatsapp: formatted } : {}),
+    }));
+  };
+
+  const handleCountrySelect = (country: CountryCode) => {
+    setSelectedCountry(country);
+    setFormData(prev => ({ ...prev, telephone: '', ...(prev.whatsappSameAsPhone ? { whatsapp: '' } : {}) }));
+  };
+
+  const toggleWhatsappSame = (val: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      whatsappSameAsPhone: val,
+      ...(val ? { whatsapp: prev.telephone } : {}),
+    }));
+  };
 
   // ── PHOTO ──
   const handlePhotoPress = () => {
@@ -691,39 +720,50 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
 
   // ── IMPORT DEPUIS RÉPERTOIRE ──
   const handleContactSelected = (contact: Contact) => {
+    const formatted = formatPhoneNumber(contact.phone.replace(/\D/g, ''), selectedCountry.format);
     setFormData(prev => ({
       ...prev,
-      fullName: contact.name,
-      phone:    formatPhoneNumber(contact.phone.replace(/\D/g, ''), selectedCountry.format),
+      nom:       contact.name,
+      telephone: formatted,
+      ...(prev.whatsappSameAsPhone ? { whatsapp: formatted } : {}),
     }));
     if (contact.imageUri) setPhoto(contact.imageUri);
   };
 
-  // ── TÉLÉPHONE ──
-  const handlePhoneChange = (value: string) => {
-    setFormData(prev => ({ ...prev, phone: formatPhoneNumber(value, selectedCountry.format) }));
-  };
-
-  const handleCountrySelect = (country: CountryCode) => {
-    setSelectedCountry(country);
-    setFormData(prev => ({ ...prev, phone: '' }));
+  // ── HELPER date DD/MM/YYYY → Date ──
+  const parseDateFR = (str: string): Date | null => {
+    const m = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const d = new Date(`${m[3]}-${m[2]}-${m[1]}`);
+    return isNaN(d.getTime()) ? null : d;
   };
 
   // ── SOUMISSION ──
   const handleSubmit = async () => {
-    if (!formData.fullName.trim()) { Alert.alert('Erreur', 'Veuillez entrer le nom complet'); return; }
-    if (!formData.phone.trim())    { Alert.alert('Erreur', 'Veuillez entrer le numéro de téléphone'); return; }
+    if (!formData.nom.trim())       { Alert.alert('Erreur', 'Veuillez entrer le nom complet'); return; }
+    if (!formData.telephone.trim()) { Alert.alert('Erreur', 'Veuillez entrer le numéro de téléphone'); return; }
 
     setIsLoading(true);
     try {
+      const fullPhone   = `${selectedCountry.dial} ${formData.telephone.trim()}`;
+      const fullWa      = formData.whatsappSameAsPhone
+          ? fullPhone
+          : formData.whatsapp.trim() ? `${selectedCountry.dial} ${formData.whatsapp.trim()}` : null;
+
       const newClient = await addClient({
-        nom:     formData.fullName.trim(),
-        telephone:        `${selectedCountry.dial} ${formData.phone.trim()}`,
-        adresse: formData.neighborhood.trim(),
-        sexe:       formData.gender === 'female' ? 'femme' : 'homme',
-        photo:        photo ?? undefined,
-        isFavorite:   false,
-        balance:      0,
+        couturierId:   '',          // rempli côté service via auth.uid()
+        nom:           formData.nom.trim(),
+        telephone:     fullPhone,
+        whatsapp:      fullWa,
+        email:         formData.email.trim() || null,
+        adresse:       formData.adresse.trim() || null,
+        sexe:          formData.sexe,
+        dateNaissance: parseDateFR(formData.dateNaissance),
+        photo:         photo ?? null,
+        notesInternes: formData.notesInternes.trim() || null,
+        isFavorite:    false,
+        balance:       0,
+        deletedAt:     null,
       });
       if (!newClient) { Alert.alert('Erreur', "Impossible d'ajouter le client"); return; }
       navigation.goBack();
@@ -750,7 +790,7 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
         />
         <MapPickerModal
             visible={mapPickerVisible}
-            onConfirm={neighborhood => setFormData(prev => ({ ...prev, neighborhood }))}
+            onConfirm={adresse => setFormData(prev => ({ ...prev, adresse }))}
             onClose={() => setMapPickerVisible(false)}
         />
 
@@ -831,8 +871,8 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
             <Field
                 label="Nom complet"
                 icon="person-outline"
-                value={formData.fullName}
-                onChangeText={update('fullName')}
+                value={formData.nom}
+                onChangeText={update('nom')}
                 placeholder="Aminata Diallo"
                 autoCapitalize="words"
             />
@@ -855,69 +895,160 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
                     style={phoneStyles.input}
                     placeholder={selectedCountry.format.replace(/#/g, '0')}
                     placeholderTextColor={C.textTertiary}
-                    value={formData.phone}
+                    value={formData.telephone}
                     onChangeText={handlePhoneChange}
                     keyboardType="phone-pad"
                 />
               </View>
             </View>
+
+            {/* WhatsApp */}
+            <View style={fieldStyles.wrap}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={fieldStyles.label}>WhatsApp <Text style={fieldStyles.optional}>(optionnel)</Text></Text>
+                <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    onPress={() => toggleWhatsappSame(!formData.whatsappSameAsPhone)}
+                >
+                  <View style={{
+                    width: 36, height: 20, borderRadius: 10,
+                    backgroundColor: formData.whatsappSameAsPhone ? C.teal : C.border,
+                    justifyContent: 'center', paddingHorizontal: 2,
+                  }}>
+                    <View style={{
+                      width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff',
+                      alignSelf: formData.whatsappSameAsPhone ? 'flex-end' : 'flex-start',
+                    }} />
+                  </View>
+                  <Text style={{ fontSize: 11, color: C.textSecondary }}>= téléphone</Text>
+                </TouchableOpacity>
+              </View>
+              {!formData.whatsappSameAsPhone && (
+                  <View style={fieldStyles.inputWrap}>
+                    <Ionicons name="logo-whatsapp" size={16} color={C.textTertiary} style={{ marginRight: 10 }} />
+                    <TextInput
+                        style={fieldStyles.input}
+                        value={formData.whatsapp}
+                        onChangeText={v => update('whatsapp')(formatPhoneNumber(v, selectedCountry.format))}
+                        placeholder={selectedCountry.format.replace(/#/g, '0')}
+                        placeholderTextColor={C.textTertiary}
+                        keyboardType="phone-pad"
+                    />
+                  </View>
+              )}
+              {formData.whatsappSameAsPhone && (
+                  <View style={[fieldStyles.inputWrap, { opacity: 0.6 }]}>
+                    <Ionicons name="logo-whatsapp" size={16} color={C.teal} style={{ marginRight: 10 }} />
+                    <Text style={{ fontSize: 15, color: C.textSecondary }}>
+                      {formData.telephone ? `${selectedCountry.dial} ${formData.telephone}` : 'Même que le téléphone'}
+                    </Text>
+                  </View>
+              )}
+            </View>
+
+            {/* Email */}
+            <Field
+                label="Adresse email"
+                icon="mail-outline"
+                value={formData.email}
+                onChangeText={update('email')}
+                placeholder="exemple@mail.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                optional
+            />
           </SectionCard>
 
           {/* ── LOCALISATION ── */}
           <SectionCard icon="location-outline" title="Localisation">
+            <Field
+                label="Adresse / Quartier"
+                icon="location-outline"
+                value={formData.adresse}
+                onChangeText={update('adresse')}
+                placeholder="Cocody, Angré…"
+                optional
+            />
             <TouchableOpacity
-                style={[locStyles.row, formData.neighborhood && locStyles.rowFilled]}
+                style={[locStyles.row, formData.adresse ? locStyles.rowFilled : null]}
                 onPress={() => setMapPickerVisible(true)}
                 activeOpacity={0.7}
             >
-              <View style={[locStyles.iconWrap, formData.neighborhood && locStyles.iconWrapFilled]}>
-                <Ionicons
-                    name={formData.neighborhood ? 'location' : 'map-outline'}
-                    size={18}
-                    color={formData.neighborhood ? C.purple600 : C.textTertiary}
-                />
+              <View style={[locStyles.iconWrap, formData.adresse ? locStyles.iconWrapFilled : null]}>
+                <Ionicons name="map-outline" size={18} color={formData.adresse ? C.purple600 : C.textTertiary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={locStyles.topLabel}>
-                  {formData.neighborhood ? 'Quartier sélectionné' : 'Quartier'}
-                </Text>
-                <Text style={[locStyles.value, !formData.neighborhood && locStyles.placeholder]} numberOfLines={1}>
-                  {formData.neighborhood || 'Choisir sur la carte…'}
-                </Text>
+                <Text style={locStyles.topLabel}>Choisir sur la carte</Text>
+                <Text style={locStyles.placeholder}>Appuyez pour géolocaliser</Text>
               </View>
-              {formData.neighborhood ? (
-                  <TouchableOpacity onPress={() => setFormData(p => ({ ...p, neighborhood: '' }))}>
-                    <Ionicons name="close-circle" size={18} color={C.textTertiary} />
-                  </TouchableOpacity>
-              ) : (
-                  <Ionicons name="chevron-forward" size={16} color={C.textTertiary} />
-              )}
+              <Ionicons name="chevron-forward" size={16} color={C.textTertiary} />
             </TouchableOpacity>
           </SectionCard>
 
           {/* ── GENRE ── */}
           <SectionCard icon="people-outline" title="Genre">
             <View style={genderStyles.segmented}>
-              {(['female', 'male'] as const).map(g => {
-                const active = formData.gender === g;
+              {(['femme', 'homme', 'autre'] as const).map(g => {
+                const active = formData.sexe === g;
+                const icon = g === 'femme' ? 'female' : g === 'homme' ? 'male' : 'person-outline';
                 return (
                     <TouchableOpacity
                         key={g}
                         style={[genderStyles.item, active && genderStyles.itemActive]}
-                        onPress={() => setFormData(p => ({ ...p, gender: g }))}
+                        onPress={() => setFormData(p => ({ ...p, sexe: g }))}
                         activeOpacity={0.85}
                     >
                       <Ionicons
-                          name={g === 'female' ? 'female' : 'male'}
+                          name={icon}
                           size={17}
                           color={active ? C.purple600 : C.textTertiary}
                       />
                       <Text style={[genderStyles.label, active && genderStyles.labelActive]}>
-                        {g === 'female' ? 'Femme' : 'Homme'}
+                        {g === 'femme' ? 'Femme' : g === 'homme' ? 'Homme' : 'Autre'}
                       </Text>
                     </TouchableOpacity>
                 );
               })}
+            </View>
+          </SectionCard>
+
+          {/* ── INFORMATIONS COMPLÉMENTAIRES ── */}
+          <SectionCard icon="calendar-outline" title="Informations complémentaires">
+            <Field
+                label="Date de naissance"
+                icon="calendar-outline"
+                value={formData.dateNaissance}
+                onChangeText={v => {
+                  // Auto-format DD/MM/YYYY
+                  const digits = v.replace(/\D/g, '');
+                  let formatted = digits;
+                  if (digits.length > 2) formatted = digits.slice(0, 2) + '/' + digits.slice(2);
+                  if (digits.length > 4) formatted = formatted.slice(0, 5) + '/' + digits.slice(4, 8);
+                  update('dateNaissance')(formatted);
+                }}
+                placeholder="JJ/MM/AAAA"
+                keyboardType="number-pad"
+                optional
+            />
+          </SectionCard>
+
+          {/* ── NOTES INTERNES ── */}
+          <SectionCard icon="document-text-outline" title="Notes internes">
+            <View style={fieldStyles.wrap}>
+              <Text style={[fieldStyles.label]}>
+                Notes <Text style={fieldStyles.optional}>(visibles uniquement par vous)</Text>
+              </Text>
+              <View style={[fieldStyles.inputWrap, { height: 90, alignItems: 'flex-start', paddingTop: 12 }]}>
+                <TextInput
+                    style={[fieldStyles.input, { height: 70, textAlignVertical: 'top' }]}
+                    value={formData.notesInternes}
+                    onChangeText={update('notesInternes')}
+                    placeholder="Préférences, particularités, rappels…"
+                    placeholderTextColor={C.textTertiary}
+                    multiline
+                    numberOfLines={3}
+                />
+              </View>
             </View>
           </SectionCard>
         </ScrollView>

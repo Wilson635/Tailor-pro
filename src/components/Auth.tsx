@@ -108,7 +108,7 @@ const fieldStyles = StyleSheet.create({
     wrap: { marginBottom: 14 },
     label: {
         fontSize: 11,
-        fontWeight: "600",
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: C.textSecondary,
         letterSpacing: 0.5,
         //textTransform: "uppercase",
@@ -204,7 +204,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                                 },
                                 {
                                     text: "Activer",
-                                    fontWeight: "bold",
+                                    //fontFamily: 'PlusJakartaSans_700Bold',
                                     onPress: async () => {
                                         const authTest = await LocalAuthentication.authenticateAsync({
                                             promptMessage: 'Confirmez votre empreinte / FaceID',
@@ -410,13 +410,13 @@ const styles = StyleSheet.create({
     },
     profileBadgeText: {
         fontSize: 12,
-        fontWeight: "600",
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         letterSpacing: 0.3,
     },
     titleSection: { marginBottom: 32 },
     mainTitle: {
         fontSize: 28,
-        fontWeight: "700",
+        fontFamily: 'PlusJakartaSans_700Bold',
         color: C.textPrimary,
         letterSpacing: -0.5,
         lineHeight: 36,
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
     forgotText: {
         fontSize: 13,
         color: C.purple600,
-        fontWeight: "600",
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     footer: { marginTop: "auto" },
     ctaButton: {
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
     },
     ctaButtonText: {
         fontSize: 16,
-        fontWeight: "700",
+        fontFamily: 'PlusJakartaSans_700Bold',
         color: "#FFFFFF",
         letterSpacing: 0.1,
     },
@@ -465,5 +465,5 @@ const styles = StyleSheet.create({
     dividerText: { fontSize: 13, color: C.textTertiary },
     loginLink: { alignItems: "center", paddingVertical: 4 },
     loginText: { fontSize: 14, color: C.textSecondary },
-    loginBold: { color: C.purple600, fontWeight: "700" },
+    loginBold: { color: C.purple600, fontFamily: 'PlusJakartaSans_700Bold' },
 });

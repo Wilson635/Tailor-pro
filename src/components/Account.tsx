@@ -200,7 +200,7 @@ const fieldStyles = StyleSheet.create({
     wrap: { marginBottom: 14 },
     label: {
         fontSize: 11,
-        fontWeight: "600",
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: C.textSecondary,
         letterSpacing: 0.5,
         //textTransform: "uppercase",
@@ -300,7 +300,7 @@ const phoneStyles = StyleSheet.create({
         height: "100%",
     },
     flag: { fontSize: 18 },
-    code: { fontSize: 14, fontWeight: "600", color: C.textPrimary },
+    code: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textPrimary },
     sep:  { width: 0.5, height: "60%", backgroundColor: C.border },
     input: { flex: 1, fontSize: 15, color: C.textPrimary, paddingHorizontal: 14, height: "100%" },
     hint: { fontSize: 11, color: C.textTertiary, marginTop: 4 },
@@ -406,7 +406,7 @@ const modalStyles = StyleSheet.create({
         borderBottomWidth: 0.5,
         borderBottomColor: C.border,
     },
-    title: { fontSize: 17, fontWeight: "600", color: C.textPrimary },
+    title: { fontSize: 17, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textPrimary },
     closeBtn: {
         width: 32,
         height: 32,
@@ -436,7 +436,7 @@ const modalStyles = StyleSheet.create({
     },
     countryItemActive: { backgroundColor: C.purple50 },
     itemFlag:   { fontSize: 22 },
-    itemName:   { fontSize: 15, color: C.textPrimary, fontWeight: "500" },
+    itemName:   { fontSize: 15, color: C.textPrimary, fontFamily: 'PlusJakartaSans_500Medium' },
     itemFormat: { fontSize: 12, color: C.textTertiary, marginTop: 2 },
     sep: { height: 0.5, backgroundColor: C.border, marginHorizontal: 20 },
 });
@@ -778,14 +778,14 @@ const styles = StyleSheet.create({
     },
     profileBadgeText: {
         fontSize: 12,
-        fontWeight: "600",
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         letterSpacing: 0.3,
     },
 
     // Step
     stepLabel: {
         fontSize: 11,
-        fontWeight: "600",
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: C.textTertiary,
         letterSpacing: 0.5,
         //textTransform: "uppercase",
@@ -797,7 +797,7 @@ const styles = StyleSheet.create({
     titleSection: { marginBottom: 28 },
     mainTitle: {
         fontSize: 28,
-        fontWeight: "700",
+        fontFamily: 'PlusJakartaSans_700Bold',
         color: C.textPrimary,
         letterSpacing: -0.5,
         lineHeight: 36,
@@ -813,7 +813,7 @@ const styles = StyleSheet.create({
     formSection: { marginBottom: 24 },
     sectionTitle: {
         fontSize: 11,
-        fontWeight: "700",
+        fontFamily: 'PlusJakartaSans_700Bold',
         color: C.textTertiary,
         letterSpacing: 0.8,
         //textTransform: "uppercase",
@@ -837,7 +837,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         paddingVertical: 5,
     },
-    chipText: { fontSize: 12, fontWeight: "600" },
+    chipText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold' },
 
     ctaButton: {
         height: 54,
@@ -850,7 +850,7 @@ const styles = StyleSheet.create({
     },
     ctaButtonText: {
         fontSize: 16,
-        fontWeight: "700",
+        fontFamily: 'PlusJakartaSans_700Bold',
         color: "#FFFFFF",
         letterSpacing: 0.1,
     },
@@ -866,5 +866,5 @@ const styles = StyleSheet.create({
 
     loginLink: { alignItems: "center", paddingVertical: 4 },
     loginText: { fontSize: 14, color: C.textSecondary },
-    loginBold: { color: C.purple600, fontWeight: "700" },
+    loginBold: { color: C.purple600, fontFamily: 'PlusJakartaSans_700Bold' },
 });

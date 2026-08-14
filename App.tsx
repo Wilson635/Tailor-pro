@@ -7,11 +7,8 @@ import * as Font from 'expo-font';
 
 import AppNavigator from './src/navigation/AppNavigator';
 import { COLORS, Typography } from '@constants/theme';
-import {  useAppStore } from '@store/useAppStore';
-
-// Note: Firebase is not initialized in this demo version
-// To enable Firebase, uncomment the import and initialization below:
-// import { initializeFirebase } from './src/services/firebase/config';
+import { useAppStore } from '@store/useAppStore';
+import { ToastProvider } from './src/context/ToastContext';
 
 export default function App() {
   const [isReady, setIsReady] = useState(false);
@@ -22,21 +19,12 @@ export default function App() {
   useEffect(() => {
     const prepare = async () => {
       try {
-        // Load fonts if needed
-        await Font.loadAsync({
-          // Add custom fonts here if needed
-        });
-
-        // Initialize Firebase (uncomment when ready)
-        // await initializeFirebase();
-
-        // Load mock data for demonstration
+        await Font.loadAsync({});
         loadMockData();
-
         setIsReady(true);
       } catch (e) {
         console.error('Error loading app:', e);
-        setError('Erreur lors du chargement de l\'application');
+        setError("Erreur lors du chargement de l'application");
         setIsReady(true);
       }
     };
@@ -46,28 +34,32 @@ export default function App() {
 
   if (!isReady) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Chargement...</Text>
-      </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>Chargement...</Text>
+        </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
     );
   }
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <SafeAreaProvider>
-        <StatusBar style="dark" />
-        <AppNavigator />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+      <GestureHandlerRootView style={styles.container}>
+        {/* 1. SafeAreaProvider en premier */}
+        <SafeAreaProvider>
+          {/* 2. ToastProvider à l'intérieur */}
+          <ToastProvider>
+            <StatusBar style="dark" />
+            <AppNavigator session={null} />
+          </ToastProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
   );
 }
 

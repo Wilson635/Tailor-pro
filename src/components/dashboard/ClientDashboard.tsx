@@ -335,7 +335,7 @@ export const ClientDashboard: React.FC = () => {
                                     <View style={styles.orderPayRow}>
                                         <Feather name="credit-card" size={12} color={P.error} />
                                         <Text style={styles.orderPayText}>
-                                            Reste à régler : <Text style={{ fontWeight: '700' }}>{formatCurrency(order.remainingAmount)}</Text>
+                                            Reste à régler : <Text style={{ fontFamily: 'PlusJakartaSans_700Bold' }}>{formatCurrency(order.remainingAmount)}</Text>
                                         </Text>
                                     </View>
                                 )}
@@ -412,8 +412,8 @@ const styles = StyleSheet.create({
     heroGoldLine: { position: 'absolute', top: 0, left: 24, right: 24, height: 1, backgroundColor: 'rgba(212,175,55,0.25)' },
 
     heroTop:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    heroLabel:  { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: '700', letterSpacing: 1.5, marginBottom: 6 },
-    heroAmount: { fontSize: 34, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+    heroLabel:  { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'PlusJakartaSans_700Bold', letterSpacing: 1.5, marginBottom: 6 },
+    heroAmount: { fontSize: 34, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#fff', letterSpacing: -0.5 },
     heroDeliveryPill: {
         flexDirection: 'row', alignItems: 'center', gap: 5,
         backgroundColor: P.goldBg,
@@ -422,15 +422,15 @@ const styles = StyleSheet.create({
         alignSelf: 'flex-start',
         borderWidth: 0.5, borderColor: P.goldRim,
     },
-    heroDeliveryText: { fontSize: 11, color: P.gold, fontWeight: '600' },
+    heroDeliveryText: { fontSize: 11, color: P.gold, fontFamily: 'PlusJakartaSans_600SemiBold' },
     heroDueCard: {
         backgroundColor: P.errorBg,
         borderRadius: 14, padding: SPACING.md,
         alignItems: 'flex-end',
         borderWidth: 0.5, borderColor: 'rgba(239,68,68,0.25)',
     },
-    heroDueLabel: { fontSize: 10, color: 'rgba(239,68,68,0.7)', fontWeight: '600', marginBottom: 4 },
-    heroDueValue: { fontSize: 18, fontWeight: '800', color: P.error },
+    heroDueLabel: { fontSize: 10, color: 'rgba(239,68,68,0.7)', fontFamily: 'PlusJakartaSans_600SemiBold', marginBottom: 4 },
+    heroDueValue: { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.error },
 
     // ── Alerte paiement ──
     alertBanner: {
@@ -440,12 +440,12 @@ const styles = StyleSheet.create({
         borderWidth: 0.5, borderColor: 'rgba(239,68,68,0.25)',
     },
     alertLeft: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, flex: 1 },
-    alertText: { flex: 1, fontSize: 12, color: P.error, fontWeight: '600', lineHeight: 18 },
+    alertText: { flex: 1, fontSize: 12, color: P.error, fontFamily: 'PlusJakartaSans_600SemiBold', lineHeight: 18 },
 
     // ── Sections ──
     section:       { gap: SPACING.md },
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    sectionTitle:  { fontSize: 15, fontWeight: '700', color: P.text },
+    sectionTitle:  { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
     seeAll:        { fontSize: 12, color: P.sub },
 
     // ── Accès rapide ──
@@ -457,13 +457,13 @@ const styles = StyleSheet.create({
         position: 'relative',
     },
     quickIcon:      { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-    quickLabel:     { fontSize: 11, fontWeight: '600', color: P.text, textAlign: 'center', lineHeight: 16 },
+    quickLabel:     { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text, textAlign: 'center', lineHeight: 16 },
     quickBadge: {
         position: 'absolute', top: 8, right: 8,
         width: 16, height: 16, borderRadius: 8,
         backgroundColor: P.error, alignItems: 'center', justifyContent: 'center',
     },
-    quickBadgeText: { fontSize: 9, fontWeight: '800', color: '#fff' },
+    quickBadgeText: { fontSize: 9, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#fff' },
 
     // ── Mesures ──
     measuresBanner: {
@@ -480,23 +480,23 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(108,62,184,0.08)',
         alignItems: 'center', justifyContent: 'center',
     },
-    measuresBannerTitle: { fontSize: 13, fontWeight: '700', color: P.text },
+    measuresBannerTitle: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
     measuresBannerSub:   { fontSize: 11, color: P.sub, marginTop: 2 },
 
     // ── Commandes ──
     orderCard:    { ...card, padding: SPACING.md, gap: SPACING.sm },
     orderCardTop: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
     orderIconBox: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-    orderType:    { fontSize: 14, fontWeight: '700', color: P.text },
-    orderStatus:  { fontSize: 12, marginTop: 2, fontWeight: '600' },
+    orderType:    { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+    orderStatus:  { fontSize: 12, marginTop: 2, fontFamily: 'PlusJakartaSans_600SemiBold' },
     deliveryPill: {
         flexDirection: 'row', alignItems: 'center', gap: 3,
         backgroundColor: P.border,
         paddingHorizontal: 8, paddingVertical: 4, borderRadius: 99,
     },
-    deliveryText:  { fontSize: 11, color: P.sub, fontWeight: '600' },
+    deliveryText:  { fontSize: 11, color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold' },
     progressRow:   { flexDirection: 'row', alignItems: 'center' },
-    progressLabel: { fontSize: 11, color: P.sub, fontWeight: '500' },
+    progressLabel: { fontSize: 11, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
     orderPayRow: {
         flexDirection: 'row', alignItems: 'center', gap: 5,
         paddingTop: 8, borderTopWidth: 0.5, borderTopColor: 'rgba(0,0,0,0.06)',
@@ -507,11 +507,11 @@ const styles = StyleSheet.create({
     historyCard:   { ...card, overflow: 'hidden' },
     historyRow:    { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, gap: SPACING.sm },
     historyDot:    { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    historyTitle:  { fontSize: 13, fontWeight: '600', color: P.text },
+    historyTitle:  { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
     historySub:    { fontSize: 11, color: P.sub, marginTop: 2 },
     paidBadge:     { backgroundColor: P.successBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 },
     unpaidBadge:   { backgroundColor: P.errorBg },
-    paidText:      { fontSize: 10, fontWeight: '700', color: P.success },
+    paidText:      { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: P.success },
     historyDivider:{ height: 0.5, backgroundColor: 'rgba(0,0,0,0.06)', marginLeft: 60 },
 
     // ── Vide ──
@@ -520,6 +520,6 @@ const styles = StyleSheet.create({
         padding: SPACING.xl, alignItems: 'center', gap: SPACING.sm,
         borderStyle: 'dashed', borderColor: 'rgba(108,62,184,0.15)',
     },
-    emptyTitle: { fontSize: 14, fontWeight: '700', color: P.text },
+    emptyTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
     emptySub:   { fontSize: 12, color: P.sub, textAlign: 'center', lineHeight: 18 },
 });

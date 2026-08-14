@@ -124,12 +124,20 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
         ══════════════════════════════ */}
           <View style={styles.topbar}>
 
-            {/* Ligne 1 : date + actions */}
+            {/* Forme décorative en fond (pas d'ombre, juste une teinte) */}
+            <View style={styles.topbarDecor} pointerEvents="none" />
+
+            {/* Ligne 1 : date + salutation | actions */}
             <View style={styles.topRow}>
-              <Text style={styles.topDate}>{getFormattedDate()}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.topDate}>{getFormattedDate()}</Text>
+                <Text style={styles.greeting}>
+                  {getGreeting()}, <Text style={styles.greetingName}>{profile?.display_name?.split(' ')[0] ?? 'là'} 👋</Text>
+                </Text>
+              </View>
               <View style={styles.topActions}>
                 <TouchableOpacity style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Feather name="bell" size={18} color={P.text} />
+                  <Feather name="bell" size={17} color={P.text} />
                   <View style={styles.notifDot} />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.avatarBtn} onPress={openMenu}>
@@ -138,23 +146,18 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
               </View>
             </View>
 
-            {/* Ligne 2 : salutation */}
+            {/* Ligne 2 : badges */}
             <View style={styles.greetRow}>
-              <View>
-                <Text style={styles.greeting}>
-                  {getGreeting()}, <Text style={styles.greetingName}>{profile?.display_name?.split(' ')[0] ?? 'là'} 👋</Text>
-                </Text>
-                {userRole === 'tailor' && profile?.atelier_name ? (
-                    <View style={styles.atelierPill}>
-                      <Feather name="scissors" size={11} color={P.primary} />
-                      <Text style={styles.atelierName}>{profile.atelier_name}</Text>
-                    </View>
-                ) : (
-                    <Text style={styles.greetingSub}>
-                      {userRole === 'tailor' ? 'Votre atelier vous attend' : 'Suivez vos confections'}
-                    </Text>
-                )}
-              </View>
+              {userRole === 'tailor' && profile?.atelier_name ? (
+                  <View style={styles.atelierPill}>
+                    <Feather name="home" size={12} color={P.primary} />
+                    <Text style={styles.atelierName}>{profile.atelier_name}</Text>
+                  </View>
+              ) : (
+                  <Text style={styles.greetingSub}>
+                    {userRole === 'tailor' ? 'Votre atelier vous attend' : 'Suivez vos confections'}
+                  </Text>
+              )}
 
               {/* Badge rôle */}
               <View style={[styles.rolePill, userRole === 'tailor' && styles.rolePillTailor]}>
@@ -278,28 +281,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
     paddingBottom: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(108,62,184,0.07)',
-    ...Platform.select({
-      ios:     { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6 },
-      android: { elevation: 2 },
-    }),
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  topbarDecor: {
+    position: 'absolute',
+    top: 0,
+    left: -40,
+    right: -40,
+    height: 64,
+    backgroundColor: '#F1EEFB',
+    borderBottomLeftRadius: 999,
+    borderBottomRightRadius: 999,
+    opacity: 0.6,
   },
 
-  // Ligne 1 : date + icônes
+  // Ligne 1 : date + salutation + icônes
   topRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: SPACING.sm,
   },
   topDate: {
     fontSize: 11,
     color: P.sub,
-    fontWeight: '500',
+    fontFamily: 'PlusJakartaSans_500Medium',
     textTransform: 'capitalize',
   },
-  topActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  topActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 2 },
   iconBtn: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: P.pageBg,
@@ -318,39 +328,43 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: P.gold,
   },
-  avatarBtnText: { fontSize: 12, fontWeight: '800', color: P.gold },
+  avatarBtnText: { fontSize: 12, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
 
-  // Ligne 2 : salutation
+  // Ligne 2 : badges
   greetRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    /*justifyContent: 'space-between',*/
+    gap: 5,
   },
   greeting: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 19,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: P.sub,
+    marginTop: 2,
   },
   greetingName: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 19,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
     color: P.text,
   },
   greetingSub: {
     fontSize: 12,
     color: P.sub,
-    marginTop: 2,
   },
   atelierPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
+    gap: 6,
+    backgroundColor: 'rgba(108,62,184,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 99,
   },
   atelierName: {
     fontSize: 12,
     color: P.primary,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
   rolePill: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -363,7 +377,7 @@ const styles = StyleSheet.create({
     backgroundColor: P.goldBg,
     borderColor: P.goldRim,
   },
-  rolePillText: { fontSize: 11, fontWeight: '600', color: P.primary },
+  rolePillText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
   rolePillTextTailor: { color: P.gold },
 
   // ── Menu dropdown ──
@@ -390,8 +404,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: P.gold,
   },
-  menuAvatarText: { fontSize: 13, fontWeight: '800', color: P.gold },
-  menuName:  { fontSize: 13, fontWeight: '700', color: P.text },
+  menuAvatarText: { fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
+  menuName:  { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
   menuEmail: { fontSize: 11, color: P.sub, marginTop: 1 },
   menuDivider: { height: 1, backgroundColor: 'rgba(0,0,0,0.05)' },
   menuRow: {
@@ -402,7 +416,7 @@ const styles = StyleSheet.create({
     width: 32, height: 32, borderRadius: 9,
     alignItems: 'center', justifyContent: 'center',
   },
-  menuRowText: { flex: 1, fontSize: 13, fontWeight: '600', color: P.text },
+  menuRowText: { flex: 1, fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
 
   // ── Modal logout ──
   alertOverlay: {
@@ -428,7 +442,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: SPACING.md,
   },
-  alertTitle: { fontSize: 18, fontWeight: '800', color: P.text, marginBottom: 6 },
+  alertTitle: { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, marginBottom: 6 },
   alertBody: { fontSize: 13, color: P.sub, textAlign: 'center', lineHeight: 20, marginBottom: SPACING.lg },
   alertBtns: { flexDirection: 'row', gap: SPACING.sm, width: '100%' },
   alertCancel: {
@@ -437,11 +451,11 @@ const styles = StyleSheet.create({
     backgroundColor: P.pageBg,
     borderWidth: 1, borderColor: P.border,
   },
-  alertCancelText: { fontSize: 14, fontWeight: '600', color: P.sub },
+  alertCancelText: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
   alertConfirm: {
     flex: 1, height: 48, borderRadius: 14,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     backgroundColor: P.error,
   },
-  alertConfirmText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  alertConfirmText: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });

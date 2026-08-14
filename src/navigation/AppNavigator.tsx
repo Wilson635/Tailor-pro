@@ -42,7 +42,7 @@ import {
     ComptabiliteScreen,
     ClientPaiementsScreen,
     RecuScreen,
-    //CommandeKanbanScreen,
+    CommandeKanbanScreen,
     TissusScreen,
     AddTissuScreen,
     TissuDetailsScreen,
@@ -341,6 +341,18 @@ const TailorTabNavigator = ({ navigation }: any) => {
 
     const plusItems: PlusMenuItem[] = [
         {
+            key: 'comptabilite',
+            label: 'Comptabilité',
+            icon: 'trending-up',
+            onPress: () => { setPlusOpen(false); navigation.navigate('Comptabilite'); },
+        },
+        {
+            key: 'statistics',
+            label: 'Statistiques',
+            icon: 'bar-chart-2',
+            onPress: () => { setPlusOpen(false); navigation.navigate('Statistics'); },
+        },
+        {
             key: 'galerie',
             label: 'Galerie',
             icon: 'image',
@@ -353,34 +365,22 @@ const TailorTabNavigator = ({ navigation }: any) => {
             onPress: () => { setPlusOpen(false); navigation.navigate('Recherche'); },
         },
         {
-            key: 'comptabilite',
-            label: 'Comptabilité',
-            icon: 'trending-up',
-            onPress: () => { setPlusOpen(false); navigation.navigate('Comptabilite'); },
-        },
-        {
-            key: 'statistics',
-            label: 'Statistiques',
-            icon: 'bar-chart-2',
-            onPress: () => navigation.navigate('Statistics'),
-        },
-        {
             key: 'payments',
             label: 'Paiements',
             icon: 'credit-card',
-            onPress: () => navigation.navigate('Payments', { clientId: '' }),
+            onPress: () => { setPlusOpen(false); navigation.navigate('Payments', { clientId: '' }); },
         },
         {
             key: 'profile',
             label: 'Profil',
             icon: 'user',
-            onPress: () => navigation.navigate('Profile'),
+            onPress: () => { setPlusOpen(false); navigation.navigate('Profile'); },
         },
         {
             key: 'settings',
             label: 'Réglages',
             icon: 'settings',
-            onPress: () => { /* navigate to settings */ },
+            onPress: () => { setPlusOpen(false); navigation.navigate('Settings'); },
         },
     ];
 
@@ -561,7 +561,7 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
                     <Stack.Screen name="Comptabilite"        component={ComptabiliteScreen} />
                     <Stack.Screen name="ClientPaiements"     component={ClientPaiementsScreen} />
                     <Stack.Screen name="Recu"                component={RecuScreen} />
-                    {/*<Stack.Screen name="CommandeKanban"      component={CommandeKanbanScreen} />*/}
+                    <Stack.Screen name="CommandeKanban"      component={CommandeKanbanScreen} />
                     <Stack.Screen name="Tissus"              component={TissusScreen} />
                     <Stack.Screen name="AddTissu"            component={AddTissuScreen} />
                     <Stack.Screen name="TissuDetails"        component={TissuDetailsScreen} />
@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
     // ── Label onglet ──
     tabLabel: {
         fontSize: 10,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
         letterSpacing: 0.2,
         color: PALETTE.muted,
         marginTop: 2,
@@ -702,7 +702,7 @@ const styles = StyleSheet.create({
     },
     plusLabel: {
         fontSize: 10,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
         letterSpacing: 0.2,
         color: PALETTE.muted,
         marginTop: 5,
@@ -719,14 +719,15 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         flexDirection: 'row',
+        flexWrap: 'wrap',
         justifyContent: 'center',
-        alignItems: 'flex-end',
-        gap: 12,
+        alignItems: 'flex-start',
+        rowGap: 20,
+        columnGap: 16,
         paddingHorizontal: 24,
     },
     menuItemWrap: {
-        flex: 1,
-        maxWidth: 80,
+        width: 72,
     },
     menuItem: {
         alignItems: 'center',
@@ -753,7 +754,7 @@ const styles = StyleSheet.create({
     },
     menuLabel: {
         fontSize: 10,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
         color: PALETTE.bg,
         letterSpacing: 0.2,
         textAlign: 'center',

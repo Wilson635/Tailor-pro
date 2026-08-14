@@ -199,7 +199,7 @@ export const orderService = {
         const { data, error } = await supabase
             .from('orders')
             .select('*, order_items(*)') // <── Jointure ici
-            .eq('user_id', userId)
+            .eq('couturier_id', userId)
             .order('created_at', { ascending: false });
         return { data, error };
     },

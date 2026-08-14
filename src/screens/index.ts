@@ -21,7 +21,7 @@ export { RechercheScreen } from './Recherche/RechercheScreen';
 export { ComptabiliteScreen } from './Comptabilite/ComptabiliteScreen';
 export { ClientPaiementsScreen } from './Payments/ClientPaiementsScreen';
 export { RecuScreen } from './Payments/RecuScreen';
-//export { CommandeKanbanScreen } from './Orders/CommandeKanbanScreen';
+export { CommandeKanbanScreen } from './Orders/CommandeKanbanScreen';
 export { TissusScreen } from './Tissus/TissusScreen';
 export { AddTissuScreen } from './Tissus/AddTissuScreen';
 export { TissuDetailsScreen } from './Tissus/TissuDetailsScreen';
