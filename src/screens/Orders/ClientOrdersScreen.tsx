@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@components/ui';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrency } from '@utils/formatters';
-import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '@constants/theme';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '@constants/theme';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
 import {NativeStackScreenProps} from "@react-navigation/native-stack";
 import {useProfile} from "@hooks/useProfile";
@@ -133,33 +133,33 @@ export const ClientOrdersScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-    headerTitle: { fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.bold, color: COLORS.text },
+    headerTitle: { fontSize: FONT_SIZES.lg, fontFamily: 'PlusJakartaSans_700Bold', color: COLORS.text },
     actionPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.primary, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm - 2, borderRadius: BORDER_RADIUS.full },
-    actionPillText: { fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.white },
+    actionPillText: { fontSize: FONT_SIZES.xs, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.white },
     scrollContent: { padding: SPACING.lg },
     section: { marginBottom: SPACING.xl },
-    sectionTitle: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.bold, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: SPACING.md },
+    sectionTitle: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_700Bold', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: SPACING.md },
     searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border, borderRadius: BORDER_RADIUS.lg, paddingHorizontal: SPACING.md, height: 46, marginBottom: SPACING.sm },
     searchInput: { flex: 1, marginLeft: SPACING.sm, fontSize: FONT_SIZES.sm, color: COLORS.text },
     findTailorCard: { padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border },
     tailorInfo: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
     tailorAvatar: { width: 40, height: 40, borderRadius: BORDER_RADIUS.md, backgroundColor: COLORS.secondary, alignItems: 'center', justifyContent: 'center' },
-    tailorName: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+    tailorName: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
     tailorSub: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 2 },
     connectBtn: { backgroundColor: COLORS.secondary, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, borderRadius: BORDER_RADIUS.md },
-    connectBtnText: { fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.primary },
+    connectBtnText: { fontSize: FONT_SIZES.xs, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.primary },
     emptyCard: { padding: SPACING.xl, alignItems: 'center', gap: SPACING.sm, borderStyle: 'dashed', borderWidth: 1, borderColor: COLORS.border },
     emptyText: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, textAlign: 'center' },
     orderCard: { padding: SPACING.lg, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
     pastOrderCard: { opacity: 0.75, backgroundColor: COLORS.gray100 },
     orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    orderName: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
-    pastOrderName: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.medium, color: COLORS.textSecondary },
+    orderName: { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
+    pastOrderName: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_500Medium', color: COLORS.textSecondary },
     atelierTag: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 4 },
     statusBadge: { backgroundColor: COLORS.secondary, paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: BORDER_RADIUS.full },
-    statusText: { fontSize: FONT_SIZES.xs, color: COLORS.primary, fontWeight: FONT_WEIGHTS.bold, textTransform: 'capitalize' },
+    statusText: { fontSize: FONT_SIZES.xs, color: COLORS.primary, fontFamily: 'PlusJakartaSans_700Bold', textTransform: 'capitalize' },
     orderFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.md, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: COLORS.border },
-    orderPrice: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.medium, color: COLORS.text },
-    orderRemaining: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.error },
+    orderPrice: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_500Medium', color: COLORS.text },
+    orderRemaining: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.error },
     orderFooterText: { fontSize: FONT_SIZES.xs, color: COLORS.textLight, marginTop: SPACING.xs },
 });

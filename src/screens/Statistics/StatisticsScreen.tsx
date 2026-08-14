@@ -594,7 +594,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.10)',
     justifyContent: 'center', alignItems: 'center',
   },
-  headerTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  headerTitle: { color: '#fff', fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold' },
   headerSub:   { color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 1 },
   exportBtn: {
     width: 36, height: 36, borderRadius: 18,
@@ -613,11 +613,11 @@ const s = StyleSheet.create({
     alignItems: 'center', backgroundColor: P.pageBg,
   },
   periodChipActive: { backgroundColor: P.primary, borderColor: P.primary },
-  periodText:       { fontSize: 12, fontWeight: '600', color: P.sub },
+  periodText:       { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
   periodTextActive: { color: '#fff' },
 
   sectionTitle: {
-    fontSize: 11, fontWeight: '700', color: P.sub,
+    fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', color: P.sub,
     letterSpacing: 0.6, textTransform: 'uppercase',
     marginBottom: 10,
   },
@@ -630,7 +630,7 @@ const s = StyleSheet.create({
     shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
   kpiIcon: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  kpiValue: { fontSize: 16, fontWeight: '800', color: P.text },
+  kpiValue: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
   kpiLabel: { fontSize: 10, color: P.sub, marginTop: 2 },
   kpiSub:   { fontSize: 9, color: P.sub, marginTop: 1, fontStyle: 'italic' },
 
@@ -651,7 +651,7 @@ const s = StyleSheet.create({
 
   // Fidèles
   fideleStat:    { flex: 1, alignItems: 'center' },
-  fideleNum:     { fontSize: 22, fontWeight: '900', color: P.text },
+  fideleNum:     { fontSize: 22, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
   fideleLabel:   { fontSize: 10, color: P.sub, textAlign: 'center', marginTop: 2, lineHeight: 14 },
   fideleDivider: { width: 1, height: 40, backgroundColor: P.border },
 
@@ -660,20 +660,20 @@ const s = StyleSheet.create({
   hBarLabel: { fontSize: 12, color: P.text, width: 90 },
   hBarTrack: { flex: 1, height: 7, borderRadius: 4, backgroundColor: 'rgba(108,62,184,0.08)' },
   hBarFill:  { height: 7, borderRadius: 4 },
-  hBarValue: { fontSize: 11, fontWeight: '700', width: 80, textAlign: 'right' },
+  hBarValue: { fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', width: 80, textAlign: 'right' },
 
   // Pie legend
   pieLegend:     { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 4 },
   pieLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pieDot:        { width: 8, height: 8, borderRadius: 4 },
   pieLegendLabel:{ fontSize: 11, color: P.sub },
-  pieLegendCount:{ fontSize: 11, fontWeight: '700' },
+  pieLegendCount:{ fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold' },
 
   // Statuts
   statutRow:  { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, gap: 8 },
   statutDot:  { width: 10, height: 10, borderRadius: 5 },
-  statutLabel:{ flex: 1, fontSize: 13, color: P.text, fontWeight: '500' },
-  statutCount:{ fontSize: 15, fontWeight: '800' },
+  statutLabel:{ flex: 1, fontSize: 13, color: P.text, fontFamily: 'PlusJakartaSans_500Medium' },
+  statutCount:{ fontSize: 15, fontFamily: 'PlusJakartaSans_800ExtraBold' },
   statutPct:  { fontSize: 11, color: P.sub, width: 36, textAlign: 'right' },
 
   // Export
@@ -682,5 +682,5 @@ const s = StyleSheet.create({
     justifyContent: 'center', backgroundColor: P.primary,
     borderRadius: 14, paddingVertical: 15,
   },
-  exportFullBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  exportFullBtnText: { color: '#fff', fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold' },
 });

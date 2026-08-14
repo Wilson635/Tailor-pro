@@ -83,8 +83,8 @@ const parseDateStr = (s: string): Date | null => {
 
 // ── Composants UI ────────────────────────────────────────
 const KpiCard = ({
-    icon, label, value, sub, color, bgColor,
-}: {
+                     icon, label, value, sub, color, bgColor,
+                 }: {
     icon: string; label: string; value: string; sub?: string;
     color: string; bgColor: string;
 }) => (
@@ -106,7 +106,7 @@ const kpiStyles = StyleSheet.create({
         shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
     },
     iconWrap: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-    value:    { fontSize: 17, fontWeight: '800', color: P.text },
+    value:    { fontSize: 17, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
     label:    { fontSize: 11, color: P.sub, marginTop: 2 },
     sub:      { fontSize: 10, color: P.sub, marginTop: 1, fontStyle: 'italic' },
 });
@@ -220,9 +220,9 @@ export function ComptabiliteScreen() {
 
     // ── Débiteurs (global, toutes périodes) ────────────────
     const debtors = useMemo(() =>
-        allOrders
-            .filter(o => o.remainingAmount > 0 && o.paymentStatus !== 'paid')
-            .sort((a, b) => b.remainingAmount - a.remainingAmount),
+            allOrders
+                .filter(o => o.remainingAmount > 0 && o.paymentStatus !== 'paid')
+                .sort((a, b) => b.remainingAmount - a.remainingAmount),
         [allOrders]
     );
     const totalDette = debtors.reduce((s, d) => s + d.remainingAmount, 0);
@@ -369,7 +369,7 @@ export function ComptabiliteScreen() {
                     contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
                     refreshControl={
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh}
-                            colors={[P.primary]} tintColor={P.primary} />
+                                        colors={[P.primary]} tintColor={P.primary} />
                     }
                 >
                     {/* ── KPIs encaissements ─────────────────── */}
@@ -593,7 +593,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.10)',
         justifyContent: 'center', alignItems: 'center',
     },
-    headerTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    headerTitle: { color: '#fff', fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold' },
     headerSub:   { color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 1 },
     exportBtn: {
         width: 36, height: 36, borderRadius: 18,
@@ -611,8 +611,8 @@ const styles = StyleSheet.create({
         borderBottomWidth: 2, borderBottomColor: 'transparent',
     },
     tabActive:     { borderBottomColor: P.primary },
-    tabText:       { fontSize: 12, color: P.sub, fontWeight: '500' },
-    tabTextActive: { color: P.primary, fontWeight: '700' },
+    tabText:       { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
+    tabTextActive: { color: P.primary, fontFamily: 'PlusJakartaSans_700Bold' },
 
     // Custom date
     customDates: {
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
 
     // Section titles
     sectionTitle: {
-        fontSize: 12, fontWeight: '700', color: P.sub,
+        fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', color: P.sub,
         letterSpacing: 0.5, textTransform: 'uppercase',
         marginBottom: 10,
     },
@@ -643,7 +643,7 @@ const styles = StyleSheet.create({
         padding: 12, marginTop: 12,
         borderWidth: 1, borderColor: 'rgba(217,119,6,0.20)',
     },
-    alertTitle: { fontSize: 13, fontWeight: '700', color: P.warning },
+    alertTitle: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.warning },
     alertSub:   { fontSize: 11, color: P.warning, marginTop: 2, opacity: 0.8 },
 
     // Card
@@ -658,7 +658,7 @@ const styles = StyleSheet.create({
     // Payment rows
     payRow: { flexDirection: 'row', alignItems: 'center', padding: 12 },
     payDot: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-    payAmount: { fontSize: 14, fontWeight: '700' },
+    payAmount: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold' },
     paySub:    { fontSize: 11, color: P.sub, marginTop: 2 },
 
     // Empty
@@ -680,7 +680,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(108,62,184,0.08)',
         justifyContent: 'center', alignItems: 'center',
     },
-    debtorsTitle: { fontSize: 14, fontWeight: '700', color: P.text },
+    debtorsTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
     debtorsSub:   { fontSize: 11, color: P.sub, marginTop: 2 },
 
     // Debt rows
@@ -690,11 +690,11 @@ const styles = StyleSheet.create({
         backgroundColor: P.errorBg,
         justifyContent: 'center', alignItems: 'center',
     },
-    debtAvatarText: { fontSize: 14, fontWeight: '800', color: P.error },
-    debtName:   { fontSize: 13, fontWeight: '700', color: P.text },
+    debtAvatarText: { fontSize: 14, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.error },
+    debtName:   { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
     debtMeta:   { fontSize: 11, color: P.sub, marginTop: 1 },
     debtAge:    { fontSize: 10, color: P.sub, marginTop: 1 },
-    debtAmount: { fontSize: 14, fontWeight: '800', color: P.error },
+    debtAmount: { fontSize: 14, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.error },
 
     // Export
     exportRow: { flexDirection: 'row', marginTop: 24 },
@@ -703,7 +703,7 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: P.border, borderRadius: 10,
         paddingVertical: 10, backgroundColor: P.surface,
     },
-    exportQuickText: { fontSize: 12, fontWeight: '600', color: P.primary },
+    exportQuickText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
 
     // Future banner
     futureBanner: {

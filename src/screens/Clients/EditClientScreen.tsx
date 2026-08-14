@@ -138,7 +138,7 @@ const cpStyles = StyleSheet.create({
   handle:      { width: 40, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: 'center', marginBottom: 12 },
   header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingBottom: 14 },
-  title:       { fontSize: 17, fontWeight: '600', color: C.textPrimary },
+  title:       { fontSize: 17, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textPrimary },
   closeBtn:    { width: 30, height: 30, borderRadius: 10, backgroundColor: C.surface,
     alignItems: 'center', justifyContent: 'center' },
   searchWrap:  { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 12,
@@ -148,8 +148,8 @@ const cpStyles = StyleSheet.create({
   item:        { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 12 },
   itemActive:  { backgroundColor: C.purple50 },
   flag:        { fontSize: 24 },
-  itemName:    { fontSize: 15, color: C.textPrimary, fontWeight: '500' },
-  itemNameActive: { color: C.purple600, fontWeight: '600' },
+  itemName:    { fontSize: 15, color: C.textPrimary, fontFamily: 'PlusJakartaSans_500Medium' },
+  itemNameActive: { color: C.purple600, fontFamily: 'PlusJakartaSans_600SemiBold' },
   itemDial:    { fontSize: 12, color: C.textTertiary, marginTop: 2 },
   checkBadge:  { width: 22, height: 22, borderRadius: 11, backgroundColor: C.purple600,
     alignItems: 'center', justifyContent: 'center' },
@@ -178,14 +178,14 @@ const cardStyles = StyleSheet.create({
     shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
   header:  { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
   iconWrap:{ width: 30, height: 30, borderRadius: 9, backgroundColor: C.purple100, alignItems: 'center', justifyContent: 'center' },
-  title:   { fontSize: 14, fontWeight: '600', color: C.textPrimary, letterSpacing: -0.1 },
+  title:   { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textPrimary, letterSpacing: -0.1 },
 });
 
 // ── CHAMP GÉNÉRIQUE ───────────────────────────────────────────────
 const Field = ({
-  label, icon, value, onChangeText, placeholder,
-  keyboardType, autoCapitalize, optional, multiline,
-}: {
+                 label, icon, value, onChangeText, placeholder,
+                 keyboardType, autoCapitalize, optional, multiline,
+               }: {
   label: string; icon: keyof typeof Ionicons.glyphMap;
   value: string; onChangeText: (t: string) => void;
   placeholder: string; keyboardType?: any;
@@ -213,8 +213,8 @@ const Field = ({
 );
 const fStyles = StyleSheet.create({
   wrap:      { marginBottom: 12 },
-  label:     { fontSize: 11, fontWeight: '600', color: C.textSecondary, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 6 },
-  optional:  { color: C.textTertiary, fontWeight: '400', textTransform: 'none' },
+  label:     { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textSecondary, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 6 },
+  optional:  { color: C.textTertiary, fontFamily: 'PlusJakartaSans_400Regular', textTransform: 'none' },
   inputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.surface, borderRadius: 12,
     borderWidth: 0.5, borderColor: C.border, paddingHorizontal: 14, height: 50 },
   input:     { flex: 1, fontSize: 15, color: C.textPrimary, height: '100%' },
@@ -611,7 +611,7 @@ const pStyles = StyleSheet.create({
     borderRadius: 12, borderWidth: 0.5, borderColor: C.border, height: 50, overflow: 'hidden' },
   countryBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, height: '100%' },
   flag:       { fontSize: 18 },
-  dial:       { fontSize: 13, fontWeight: '600', color: C.textPrimary },
+  dial:       { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textPrimary },
   sep:        { width: 0.5, height: '60%', backgroundColor: C.border },
   input:      { flex: 1, fontSize: 15, color: C.textPrimary, paddingHorizontal: 14, height: '100%' },
 });
@@ -623,20 +623,20 @@ const gStyles = StyleSheet.create({
   itemActive:  { backgroundColor: C.bg,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 3, elevation: 2 },
-  label:       { fontSize: 14, color: C.textTertiary, fontWeight: '500' },
-  labelActive: { color: C.purple600, fontWeight: '600' },
+  label:       { fontSize: 14, color: C.textTertiary, fontFamily: 'PlusJakartaSans_500Medium' },
+  labelActive: { color: C.purple600, fontFamily: 'PlusJakartaSans_600SemiBold' },
 });
 
 const styles = StyleSheet.create({
   container:  { flex: 1, backgroundColor: C.bg },
   center:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   errorText:  { fontSize: 16, color: C.textSecondary },
-  linkText:   { fontSize: 15, color: C.purple600, fontWeight: '600' },
+  linkText:   { fontSize: 15, color: C.purple600, fontFamily: 'PlusJakartaSans_600SemiBold' },
 
   header:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 14, backgroundColor: C.bg },
   headerBtn:  { width: 38, height: 38, borderRadius: 12, borderWidth: 0.5, borderColor: C.border,
     alignItems: 'center', justifyContent: 'center' },
-  headerTitle:{ fontSize: 17, fontWeight: '700', color: C.textPrimary, letterSpacing: -0.2 },
+  headerTitle:{ fontSize: 17, fontFamily: 'PlusJakartaSans_700Bold', color: C.textPrimary, letterSpacing: -0.2 },
   headerSub:  { fontSize: 12, color: C.textTertiary, marginTop: 1 },
   deleteBtn:  { width: 38, height: 38, borderRadius: 12, borderWidth: 0.5, borderColor: '#FEE2E2',
     backgroundColor: '#FFF5F5', alignItems: 'center', justifyContent: 'center' },
@@ -658,5 +658,5 @@ const styles = StyleSheet.create({
     backgroundColor: C.bg, borderTopWidth: 0.5, borderTopColor: C.border },
   saveBtn:    { height: 54, borderRadius: 16, backgroundColor: C.purple900, flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center' },
-  saveBtnText:{ fontSize: 16, fontWeight: '700', color: '#fff', letterSpacing: 0.1 },
+  saveBtnText:{ fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff', letterSpacing: 0.1 },
 });

@@ -22,7 +22,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrency } from '@utils/formatters';
 import {
-  COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS,
+  COLORS, SPACING, FONT_SIZES,
   BORDER_RADIUS, CLOTHING_TYPE_LABELS,
 } from '@constants/theme';
 import type { ClothingType, RootStackParamList, UrgencyLevel } from '../../types';
@@ -572,7 +572,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                         <View style={[styles.urgencyDot, { backgroundColor: opt.dot }]} />
                         <Text style={[
                           styles.urgencyLabel,
-                          active && { color: opt.color, fontWeight: FONT_WEIGHTS.semibold },
+                          active && { color: opt.color, fontFamily: 'PlusJakartaSans_600SemiBold' },
                         ]}>
                           {opt.label}
                         </Text>
@@ -813,7 +813,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.semibold, color: '#fff',
+    fontSize: FONT_SIZES.lg, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#fff',
   },
   headerSubtitle: {
     fontSize: FONT_SIZES.xs, color: 'rgba(255,255,255,0.75)', marginTop: 2,
@@ -853,7 +853,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   cardSubtitle: {
@@ -880,13 +880,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center',
   },
   clientAvatarText: {
-    fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.primary,
+    fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.primary,
   },
   clientInfo: { flex: 1 },
-  clientName: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  clientName: { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
   clientSubRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   clientSub: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
-  clientPlaceholder: { fontSize: FONT_SIZES.md, color: COLORS.text, fontWeight: FONT_WEIGHTS.medium },
+  clientPlaceholder: { fontSize: FONT_SIZES.md, color: COLORS.text, fontFamily: 'PlusJakartaSans_500Medium' },
   chevWrap: {
     width: 28, height: 28, borderRadius: 14,
     backgroundColor: COLORS.white,
@@ -904,7 +904,7 @@ const styles = StyleSheet.create({
   },
   typeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   typeChipText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
-  typeChipTextActive: { color: '#fff', fontWeight: FONT_WEIGHTS.semibold },
+  typeChipTextActive: { color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold' },
 
   // ── Photos ──
   photosContainer: { gap: SPACING.md },
@@ -912,7 +912,7 @@ const styles = StyleSheet.create({
   photoSectionHead: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  photoTitle: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  photoTitle: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
   photoCount: { fontSize: 11, color: COLORS.textSecondary },
   photoDivider: { height: 0.5, backgroundColor: COLORS.border },
   photoAdd: {
@@ -928,7 +928,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     alignItems: 'center', justifyContent: 'center',
   },
-  photoAddLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: FONT_WEIGHTS.medium },
+  photoAddLabel: { fontSize: 11, color: COLORS.textSecondary, fontFamily: 'PlusJakartaSans_500Medium' },
   photoPreviewWrap: { position: 'relative' },
   photoPreview: { width: 90, height: 90, borderRadius: BORDER_RADIUS.md },
   removePhotoBtn: {
@@ -944,7 +944,7 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
@@ -962,7 +962,7 @@ const styles = StyleSheet.create({
     position: 'absolute', right: SPACING.md, top: '50%', marginTop: -8,
     fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
   inputIconRight: { position: 'absolute', right: SPACING.md, top: '50%', marginTop: -9 },
 
@@ -994,12 +994,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   psLabel: { fontSize: 11, color: COLORS.textSecondary, marginBottom: 2 },
-  psValue: { fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  psValue: { fontSize: FONT_SIZES.lg, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
   statusPill: {
     borderRadius: BORDER_RADIUS.full,
     paddingHorizontal: SPACING.md, paddingVertical: 6,
   },
-  statusPillText: { fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.semibold },
+  statusPillText: { fontSize: FONT_SIZES.xs, fontFamily: 'PlusJakartaSans_600SemiBold' },
 
   // ── Footer flottant ──
   footer: {
@@ -1025,7 +1025,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
-  submitText: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: '#fff' },
+  submitText: { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#fff' },
 
   // ══════════════════════════════════════
   // STYLES MODAL CLIENT
@@ -1051,7 +1051,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: FONT_SIZES.lg,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   modalSubtitle: {
@@ -1126,7 +1126,7 @@ const styles = StyleSheet.create({
   },
   modalAvatarText: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.primary,
   },
   modalAvatarTextActive: {
@@ -1138,7 +1138,7 @@ const styles = StyleSheet.create({
   },
   modalClientName: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   modalClientMeta: {
@@ -1169,7 +1169,7 @@ const styles = StyleSheet.create({
   modalFavText: {
     fontSize: 10,
     color: '#92400E',
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
   modalCheckWrap: {
     flexShrink: 0,
@@ -1189,7 +1189,7 @@ const styles = StyleSheet.create({
   },
   modalEmptyTitle: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   modalEmptyText: {

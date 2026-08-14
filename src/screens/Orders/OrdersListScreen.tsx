@@ -21,7 +21,6 @@ import {
   COLORS,
   SPACING,
   FONT_SIZES,
-  FONT_WEIGHTS,
   BORDER_RADIUS,
   ORDER_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -363,7 +362,7 @@ const styles = StyleSheet.create({
   },
   screenTitle: {
     fontSize: FONT_SIZES.xl,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   iconBtn: {
@@ -412,7 +411,7 @@ const styles = StyleSheet.create({
   },
   tabActive:     { borderBottomColor: COLORS.primary },
   tabText:       { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
-  tabTextActive: { color: COLORS.primary, fontWeight: FONT_WEIGHTS.semibold },
+  tabTextActive: { color: COLORS.primary, fontFamily: 'PlusJakartaSans_600SemiBold' },
 
   // ── Stats ──
   statsRow: {
@@ -431,13 +430,13 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   statLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginBottom: 3 },
-  statVal:   { fontSize: FONT_SIZES.xxl, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  statVal:   { fontSize: FONT_SIZES.xxl, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
   statSub:   { fontSize: FONT_SIZES.xs, color: COLORS.primary, marginTop: 2 },
 
   // ── Section label ──
   sectionLabel: {
     fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: COLORS.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
@@ -475,9 +474,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  ocAvatarText: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold },
+  ocAvatarText: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_600SemiBold' },
   ocInfo:       { flex: 1, minWidth: 0 },
-  ocName:       { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  ocName:       { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
   ocType:       { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 1 },
   statusPill: {
     borderRadius: BORDER_RADIUS.full,
@@ -485,7 +484,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     flexShrink: 0,
   },
-  statusPillText: { fontSize: 11, fontWeight: FONT_WEIGHTS.medium },
+  statusPillText: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium' },
 
   // Meta
   ocMeta: {
@@ -514,10 +513,10 @@ const styles = StyleSheet.create({
   },
   ocRemain:      { flexDirection: 'row', alignItems: 'center' },
   ocRemainLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
-  ocRemainVal:   { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: '#991B1B' },
+  ocRemainVal:   { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#991B1B' },
   ocRemainPaid:  { color: '#065F46' },
   payPill:       { borderRadius: BORDER_RADIUS.full, paddingHorizontal: 9, paddingVertical: 3 },
-  payPillText:   { fontSize: 11, fontWeight: FONT_WEIGHTS.medium },
+  payPillText:   { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium' },
 
   // ── Empty ──
   emptyContainer: {

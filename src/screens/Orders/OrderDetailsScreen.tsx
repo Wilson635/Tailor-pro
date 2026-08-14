@@ -24,7 +24,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { useAppStore } from '@store/useAppStore';
-import { paymentService, activityService } from '@services/supabaseService';
+import { paymentService, activityService, createPaiementM8 } from '@services/supabaseService';
+import { TYPE_PAIEMENT_META, TYPES_PAIEMENT, TypePaiement } from '@constants/paiementConstants';
 import { formatCurrency, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
@@ -130,8 +131,12 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const { orderId } = route.params;
     const insets = useSafeAreaInsets();
 
-    const { orders, updateOrder, loadStatistics, loadActivities } = useAppStore();
+    const { orders, updateOrder, loadStatistics, loadActivities, realisations } = useAppStore();
     const order = orders.find(o => o.id === orderId);
+    // Réalisation liée à cette commande (Module 7)
+    const linkedRealisation = order
+        ? Object.values(realisations).flat().find((r: any) => r.commandeId === orderId)
+        : undefined;
 
     const [payments, setPayments]             = useState<LocalPayment[]>([]);
     const [loadingPayments, setLoadingPayments] = useState(true);
@@ -143,6 +148,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const [payMethod, setPayMethod] = useState<PaymentMethod>('cash');
     const [payNotes, setPayNotes]   = useState('');
     const [savingPay, setSavingPay] = useState(false);
+    const [payType, setPayType]     = useState<string>('acompte');
 
     const fetchPayments = useCallback(async () => {
         setLoadingPayments(true);
@@ -152,6 +158,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 id:            p.id,
                 amount:        Number(p.amount),
                 paymentMethod: p.payment_method,
+                typePaiement:  p.type ?? 'acompte',
                 notes:         p.notes ?? undefined,
                 paymentDate:   p.payment_date,
             })));
@@ -182,8 +189,21 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const urgencyMeta       = URGENCY_META[order.urgencyLevel] ?? URGENCY_META.medium;
 
     // ── Changer le statut ──
-    const handleStatusChange = async (newStatus: OrderStatus) => {
+    const handleStatusChange = async (newStatus: OrderStatus, confirmed = false) => {
         if (savingStatus) return;
+        // Alerte livraison avec solde restant (Module 7)
+        if (newStatus === 'delivered' && remaining > 0 && !confirmed) {
+            Alert.alert(
+                'Solde non soldé',
+                `Il reste ${formatCurrency(remaining)} à encaisser. Confirmer quand même ?`,
+                [
+                    { text: 'Annuler', style: 'cancel' },
+                    { text: 'Confirmer', style: 'destructive',
+                        onPress: () => handleStatusChange(newStatus, true) },
+                ]
+            );
+            return;
+        }
         setSavingStatus(true);
         try {
             await updateOrder(orderId, { orderStatus: newStatus });
@@ -238,11 +258,12 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const submitPayment = async (amount: number) => {
         setSavingPay(true);
         try {
-            const { data, error } = await paymentService.create({
+            const { data, error } = await createPaiementM8({
                 orderId,
                 amount,
-                method: payMethod,
-                notes:  payNotes.trim() || undefined,
+                method:       payMethod,
+                typePaiement: payType,
+                notes:        payNotes.trim() || undefined,
             });
 
             if (error || !data) {
@@ -269,7 +290,29 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             setPayAmount('');
             setPayNotes('');
             setPayMethod('cash');
+            setPayType('acompte');
             fetchPayments();
+            // Proposer le reçu
+            const snapPaid = totalPaid + amount;
+            Alert.alert(
+                'Paiement enregistré ✓',
+                `${formatCurrency(amount)} encaissé avec succès`,
+                [
+                    { text: 'Fermer' },
+                    { text: 'Voir le reçu', onPress: () => navigation.navigate('Recu', {
+                            amount,
+                            typePaiement:   payType,
+                            modePaiement:   payMethod,
+                            date:           new Date().toISOString(),
+                            notes:          payNotes.trim() || undefined,
+                            clientName:     order.clientName,
+                            commandeNumero: (order as any).numeroCommande,
+                            totalAmount:    order.totalPrice,
+                            paidAmount:     snapPaid,
+                            remaining:      Math.max(0, order.totalPrice - snapPaid),
+                        }) },
+                ]
+            );
         } finally {
             setSavingPay(false);
         }
@@ -395,6 +438,9 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                     <View style={styles.card}>
                         <Text style={styles.cardTitle}>Informations</Text>
                         <View style={styles.infoList}>
+                            {order.numeroCommande && (
+                                <InfoRow icon="hash" label="N° commande" value={order.numeroCommande} />
+                            )}
                             <InfoRow icon="scissors"      label="Type de vêtement" value={CLOTHING_LABELS[order.clothingType] ?? order.clothingType} />
                             <InfoRow icon="calendar"      label="Date de livraison" value={formatDate(order.deliveryDate)} />
                             <InfoRow icon="alert-triangle" label="Urgence"          value={urgencyMeta.label} valueColor={urgencyMeta.color} />
@@ -432,6 +478,26 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                 );
                             })}
                         </View>
+                    )}
+
+                    {/* ══ RÉALISATION ASSOCIÉE (Module 7) ══ */}
+                    {linkedRealisation && (
+                        <TouchableOpacity
+                            style={styles.card}
+                            onPress={() => navigation.navigate('RealisationDetails', {
+                                realisationId: (linkedRealisation as any).id,
+                                clientId:      (linkedRealisation as any).clientId,
+                            })}
+                            activeOpacity={0.8}
+                        >
+                            <View style={styles.cardHeaderRow}>
+                                <Text style={styles.cardTitle}>Réalisation associée</Text>
+                                <Feather name="chevron-right" size={14} color="rgba(108,62,184,0.3)" />
+                            </View>
+                            <Text style={styles.clientSub}>
+                                Statut : {String((linkedRealisation as any).statut).replace(/_/g, ' ')}
+                            </Text>
+                        </TouchableOpacity>
                     )}
 
                     {/* ══ PAIEMENT ══ */}
@@ -505,6 +571,14 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                             </View>
                                             <View style={{ flex: 1 }}>
                                                 <Text style={styles.historyAmount}>+{formatCurrency(p.amount)}</Text>
+                                                {(p as any).typePaiement && (() => {
+                                                    const tm = TYPE_PAIEMENT_META[(p as any).typePaiement as TypePaiement];
+                                                    return tm ? (
+                                                        <Text style={{ fontSize: 10, color: tm.color, fontFamily: 'PlusJakartaSans_600SemiBold', marginBottom: 1 }}>
+                                                            {tm.label}
+                                                        </Text>
+                                                    ) : null;
+                                                })()}
                                                 <Text style={styles.historyDate}>{formatDate(p.paymentDate)}</Text>
                                                 {p.notes ? <Text style={styles.historyNotes}>{p.notes}</Text> : null}
                                             </View>
@@ -540,6 +614,28 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         <View style={styles.sheetHandle} />
                         <Text style={styles.sheetTitle}>Enregistrer un paiement</Text>
                         <Text style={styles.sheetSub}>Reste à payer : {formatCurrency(remaining)}</Text>
+
+                        {/* Type de paiement */}
+                        <Text style={styles.sheetLabel}>Type</Text>
+                        <View style={styles.methodsWrap}>
+                            {TYPES_PAIEMENT.map(t => {
+                                const meta = TYPE_PAIEMENT_META[t as TypePaiement];
+                                const active = payType === t;
+                                return (
+                                    <TouchableOpacity
+                                        key={t}
+                                        style={[styles.methodChip, active && { backgroundColor: meta.color, borderColor: meta.color }]}
+                                        onPress={() => setPayType(t)}
+                                        activeOpacity={0.8}
+                                    >
+                                        <Feather name={meta.icon} size={12} color={active ? '#fff' : P.sub} />
+                                        <Text style={[styles.methodChipText, active && { color: '#fff' }]}>
+                                            {meta.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
 
                         {/* Montant */}
                         <View style={styles.amountWrap}>
@@ -643,8 +739,8 @@ const InfoRow = ({
 const ir = StyleSheet.create({
     row:  { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
     icon: { width: 30, height: 30, borderRadius: 8, backgroundColor: 'rgba(108,62,184,0.07)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-    label:{ fontSize: 10, color: P.sub, fontWeight: '500', marginBottom: 1 },
-    value:{ fontSize: 13, fontWeight: '600', color: P.text },
+    label:{ fontSize: 10, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium', marginBottom: 1 },
+    value:{ fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
 });
 
 const FinanceLine = ({ label, value, sub }: { label: string; value: number; sub?: boolean }) => (
@@ -656,10 +752,10 @@ const FinanceLine = ({ label, value, sub }: { label: string; value: number; sub?
 
 const fl = StyleSheet.create({
     row:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
-    label:    { fontSize: 13, fontWeight: '600', color: P.text },
-    labelSub: { fontSize: 12, color: P.sub, fontWeight: '400' },
-    value:    { fontSize: 13, fontWeight: '700', color: P.text },
-    valueSub: { fontSize: 12, color: P.sub, fontWeight: '500' },
+    label:    { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+    labelSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_400Regular' },
+    value:    { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+    valueSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
 });
 
 // ──────────────────────────────────────────
@@ -669,9 +765,9 @@ const fl = StyleSheet.create({
 const styles = StyleSheet.create({
     root:    { flex: 1, backgroundColor: P.pageBg },
     notFound:{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
-    notFoundText:   { fontSize: 15, color: P.text, fontWeight: '600' },
+    notFoundText:   { fontSize: 15, color: P.text, fontFamily: 'PlusJakartaSans_600SemiBold' },
     notFoundBtn:    { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: P.primary, borderRadius: 10 },
-    notFoundBtnText:{ color: '#fff', fontWeight: '700' },
+    notFoundBtnText:{ color: '#fff', fontFamily: 'PlusJakartaSans_700Bold' },
 
     // ── Header ──
     header: {
@@ -688,7 +784,7 @@ const styles = StyleSheet.create({
         borderWidth: 0.5, borderColor: P.borderHard,
         alignItems: 'center', justifyContent: 'center',
     },
-    headerTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: P.text, textAlign: 'center' },
+    headerTitle: { flex: 1, fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text, textAlign: 'center' },
     clientBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 4,
         paddingHorizontal: 10, paddingVertical: 7,
@@ -696,7 +792,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(108,62,184,0.07)',
         borderWidth: 0.5, borderColor: P.border,
     },
-    clientBtnText: { fontSize: 11, fontWeight: '600', color: P.primary },
+    clientBtnText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
 
     // ── Scroll ──
     scroll:        { flex: 1 },
@@ -715,8 +811,8 @@ const styles = StyleSheet.create({
         backgroundColor: P.bg,
         alignItems: 'center', justifyContent: 'center',
     },
-    clientAvatarText: { fontSize: 14, fontWeight: '800', color: P.gold },
-    clientName:       { fontSize: 14, fontWeight: '700', color: P.text },
+    clientAvatarText: { fontSize: 14, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
+    clientName:       { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
     clientSub:        { fontSize: 11, color: P.primary, marginTop: 1 },
 
     // ── Card ──
@@ -727,7 +823,7 @@ const styles = StyleSheet.create({
         padding: SPACING.md,
     },
     cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
-    cardTitle:     { fontSize: 13, fontWeight: '700', color: P.text },
+    cardTitle:     { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
 
     // ── Statut ──
     statusBadge: {
@@ -735,7 +831,7 @@ const styles = StyleSheet.create({
         padding: SPACING.sm + 2, borderRadius: 10,
         marginBottom: SPACING.md,
     },
-    statusBadgeText: { fontSize: 14, fontWeight: '700' },
+    statusBadgeText: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold' },
 
     // Progression
     progressWrap: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: SPACING.md },
@@ -746,7 +842,7 @@ const styles = StyleSheet.create({
         alignItems: 'center', justifyContent: 'center',
         marginBottom: 4,
     },
-    progressStepLabel: { fontSize: 9, color: 'rgba(0,0,0,0.3)', fontWeight: '600', textAlign: 'center' },
+    progressStepLabel: { fontSize: 9, color: 'rgba(0,0,0,0.3)', fontFamily: 'PlusJakartaSans_600SemiBold', textAlign: 'center' },
     progressConnector: { flex: 1, height: 1.5, backgroundColor: 'rgba(0,0,0,0.08)', marginTop: 7, marginHorizontal: -4 },
 
     // Actions statut
@@ -756,25 +852,25 @@ const styles = StyleSheet.create({
         backgroundColor: P.primary, borderRadius: 12,
         paddingVertical: 13, paddingHorizontal: 16, justifyContent: 'center',
     },
-    advanceBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+    advanceBtnText: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
     cancelBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16, justifyContent: 'center',
         borderWidth: 0.5, borderColor: 'rgba(239,68,68,0.25)',
         backgroundColor: P.errorBg,
     },
-    cancelBtnText: { fontSize: 12, fontWeight: '600', color: P.error },
+    cancelBtnText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.error },
 
     // ── Infos ──
     infoList: { gap: 0 },
 
     // ── Photos ──
-    photoLabel: { fontSize: 11, fontWeight: '600', color: P.sub, marginBottom: 8 },
+    photoLabel: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub, marginBottom: 8 },
     photoThumb: { width: 96, height: 96, borderRadius: 10, marginRight: 8, backgroundColor: P.border },
 
     // ── Paiement ──
     payBadge:     { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 99 },
-    payBadgeText: { fontSize: 11, fontWeight: '700' },
+    payBadgeText: { fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold' },
 
     financeBlock: {
         backgroundColor: P.pageBg,
@@ -784,8 +880,8 @@ const styles = StyleSheet.create({
     },
     financeDivider: { height: 0.5, backgroundColor: P.border, marginVertical: 6 },
     financeRemaining: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 2 },
-    financeRemainingLabel: { fontSize: 13, fontWeight: '700', color: P.text },
-    financeRemainingValue: { fontSize: 16, fontWeight: '800', color: P.error },
+    financeRemainingLabel: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+    financeRemainingValue: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.error },
 
     payFullBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 7,
@@ -793,7 +889,7 @@ const styles = StyleSheet.create({
         paddingVertical: 13, paddingHorizontal: 16, justifyContent: 'center',
         marginBottom: 7,
     },
-    payFullBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+    payFullBtnText: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
     payPartialBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16, justifyContent: 'center',
@@ -801,13 +897,13 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(108,62,184,0.05)',
         marginBottom: 4,
     },
-    payPartialBtnText: { fontSize: 12, fontWeight: '600', color: P.primary },
+    payPartialBtnText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
 
     historyWrap:   { marginTop: SPACING.md },
-    historyTitle:  { fontSize: 11, fontWeight: '600', color: P.sub, marginBottom: 6 },
+    historyTitle:  { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub, marginBottom: 6 },
     historyRow:    { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 8 },
     historyIcon:   { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-    historyAmount: { fontSize: 13, fontWeight: '700', color: P.success },
+    historyAmount: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.success },
     historyDate:   { fontSize: 11, color: P.sub, marginTop: 1 },
     historyNotes:  { fontSize: 11, color: P.sub, fontStyle: 'italic', marginTop: 1 },
     historyDivider:{ height: 0.5, backgroundColor: P.border, marginLeft: 40 },
@@ -829,23 +925,23 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.1)',
         alignSelf: 'center', marginBottom: 16,
     },
-    sheetTitle: { fontSize: 16, fontWeight: '800', color: P.text, marginBottom: 2 },
+    sheetTitle: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, marginBottom: 2 },
     sheetSub:   { fontSize: 12, color: P.sub, marginBottom: SPACING.md },
-    sheetLabel: { fontSize: 11, fontWeight: '600', color: P.sub, marginBottom: 6, marginTop: SPACING.sm },
+    sheetLabel: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub, marginBottom: 6, marginTop: SPACING.sm },
 
     amountWrap: {
         flexDirection: 'row', alignItems: 'center',
         borderBottomWidth: 1.5, borderBottomColor: P.primary,
         marginBottom: SPACING.sm, paddingBottom: 6,
     },
-    amountInput:    { flex: 1, fontSize: 32, fontWeight: '800', color: P.text },
+    amountInput:    { flex: 1, fontSize: 32, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
     amountRight:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    amountCurrency: { fontSize: 14, fontWeight: '600', color: P.sub },
+    amountCurrency: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
     allBtn: {
         paddingHorizontal: 10, paddingVertical: 5,
         backgroundColor: P.primary, borderRadius: 8,
     },
-    allBtnText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+    allBtnText: { fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 
     methodsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 2 },
     methodChip: {
@@ -855,7 +951,7 @@ const styles = StyleSheet.create({
         backgroundColor: P.pageBg,
     },
     methodChipActive:    { backgroundColor: P.primary, borderColor: P.primary },
-    methodChipText:      { fontSize: 11, fontWeight: '600', color: P.sub },
+    methodChipText:      { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
 
     notesInput: {
         backgroundColor: P.pageBg, borderRadius: 10,
@@ -870,5 +966,5 @@ const styles = StyleSheet.create({
         backgroundColor: P.success, borderRadius: 14,
         paddingVertical: 15,
     },
-    submitBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+    submitBtnText: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });

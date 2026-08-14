@@ -21,7 +21,6 @@ import {
   COLORS,
   SPACING,
   FONT_SIZES,
-  FONT_WEIGHTS,
   BORDER_RADIUS,
   PAYMENT_STATUS_LABELS,
 } from '@constants/theme';
@@ -509,7 +508,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: FONT_SIZES.lg,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: '#fff',
   },
 
@@ -538,12 +537,12 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontSize: FONT_SIZES.xxl,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.primary,
   },
   heroName: {
     fontSize: FONT_SIZES.xxl,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: '#fff',
   },
   heroBadge: {
@@ -625,7 +624,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   sectionLink: {
@@ -652,7 +651,7 @@ const styles = StyleSheet.create({
   },
   statVal: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
 
@@ -707,12 +706,12 @@ const styles = StyleSheet.create({
   },
   measureSummaryValue: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   measureSummaryUnit: {
     fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.regular,
+    fontFamily: 'PlusJakartaSans_400Regular',
     color: COLORS.gray400,
   },
   measureSummaryLabel: {
@@ -740,7 +739,7 @@ const styles = StyleSheet.create({
   },
   measureEmptyTitle: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: COLORS.text,
   },
   measureEmptySubtitle: {
@@ -778,7 +777,7 @@ const styles = StyleSheet.create({
   },
   orderName: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: COLORS.text,
   },
   orderMeta: {
@@ -788,7 +787,7 @@ const styles = StyleSheet.create({
   },
   orderAmt: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
     flexShrink: 0,
   },
@@ -813,7 +812,7 @@ const styles = StyleSheet.create({
   },
   infoVal: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: COLORS.text,
   },
 
@@ -825,7 +824,7 @@ const styles = StyleSheet.create({
   },
   pillText: {
     fontSize: 11,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
 
   // ── CTA ──
@@ -843,7 +842,7 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: '#fff',
   },
 
@@ -892,6 +891,6 @@ const styles = StyleSheet.create({
   errorBack: {
     fontSize: FONT_SIZES.md,
     color: COLORS.primary,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
 });
