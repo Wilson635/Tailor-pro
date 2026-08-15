@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
 
   legendScroll: { flexGrow: 0 },
-  legendRow: { paddingHorizontal: 12, paddingVertical: 10, gap: 10, flexDirection: 'row' },
+  legendRow: { paddingHorizontal: 12, paddingVertical: 5, gap: 10, flexDirection: 'row' },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: C.surface, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
     borderWidth: 0.5, borderColor: C.border },

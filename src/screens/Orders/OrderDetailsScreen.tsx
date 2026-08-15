@@ -157,10 +157,10 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             setPayments((data as any[]).map(p => ({
                 id:            p.id,
                 amount:        Number(p.amount),
-                paymentMethod: p.payment_method,
+                paymentMethod: p.method,
                 typePaiement:  p.type ?? 'acompte',
                 notes:         p.notes ?? undefined,
-                paymentDate:   p.payment_date,
+                paymentDate:   p.date,
             })));
         }
         setLoadingPayments(false);
@@ -260,6 +260,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         try {
             const { data, error } = await createPaiementM8({
                 orderId,
+                clientId:     order.clientId,
                 amount,
                 method:       payMethod,
                 typePaiement: payType,

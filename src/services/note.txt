@@ -431,14 +431,13 @@ export const paymentService = {
             .from('payments')
             .select('*')
             .eq('order_id', orderId)
-            .order('date', { ascending: false });
+            .order('payment_date', { ascending: false });
         return { data, error };
     },
 
     /** Enregistre un paiement */
     create: async (payment: {
         orderId: string;
-        clientId: string;
         amount: number;
         method: string;
         notes?: string;
@@ -447,13 +446,12 @@ export const paymentService = {
         const { data, error } = await supabase
             .from('payments')
             .insert({
-                order_id:     payment.orderId,
-                couturier_id: userId,
-                client_id:    payment.clientId,
-                amount:       payment.amount,
-                method:       payment.method,
-                notes:        payment.notes ?? null,
-                date:         new Date().toISOString().slice(0, 10),
+                order_id: payment.orderId,
+                user_id: userId,
+                amount: payment.amount,
+                payment_method: payment.method,
+                notes: payment.notes ?? null,
+                payment_date: new Date().toISOString(),
             })
             .select()
             .single();
@@ -519,9 +517,9 @@ export const statisticsService = {
 
             // Exécution en parallèle pour la performance
             const [clientsRes, ordersRes, paymentsRes] = await Promise.all([
-                supabase.from('clients').select('id', { count: 'exact' }).eq('couturier_id', userId),
-                supabase.from('orders').select('*').eq('couturier_id', userId),
-                supabase.from('payments').select('amount').eq('couturier_id', userId).gte('date', startOfMonth.slice(0, 10)),
+                supabase.from('clients').select('id', { count: 'exact' }).eq('user_id', userId),
+                supabase.from('orders').select('*').eq('user_id', userId),
+                supabase.from('payments').select('amount').eq('user_id', userId).gte('payment_date', startOfMonth),
             ]);
 
             const orders = ordersRes.data ?? [];
@@ -1103,8 +1101,8 @@ const mapPaymentM8 = (row: any) => ({
     orderId:       row.order_id,
     amount:        Number(row.amount),
     typePaiement:  (row.type ?? 'acompte') as string,
-    paymentMethod: row.method,
-    paymentDate:   row.date,
+    paymentMethod: row.payment_method,
+    paymentDate:   row.payment_date,
     notes:         row.notes ?? undefined,
 });
 
@@ -1116,47 +1114,29 @@ export const paiementClientService = {
             .from('payments')
             .select('*')
             .in('order_id', allOrderIds)
-            .order('date', { ascending: false });
+            .order('payment_date', { ascending: false });
     },
 };
 
 /** Crée un paiement avec type Module 8 */
 export const createPaiementM8 = async (params: {
     orderId: string;
-    clientId?: string;
     amount: number;
     method: string;
     typePaiement?: string;
     notes?: string;
 }) => {
     const userId = await getUserId();
-
-    // client_id est obligatoire dans la table `payments`. Si l'appelant ne
-    // le fournit pas, on le récupère depuis la commande pour rester robuste.
-    let clientId = params.clientId;
-    if (!clientId) {
-        const { data: orderRow, error: orderErr } = await supabase
-            .from('orders')
-            .select('client_id')
-            .eq('id', params.orderId)
-            .single();
-        if (orderErr || !orderRow) {
-            return { data: null, error: orderErr ?? new Error('Commande introuvable pour ce paiement.') };
-        }
-        clientId = orderRow.client_id;
-    }
-
     return supabase
         .from('payments')
         .insert({
-            order_id:     params.orderId,
-            couturier_id: userId,
-            client_id:    clientId,
-            amount:       params.amount,
-            method:       params.method,
-            type:         params.typePaiement ?? 'acompte',
-            notes:        params.notes ?? null,
-            date:         new Date().toISOString().slice(0, 10),
+            order_id:       params.orderId,
+            user_id:        userId,
+            amount:         params.amount,
+            payment_method: params.method,
+            type:           params.typePaiement ?? 'acompte',
+            notes:          params.notes ?? null,
+            payment_date:   new Date().toISOString(),
         })
         .select()
         .single();
@@ -1172,9 +1152,9 @@ export const comptabiliteService = {
         const userId = await getUserId();
         return supabase
             .from('payments')
-            .select('id, order_id, amount, type, method, date, notes, created_at')
-            .eq('couturier_id', userId)
-            .order('date', { ascending: false });
+            .select('id, order_id, amount, type, payment_method, payment_date, notes, created_at')
+            .eq('user_id', userId)
+            .order('payment_date', { ascending: false });
     },
 
     /** Charge toutes les commandes avec client_name, remaining_amount */
@@ -1183,7 +1163,7 @@ export const comptabiliteService = {
         return supabase
             .from('orders')
             .select('id, client_id, client_name, total_price, remaining_amount, payment_status, order_status, created_at, numero_commande, advance_payment')
-            .eq('couturier_id', userId)
+            .eq('user_id', userId)
             .neq('order_status', 'cancelled');
     },
 };
