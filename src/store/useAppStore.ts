@@ -13,8 +13,14 @@ import {
   realisationService, mapRealisation, uploadRealisationPhoto,
   tissuService, mapTissu, uploadTissuPhoto,
   historiqueStatutService,
+  projectService, mapProject, mapProjectRecap,
+  participantService, mapParticipant,
+  measurementFieldService, mapMeasurementField,
 } from '@services/supabaseService';
-import type { Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics, FicheMensuration, TypeVetement, Realisation, StatutRealisation, Tissu } from '../types';
+import type {
+  Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics, FicheMensuration, TypeVetement, Realisation, StatutRealisation, Tissu,
+  Project, ProjectRecap, ProjectStatut, ProjectParticipant, GarmentMeasurementField, MeasurementChoiceResult,
+} from '../types';
 
 // ==========================================
 // TYPE PROFIL
@@ -64,6 +70,12 @@ interface AppState {
   fiches: Record<string, FicheMensuration[]>;
   realisations: Record<string, Realisation[]>;
   payments: Record<string, Payment[]>;
+
+  // ── Projets / commandes groupées (Module 13) ──
+  projects: Project[];
+  projectRecaps: Record<string, ProjectRecap>;         // keyed by projectId
+  participants: Record<string, ProjectParticipant[]>;  // keyed by projectId
+  measurementFields: Record<string, GarmentMeasurementField[]>; // keyed by typeVetement
 
   // ── UI ──
   isLoading: boolean;
@@ -151,7 +163,8 @@ interface AppState {
   // ── Actions Payments ──
   ///addPayment: (clientId: string, payment: Payment) => void;
   addPayment: (params: {
-    orderId: string;
+    orderId?: string;
+    projectId?: string;
     clientId: string;
     amount: number;
     method: 'cash' | 'mobile_money' | 'bank_transfer' | 'other';
@@ -160,6 +173,42 @@ interface AppState {
   }) => Promise<Payment | null>;
 
   loadPaymentsForOrder: (orderId: string) => Promise<void>;
+
+  // ── Actions Projets / Commandes groupées (Module 13) ──
+  loadProjects: () => Promise<void>;
+  loadProjectRecap: (projectId: string) => Promise<void>;
+  addProject: (data: { clientId: string; nom: string; typeProjet?: string; statut?: ProjectStatut; dateEvenement?: Date; notes?: string }) => Promise<Project | null>;
+  updateProject: (projectId: string, data: Partial<Project>) => Promise<void>;
+  updateProjectStatut: (projectId: string, statut: ProjectStatut) => Promise<void>;
+  deleteProject: (projectId: string) => Promise<void>;
+  getProjectById: (projectId: string) => Project | undefined;
+
+  loadParticipants: (projectId: string) => Promise<void>;
+  addParticipant: (data: { projectId: string; clientId?: string; nom: string; telephone?: string; role?: string; isTemporary?: boolean }) => Promise<ProjectParticipant | null>;
+  updateParticipant: (participantId: string, projectId: string, data: Partial<ProjectParticipant>) => Promise<void>;
+  promoteParticipant: (participantId: string, projectId: string, clientData: { telephone: string; sexe?: 'homme' | 'femme' | 'autre' }) => Promise<void>;
+  deleteParticipant: (participantId: string, projectId: string) => Promise<void>;
+  getParticipantsByProject: (projectId: string) => ProjectParticipant[];
+
+  /** Ajoute un vêtement à une personne d'un projet (= addOrder avec projectId/participantId), puis rafraîchit le récap */
+  addGarmentToParticipant: (
+      projectId: string,
+      participantId: string,
+      garmentData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'projectId' | 'participantId'>,
+  ) => Promise<Order | null>;
+  getOrdersByProject: (projectId: string) => Order[];
+  getOrdersByParticipant: (participantId: string) => Order[];
+
+  /** Applique le choix de mensuration (fiche existante ou nouvelles mesures) à un vêtement du projet */
+  applyMeasurementChoice: (
+      orderId: string,
+      clientId: string,
+      typeVetement: TypeVetement,
+      choice: MeasurementChoiceResult,
+  ) => Promise<FicheMensuration | null>;
+
+  loadMeasurementFields: (typeVetement: TypeVetement) => Promise<void>;
+  getMeasurementFields: (typeVetement: TypeVetement) => GarmentMeasurementField[];
 
   // ── Actions Catalog ──
   loadCatalog: () => Promise<void>;
@@ -244,6 +293,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   realisations: {},
   tissus: [],
   payments: {},
+
+  projects: [],
+  projectRecaps: {},
+  participants: {},
+  measurementFields: {},
 
   isLoading: false,
   error: null,
@@ -358,6 +412,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().loadActivities(),
         get().loadCatalog(),
         get().loadStatistics(),
+        get().loadProjects(),
       ]);
     }
     set({ isLoading: false });
@@ -820,10 +875,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           [clientId]: [...(state.payments[clientId] ?? []), payment],
         },
       })),*/
-  addPayment: async ({ orderId, clientId, amount, method, typePaiement, notes }) => {
-    // 1. Persiste dans Supabase
+  addPayment: async ({ orderId, projectId, clientId, amount, method, typePaiement, notes }) => {
+    // 1. Persiste dans Supabase (order_id et/ou project_id)
     const { data, error } = await paymentService.create({
       orderId,
+      projectId,
+      clientId,
       amount,
       method,
       notes,
@@ -837,62 +894,78 @@ export const useAppStore = create<AppState>((set, get) => ({
     const newPayment: Payment = {
       id:            data.id,
       orderId,
+      projectId,
       clientId,
       amount,
       method,
       notes,
-      date:          new Date(data.payment_date),
+      date:          new Date(data.payment_date ?? data.date ?? data.created_at),
       createdAt:     new Date(data.created_at),
       updatedAt:     new Date(data.created_at),
     };
 
-    // 2. Met à jour le store local (keyed by orderId)
-    set(state => ({
-      payments: {
-        ...state.payments,
-        [orderId]: [...(state.payments[orderId] ?? []), newPayment],
-      },
-    }));
+    // 2. Met à jour le store local
+    if (orderId) {
+      set(state => ({
+        payments: {
+          ...state.payments,
+          [orderId]: [...(state.payments[orderId] ?? []), newPayment],
+        },
+      }));
 
-    // 3. Recalcule remaining_amount et payment_status de la commande
-    const order = get().orders.find(o => o.id === orderId);
-    if (order) {
-      const newRemaining = Math.max(0, order.remainingAmount - amount);
-      const newPayStatus =
-          newRemaining <= 0 ? 'paid' :
-              newRemaining < order.totalPrice ? 'partial' :
-                  'unpaid';
+      // 3. Recalcule remaining_amount et payment_status de la commande (uniquement si liée à un vêtement précis)
+      const order = get().orders.find(o => o.id === orderId);
+      if (order) {
+        const newRemaining = Math.max(0, order.remainingAmount - amount);
+        const newPayStatus =
+            newRemaining <= 0 ? 'paid' :
+                newRemaining < order.totalPrice ? 'partial' :
+                    'unpaid';
 
-      await get().updateOrder(orderId, {
-        remainingAmount: newRemaining,
-        paymentStatus:   newPayStatus,
-      });
-
-      // 4. Met à jour la balance du client
-      const client = get().getClientById(clientId);
-      if (client) {
-        await clientService.update(clientId, {
-          balance: Math.max(0, client.balance - amount),
+        await get().updateOrder(orderId, {
+          remainingAmount: newRemaining,
+          paymentStatus:   newPayStatus,
         });
-        set(state => ({
-          clients: state.clients.map(c =>
-              c.id === clientId
-                  ? { ...c, balance: Math.max(0, c.balance - amount) }
-                  : c
-          ),
-        }));
+
+        await activityService.create({
+          type:     'payment_received',
+          title:    'Paiement reçu',
+          subtitle: order.clientName,
+          amount,
+          clientId,
+          orderId,
+        });
       }
+    } else {
+      // Paiement au niveau du projet global (pas de vêtement précis)
+      await activityService.create({
+        type:     'payment_received',
+        title:    'Paiement reçu (projet)',
+        subtitle: get().getProjectById(projectId!)?.nom,
+        amount,
+        clientId,
+      });
     }
 
-    // 5. Activité + stats
-    await activityService.create({
-      type:     'payment_received',
-      title:    'Paiement reçu',
-      subtitle: order?.clientName,
-      amount,
-      clientId,
-      orderId,
-    });
+    // 4. Met à jour la balance du client
+    const client = get().getClientById(clientId);
+    if (client) {
+      await clientService.update(clientId, {
+        balance: Math.max(0, client.balance - amount),
+      });
+      set(state => ({
+        clients: state.clients.map(c =>
+            c.id === clientId
+                ? { ...c, balance: Math.max(0, c.balance - amount) }
+                : c
+        ),
+      }));
+    }
+
+    // 5. Rafraîchit le récap projet si concerné
+    if (projectId) {
+      get().loadProjectRecap(projectId);
+    }
 
     get().loadStatistics();
     get().loadActivities();
@@ -920,6 +993,179 @@ export const useAppStore = create<AppState>((set, get) => ({
       payments: { ...state.payments, [orderId]: mapped },
     }));
   },
+
+  // ==========================================
+  // PROJETS / COMMANDES GROUPÉES (Module 13)
+  // ==========================================
+
+  loadProjects: async () => {
+    const { data, error } = await projectService.getAll();
+    if (error) { set({ error: error.message }); return; }
+    set({ projects: (data ?? []).map(row => mapProject(row)) });
+
+    // Charge aussi les récaps en une fois (compteurs/totaux pour la liste)
+    const { data: recaps } = await projectService.getAllRecaps();
+    if (recaps) {
+      const byId: Record<string, ProjectRecap> = {};
+      for (const row of recaps as any[]) {
+        const recap = mapProjectRecap(row);
+        byId[recap.projectId] = recap;
+      }
+      set(state => ({ projectRecaps: { ...state.projectRecaps, ...byId } }));
+    }
+  },
+
+  loadProjectRecap: async (projectId: string) => {
+    const { data, error } = await projectService.getRecap(projectId);
+    if (error || !data) return;
+    const recap = mapProjectRecap(data);
+    set(state => ({ projectRecaps: { ...state.projectRecaps, [projectId]: recap } }));
+  },
+
+  addProject: async (data) => {
+    const { data: row, error } = await projectService.create(data);
+    if (error || !row) { set({ error: error?.message }); return null; }
+    const newProject = mapProject(row);
+    set(state => ({ projects: [newProject, ...state.projects] }));
+    return newProject;
+  },
+
+  updateProject: async (projectId, updates) => {
+    const { error } = await projectService.update(projectId, updates);
+    if (error) { set({ error: error.message }); return; }
+    set(state => ({
+      projects: state.projects.map(p =>
+          p.id === projectId ? { ...p, ...updates, updatedAt: new Date() } : p
+      ),
+    }));
+    get().loadProjectRecap(projectId);
+  },
+
+  updateProjectStatut: async (projectId, statut) => {
+    await get().updateProject(projectId, { statut });
+  },
+
+  deleteProject: async (projectId) => {
+    const { error } = await projectService.delete(projectId);
+    if (error) { set({ error: error.message }); return; }
+    set(state => ({ projects: state.projects.filter(p => p.id !== projectId) }));
+  },
+
+  getProjectById: (projectId) => get().projects.find(p => p.id === projectId),
+
+  loadParticipants: async (projectId: string) => {
+    const { data, error } = await participantService.getByProject(projectId);
+    if (error) { set({ error: error.message }); return; }
+    const mapped = (data ?? []).map(row => mapParticipant(row));
+    set(state => ({ participants: { ...state.participants, [projectId]: mapped } }));
+  },
+
+  addParticipant: async (data) => {
+    const { data: row, error } = await participantService.create(data);
+    if (error || !row) { set({ error: error?.message }); return null; }
+    const newParticipant = mapParticipant(row);
+    set(state => ({
+      participants: {
+        ...state.participants,
+        [data.projectId]: [...(state.participants[data.projectId] ?? []), newParticipant],
+      },
+    }));
+    get().loadProjectRecap(data.projectId);
+    return newParticipant;
+  },
+
+  updateParticipant: async (participantId, projectId, updates) => {
+    const { error } = await participantService.update(participantId, updates);
+    if (error) { set({ error: error.message }); return; }
+    set(state => ({
+      participants: {
+        ...state.participants,
+        [projectId]: (state.participants[projectId] ?? []).map(p =>
+            p.id === participantId ? { ...p, ...updates } : p
+        ),
+      },
+    }));
+  },
+
+  promoteParticipant: async (participantId, projectId, clientData) => {
+    const { data, error } = await participantService.promoteToClient(participantId, clientData);
+    if (error || !data) { set({ error: error?.message }); return; }
+    const updated = mapParticipant(data);
+    set(state => ({
+      participants: {
+        ...state.participants,
+        [projectId]: (state.participants[projectId] ?? []).map(p =>
+            p.id === participantId ? updated : p
+        ),
+      },
+    }));
+    // Le nouveau client n'est pas encore dans `clients` localement : recharge la liste
+    get().loadClients();
+  },
+
+  deleteParticipant: async (participantId, projectId) => {
+    const { error } = await participantService.delete(participantId);
+    if (error) { set({ error: error.message }); return; }
+    set(state => ({
+      participants: {
+        ...state.participants,
+        [projectId]: (state.participants[projectId] ?? []).filter(p => p.id !== participantId),
+      },
+    }));
+    get().loadProjectRecap(projectId);
+  },
+
+  getParticipantsByProject: (projectId) => get().participants[projectId] ?? [],
+
+  addGarmentToParticipant: async (projectId, participantId, garmentData) => {
+    const newOrder = await get().addOrder({
+      ...garmentData,
+      projectId,
+      participantId,
+    });
+    if (newOrder) get().loadProjectRecap(projectId);
+    return newOrder;
+  },
+
+  getOrdersByProject: (projectId) => get().orders.filter(o => o.projectId === projectId),
+
+  getOrdersByParticipant: (participantId) => get().orders.filter(o => o.participantId === participantId),
+
+  applyMeasurementChoice: async (orderId, clientId, typeVetement, choice) => {
+    const { data, error } = await ficheService.createForOrder({
+      clientId,
+      orderId,
+      typeVetement,
+      sourceFicheId: choice.mode === 'use_existing' ? choice.sourceFicheId : undefined,
+      mesures:       choice.mode === 'new_measurements' ? choice.mesures : undefined,
+      unite:         choice.unite,
+    });
+    if (error || !data) { set({ error: error?.message }); return null; }
+    const fiche = mapFiche(data as Record<string, unknown>);
+
+    // Reflète la fiche liée sur la commande localement
+    set(state => ({
+      orders: state.orders.map(o =>
+          o.id === orderId ? { ...o, ficheMensurationId: fiche.id } : o
+      ),
+      fiches: {
+        ...state.fiches,
+        [clientId]: choice.mode === 'new_measurements'
+            ? [fiche, ...(state.fiches[clientId] ?? [])]
+            : (state.fiches[clientId] ?? []), // copie figée : n'entre pas dans la bibliothèque affichée
+      },
+    }));
+    return fiche;
+  },
+
+  loadMeasurementFields: async (typeVetement: TypeVetement) => {
+    const { data, error } = await measurementFieldService.getForType(typeVetement);
+    if (error) { set({ error: error.message }); return; }
+    const mapped = (data ?? []).map(row => mapMeasurementField(row));
+    set(state => ({ measurementFields: { ...state.measurementFields, [typeVetement]: mapped } }));
+  },
+
+  getMeasurementFields: (typeVetement) => get().measurementFields[typeVetement] ?? [],
 
   // ==========================================
   // CATALOG (local)

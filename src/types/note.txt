@@ -44,10 +44,7 @@ export interface Measurements {
 }
 
 // ── Fiche Mensuration (Module 3) ────────────────────────────────
-// `type_vetement` est passé d'ENUM à TEXT côté DB (migration 014) pour rester extensible
-// (garment_measurement_fields). Le "& {}" garde l'autocomplétion des valeurs connues
-// tout en acceptant n'importe quelle string ajoutée par le couturier.
-export type TypeVetement = 'robe' | 'costume' | 'chemise' | 'pantalon' | 'boubou' | 'autre' | (string & {});
+export type TypeVetement = 'robe' | 'costume' | 'chemise' | 'pantalon' | 'boubou' | 'autre';
 
 export interface FicheMensuration {
   id: string;
@@ -60,9 +57,6 @@ export interface FicheMensuration {
   notes?: string;
   isActive: boolean;             // Référence actuelle pour ce type
   createdAt: Date;
-  // ── Projets / commandes groupées ──────────────────────────────
-  orderId?: string;              // non-null = copie figée pour CE vêtement (orders.id)
-  sourceFicheId?: string;        // fiche bibliothèque d'origine dont celle-ci a été dupliquée
 }
 
 // ── Réalisation (Module 5) ────────────────────────────────────────────
@@ -136,11 +130,6 @@ export interface Order {
   // Module 7
   numeroCommande?: string;
   dateLivraisonReelle?: Date;
-  // ── Projets / commandes groupées ──────────────────────────────
-  projectId?: string;             // undefined/null = commande simple (comportement inchangé)
-  participantId?: string;         // la personne du projet à qui appartient ce vêtement
-  ficheMensurationId?: string;    // fiche de mensuration utilisée pour ce vêtement précis
-  catalogId?: string;             // modèle de catalogue lié
 }
 
 export type UrgencyLevel =
@@ -154,10 +143,7 @@ export type StatutPaiement = 'payee' | 'partiellement_payee' | 'non_payee';
 
 export interface Payment {
   id: string;
-  // orderId devient optionnel : un paiement peut être rattaché à un vêtement précis (orderId)
-  // OU au projet global (projectId) — toujours au moins l'un des deux (CHECK en DB).
-  orderId?: string;
-  projectId?: string;
+  orderId: string;
   clientId: string;
   amount: number;
   date: Date;
@@ -274,102 +260,6 @@ export interface HistoriqueStatutCommande {
 }
 
 // ==========================================
-// PROJETS / COMMANDES GROUPÉES (Module 13)
-// ==========================================
-
-export type ProjectStatut =
-    | 'brouillon'
-    | 'confirme'
-    | 'en_preparation'
-    | 'en_confection'
-    | 'essayage'
-    | 'retouches'
-    | 'partiellement_termine'
-    | 'termine'
-    | 'livre'
-    | 'annule';
-
-export interface Project {
-  id: string;
-  couturierId: string;
-  clientId: string;              // contact principal du projet
-  nom: string;                   // "Mariage Jean & Marie"
-  typeProjet?: string;           // mariage / ceremonie / groupe / autre (libre)
-  statut: ProjectStatut;
-  dateEvenement?: Date;
-  notes?: string;
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt?: Date | null;
-}
-
-/** Récapitulatif agrégé d'un projet — alimenté par la vue SQL `vue_projet_recap` */
-export interface ProjectRecap {
-  projectId: string;
-  couturierId: string;
-  nom: string;
-  statut: ProjectStatut;
-  dateEvenement?: Date;
-  nbPersonnes: number;
-  nbVetements: number;
-  nbVetementsTermines: number;
-  montantTotal: number;
-  totalPaye: number;
-  resteAPayer: number;
-}
-
-export type ParticipantRole =
-    | 'mariee'
-    | 'marie'
-    | 'temoin_homme'
-    | 'temoin_femme'
-    | 'pere'
-    | 'mere'
-    | 'enfant'
-    | 'garcon_honneur'
-    | 'fille_honneur'
-    | 'client'
-    | 'autre'
-    | (string & {});
-
-export interface ProjectParticipant {
-  id: string;
-  projectId: string;
-  couturierId: string;
-  clientId?: string | null;      // lié à un client existant, ou undefined si temporaire
-  nom: string;
-  telephone?: string;
-  role?: ParticipantRole;
-  isTemporary: boolean;
-  createdAt: Date;
-}
-
-/** Mesures configurables par type de vêtement (Module 3 étendu) */
-export interface GarmentMeasurementField {
-  id: string;
-  couturierId?: string | null;   // undefined/null = champ global par défaut
-  typeVetement: TypeVetement;
-  fieldKey: string;              // 'tour_poitrine', 'longueur_manche', ...
-  label: string;
-  uniteDefaut: 'cm' | 'pouces';
-  sortOrder: number;
-  createdAt: Date;
-}
-
-/** Tous les champs d'un type de vêtement, triés — pour le formulaire dynamique */
-export type MeasurementFieldsByType = Record<string, GarmentMeasurementField[]>;
-
-/** Résultat du choix "utiliser une fiche existante" vs "prendre de nouvelles mesures" */
-export type MeasurementChoiceMode = 'use_existing' | 'new_measurements';
-
-export interface MeasurementChoiceResult {
-  mode: MeasurementChoiceMode;
-  sourceFicheId?: string;                 // si mode === 'use_existing'
-  mesures?: Record<string, number>;       // si mode === 'new_measurements'
-  unite?: 'cm' | 'pouces';
-}
-
-// ==========================================
 // TYPES DE FORMULAIRES
 // ==========================================
 
@@ -414,21 +304,6 @@ export interface PaymentFormData {
   notes?: string;
 }
 
-export interface ProjectFormData {
-  nom: string;
-  clientId: string;               // contact principal
-  typeProjet?: string;
-  dateEvenement?: string;         // ISO YYYY-MM-DD
-  notes?: string;
-}
-
-export interface ParticipantFormData {
-  nom: string;
-  telephone?: string;
-  role?: ParticipantRole;
-  clientId?: string;              // si lié à un client existant
-}
-
 // ==========================================
 // TYPES DE NAVIGATION
 // ==========================================
@@ -451,13 +326,6 @@ export type RootStackParamList = {
   OrderDetails: { orderId: string };
   AddOrder: { clientId?: string };
   EditOrder: { orderId: string };
-  // Projets / commandes groupées
-  ProjectList: undefined;
-  ProjectDetails: { projectId: string };
-  AddProject: undefined;
-  ParticipantDetails: { participantId: string; projectId: string };
-  AddParticipant: { projectId: string };
-  AddGarment: { projectId: string; participantId: string };
   // Paiements
   ClientPayments: { clientId: string };
   AddPayment: { clientId: string; orderId?: string };

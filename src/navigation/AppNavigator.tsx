@@ -77,6 +77,14 @@ import { SettingsScreen } from '@screens/Settings/SettingsScreen';
 import {OrderDetailsScreen} from "@screens/Orders/OrderDetailsScreen";
 import { nativeDriver } from '@utils/animation';
 
+// ── Écrans Projets / Commandes groupées (Module 13) ──
+import { ProjectListScreen } from '@screens/Projects/ProjectListScreen';
+import { ProjectDetailsScreen } from '@screens/Projects/ProjectDetailsScreen';
+import { AddProjectScreen } from '@screens/Projects/AddProjectScreen';
+import { ParticipantDetailsScreen } from '@screens/Projects/ParticipantDetailsScreen';
+import { AddParticipantScreen } from '@screens/Projects/AddParticipantScreen';
+import { AddGarmentScreen } from '@screens/Projects/AddGarmentScreen';
+
 // ==========================================
 // PALETTE
 // ==========================================
@@ -162,6 +170,7 @@ export type RootStackParamList = {
     BiometricAuth: undefined;
     Profile: undefined;
     Settings: undefined;
+    AddParticipant: {projectId: string};
 };
 
 export type TailorTabParamList = {
@@ -340,6 +349,12 @@ const TailorTabNavigator = ({ navigation }: any) => {
     const insets = useSafeAreaInsets();
 
     const plusItems: PlusMenuItem[] = [
+        {
+            key: 'projects',
+            label: 'Projets',
+            icon: 'users',
+            onPress: () => { setPlusOpen(false); navigation.navigate('ProjectList'); },
+        },
         {
             key: 'comptabilite',
             label: 'Comptabilité',
@@ -578,6 +593,14 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
                     {/* ── Commandes ── */}
                     <Stack.Screen name="AddOrder"        component={AddOrderScreen} />
                     <Stack.Screen name="OrderDetails"  component={OrderDetailsScreen} />
+
+                    {/* ── Projets / Commandes groupées (Module 13) ── */}
+                    <Stack.Screen name="ProjectList"        component={ProjectListScreen} />
+                    <Stack.Screen name="ProjectDetails"     component={ProjectDetailsScreen} />
+                    <Stack.Screen name="AddProject"         component={AddProjectScreen} />
+                    <Stack.Screen name="ParticipantDetails" component={ParticipantDetailsScreen} />
+                    <Stack.Screen name="AddParticipant"     component={AddParticipantScreen} />
+                    <Stack.Screen name="AddGarment"         component={AddGarmentScreen} />
 
                     {/* ── Catalogue ── */}
                     <Stack.Screen name="ModelDetails"     component={ModelDetailsScreen} />

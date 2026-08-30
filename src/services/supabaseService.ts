@@ -193,34 +193,54 @@ export const clientService = {
 
 export const orderService = {
 
-    /** Récupère toutes les commandes de l'utilisateur avec leurs items */
+    /** Récupère toutes les commandes de l'utilisateur */
     getAll: async () => {
         const userId = await getUserId();
         const { data, error } = await supabase
             .from('orders')
-            .select('*, order_items(*)') // <── Jointure ici
+            .select('*')
             .eq('couturier_id', userId)
             .order('created_at', { ascending: false });
         return { data, error };
     },
 
-    /** Récupère les commandes d'un client avec leurs items */
+    /** Récupère les commandes d'un client */
     getByClient: async (clientId: string) => {
         const { data, error } = await supabase
             .from('orders')
-            .select('*, order_items(*)') // <── Jointure ici
+            .select('*')
             .eq('client_id', clientId)
             .order('created_at', { ascending: false });
         return { data, error };
     },
 
-    /** Crée une commande et retourne l'objet complet avec ses items */
+    /** Récupère les vêtements (orders) d'un projet, avec la personne concernée */
+    getByProject: async (projectId: string) => {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: false });
+        return { data, error };
+    },
+
+    /** Récupère les vêtements d'une personne au sein d'un projet */
+    getByParticipant: async (participantId: string) => {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('participant_id', participantId)
+            .order('created_at', { ascending: false });
+        return { data, error };
+    },
+
+    /** Crée une commande (simple si projectId absent, sinon un vêtement du projet) */
     create: async (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => {
         const userId = await getUserId();
         const { data, error } = await supabase
             .from('orders')
             .insert({
-                user_id: userId,
+                couturier_id: userId,
                 client_id: order.clientId,
                 client_name: order.clientName,
                 clothing_type: order.clothingType,
@@ -232,30 +252,41 @@ export const orderService = {
                 remaining_amount: order.remainingAmount,
                 payment_status: order.paymentStatus,
                 order_status: order.orderStatus,
+                // ── Projets / commandes groupées ──
+                project_id: order.projectId ?? null,
+                participant_id: order.participantId ?? null,
+                fiche_mensuration_id: order.ficheMensurationId ?? null,
+                catalog_id: order.catalogId ?? null,
             })
-            .select('*, order_items(*)') // <── Récupère l'état complet après insertion
+            .select()
             .single();
         return { data, error };
     },
 
     /** Met à jour une commande */
     update: async (orderId: string, updates: Partial<Order>) => {
+        const patch: Record<string, unknown> = {
+            updated_at: new Date().toISOString(),
+        };
+        if (updates.clothingType        !== undefined) patch.clothing_type        = updates.clothingType;
+        if (updates.description         !== undefined) patch.description          = updates.description;
+        if (updates.deliveryDate        !== undefined) patch.delivery_date        = updates.deliveryDate?.toISOString();
+        if (updates.urgencyLevel        !== undefined) patch.urgency_level        = updates.urgencyLevel;
+        if (updates.totalPrice          !== undefined) patch.total_price          = updates.totalPrice;
+        if (updates.advancePayment      !== undefined) patch.advance_payment      = updates.advancePayment;
+        if (updates.remainingAmount     !== undefined) patch.remaining_amount     = updates.remainingAmount;
+        if (updates.paymentStatus       !== undefined) patch.payment_status       = updates.paymentStatus;
+        if (updates.orderStatus         !== undefined) patch.order_status         = updates.orderStatus;
+        if (updates.projectId           !== undefined) patch.project_id           = updates.projectId ?? null;
+        if (updates.participantId       !== undefined) patch.participant_id       = updates.participantId ?? null;
+        if (updates.ficheMensurationId  !== undefined) patch.fiche_mensuration_id = updates.ficheMensurationId ?? null;
+        if (updates.catalogId           !== undefined) patch.catalog_id           = updates.catalogId ?? null;
+
         const { data, error } = await supabase
             .from('orders')
-            .update({
-                clothing_type: updates.clothingType,
-                description: updates.description,
-                delivery_date: updates.deliveryDate?.toISOString(),
-                urgency_level: updates.urgencyLevel,
-                total_price: updates.totalPrice,
-                advance_payment: updates.advancePayment,
-                remaining_amount: updates.remainingAmount,
-                payment_status: updates.paymentStatus,
-                order_status: updates.orderStatus,
-                updated_at: new Date().toISOString(),
-            })
+            .update(patch)
             .eq('id', orderId)
-            .select('*, order_items(*)') // <── Récupère également ici lors d'un rafraîchissement
+            .select()
             .single();
         return { data, error };
     },
@@ -330,17 +361,44 @@ export const mapFiche = (row: Record<string, unknown>): FicheMensuration => ({
     notes:        row.notes as string | undefined,
     isActive:     row.is_active as boolean,
     createdAt:    new Date(row.created_at as string),
+    orderId:       (row.order_id as string) ?? undefined,
+    sourceFicheId: (row.source_fiche_id as string) ?? undefined,
 });
 
 export const ficheService = {
 
-    /** Récupère toutes les fiches d'un client (non archivées) */
+    /** Récupère les fiches "bibliothèque" d'un client (réutilisables, hors copies figées par vêtement) */
     getAll: async (clientId: string) => {
         const { data, error } = await supabase
             .from('fiches_mensuration')
             .select('*')
             .eq('client_id', clientId)
+            .is('order_id', null) // exclut les copies figées pour un vêtement précis
             .order('date_prise', { ascending: false });
+        return { data, error };
+    },
+
+    /** Récupère la fiche bibliothèque active la plus récente pour (client, type de vêtement) */
+    getActiveForType: async (clientId: string, typeVetement: TypeVetement) => {
+        const { data, error } = await supabase
+            .from('fiches_mensuration')
+            .select('*')
+            .eq('client_id', clientId)
+            .eq('type_vetement', typeVetement)
+            .is('order_id', null)
+            .order('date_prise', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        return { data, error };
+    },
+
+    /** Récupère la fiche (copie figée) utilisée pour un vêtement précis */
+    getForOrder: async (orderId: string) => {
+        const { data, error } = await supabase
+            .from('fiches_mensuration')
+            .select('*')
+            .eq('order_id', orderId)
+            .maybeSingle();
         return { data, error };
     },
 
@@ -356,7 +414,8 @@ export const ficheService = {
                 .from('fiches_mensuration')
                 .update({ is_active: false })
                 .eq('client_id', clientId)
-                .eq('type_vetement', ficheData.typeVetement);
+                .eq('type_vetement', ficheData.typeVetement)
+                .is('order_id', null);
         }
         const { data, error } = await supabase
             .from('fiches_mensuration')
@@ -369,9 +428,89 @@ export const ficheService = {
                 unite:         ficheData.unite,
                 notes:         ficheData.notes ?? null,
                 is_active:     ficheData.isActive,
+                order_id:      ficheData.orderId ?? null,
             })
             .select()
             .single();
+        return { data, error };
+    },
+
+    /**
+     * Crée les mesures d'un vêtement au sein d'un projet/commande.
+     * - `Option A` (fiche existante) : appeler avec `sourceFicheId` → duplique la fiche
+     *   bibliothèque en une copie figée liée à `orderId` (l'originale n'est jamais modifiée).
+     * - `Option B` (nouvelles mesures) : appeler sans `sourceFicheId` → crée une nouvelle
+     *   fiche bibliothèque (réutilisable plus tard) ET la lie directement à `orderId`.
+     */
+    createForOrder: async (params: {
+        clientId: string;
+        orderId: string;
+        typeVetement: TypeVetement;
+        sourceFicheId?: string;         // Option A : fiche bibliothèque à dupliquer
+        mesures?: Record<string, number>; // Option B : nouvelles mesures
+        unite?: 'cm' | 'pouces';
+        notes?: string;
+    }) => {
+        const userId = await getUserId();
+
+        if (params.sourceFicheId) {
+            // Option A — copie figée, l'originale reste intacte
+            const { data: source, error: fetchError } = await supabase
+                .from('fiches_mensuration')
+                .select('*')
+                .eq('id', params.sourceFicheId)
+                .single();
+            if (fetchError || !source) return { data: null, error: fetchError };
+
+            const { data, error } = await supabase
+                .from('fiches_mensuration')
+                .insert({
+                    client_id:       params.clientId,
+                    couturier_id:    userId,
+                    type_vetement:   source.type_vetement,
+                    date_prise:      new Date().toISOString().split('T')[0],
+                    mesures:         source.mesures,
+                    unite:           source.unite,
+                    notes:           params.notes ?? source.notes ?? null,
+                    is_active:       false,          // copie non-bibliothèque
+                    order_id:        params.orderId,
+                    source_fiche_id: params.sourceFicheId,
+                })
+                .select()
+                .single();
+            if (!error && data) {
+                await supabase.from('orders').update({ fiche_mensuration_id: data.id }).eq('id', params.orderId);
+            }
+            return { data, error };
+        }
+
+        // Option B — nouvelles mesures : créée à la fois comme fiche bibliothèque
+        // (is_active, réutilisable) et liée directement au vêtement.
+        await supabase
+            .from('fiches_mensuration')
+            .update({ is_active: false })
+            .eq('client_id', params.clientId)
+            .eq('type_vetement', params.typeVetement)
+            .is('order_id', null);
+
+        const { data, error } = await supabase
+            .from('fiches_mensuration')
+            .insert({
+                client_id:     params.clientId,
+                couturier_id:  userId,
+                type_vetement: params.typeVetement,
+                date_prise:    new Date().toISOString().split('T')[0],
+                mesures:       params.mesures ?? {},
+                unite:         params.unite ?? 'cm',
+                notes:         params.notes ?? null,
+                is_active:     true,
+                order_id:      null, // reste une fiche bibliothèque réutilisable
+            })
+            .select()
+            .single();
+        if (!error && data) {
+            await supabase.from('orders').update({ fiche_mensuration_id: data.id }).eq('id', params.orderId);
+        }
         return { data, error };
     },
 
@@ -401,7 +540,8 @@ export const ficheService = {
             .from('fiches_mensuration')
             .update({ is_active: false })
             .eq('client_id', clientId)
-            .eq('type_vetement', typeVetement);
+            .eq('type_vetement', typeVetement)
+            .is('order_id', null);
         const { error } = await supabase
             .from('fiches_mensuration')
             .update({ is_active: true })
@@ -435,19 +575,56 @@ export const paymentService = {
         return { data, error };
     },
 
-    /** Enregistre un paiement */
+    /** Récupère les paiements rattachés au projet lui-même (hors paiements par vêtement) */
+    getByProjectOnly: async (projectId: string) => {
+        const { data, error } = await supabase
+            .from('payments')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('date', { ascending: false });
+        return { data, error };
+    },
+
+    /** Récupère TOUS les paiements d'un projet : ceux de ses vêtements + ceux au niveau projet */
+    getByProject: async (projectId: string) => {
+        const { data: orders, error: ordersError } = await supabase
+            .from('orders')
+            .select('id')
+            .eq('project_id', projectId);
+        if (ordersError) return { data: null, error: ordersError };
+
+        const orderIds = (orders ?? []).map((o: { id: string }) => o.id);
+        const { data, error } = await supabase
+            .from('payments')
+            .select('*')
+            .or(
+                [
+                    `project_id.eq.${projectId}`,
+                    orderIds.length > 0 ? `order_id.in.(${orderIds.join(',')})` : null,
+                ].filter(Boolean).join(',')
+            )
+            .order('date', { ascending: false });
+        return { data, error };
+    },
+
+    /** Enregistre un paiement — lié à un vêtement (orderId) et/ou au projet (projectId) */
     create: async (payment: {
-        orderId: string;
+        orderId?: string;
+        projectId?: string;
         clientId: string;
         amount: number;
         method: string;
         notes?: string;
     }) => {
+        if (!payment.orderId && !payment.projectId) {
+            return { data: null, error: new Error('Un paiement doit être lié à une commande ou à un projet') };
+        }
         const userId = await getUserId();
         const { data, error } = await supabase
             .from('payments')
             .insert({
-                order_id:     payment.orderId,
+                order_id:     payment.orderId ?? null,
+                project_id:   payment.projectId ?? null,
                 couturier_id: userId,
                 client_id:    payment.clientId,
                 amount:       payment.amount,
@@ -807,6 +984,11 @@ export const mapOrder = (row: any): Order => {
         // Module 7
         numeroCommande:      row.numero_commande       ?? undefined,
         dateLivraisonReelle: row.date_livraison_reelle ? new Date(row.date_livraison_reelle) : undefined,
+        // Projets / commandes groupées
+        projectId:            row.project_id            ?? undefined,
+        participantId:        row.participant_id        ?? undefined,
+        ficheMensurationId:   row.fiche_mensuration_id   ?? undefined,
+        catalogId:            row.catalog_id             ?? undefined,
     };
 };
 
@@ -1246,5 +1428,319 @@ export const rechercheService = {
         } catch (e) {
             return { data: [], error: e };
         }
+    },
+};
+
+// ==========================================
+// PROJETS / COMMANDES GROUPÉES (Module 13)
+// ==========================================
+
+import type { Project, ProjectRecap, ProjectParticipant, ProjectStatut, GarmentMeasurementField, TypeVetement as TypeVetementProjet } from '../types';
+
+export const mapProject = (row: any): Project => ({
+    id:            row.id,
+    couturierId:   row.couturier_id,
+    clientId:      row.client_id,
+    nom:           row.nom,
+    typeProjet:    row.type_projet ?? undefined,
+    statut:        row.statut as ProjectStatut,
+    dateEvenement: row.date_evenement ? new Date(row.date_evenement) : undefined,
+    notes:         row.notes ?? undefined,
+    createdAt:     new Date(row.created_at),
+    updatedAt:     new Date(row.updated_at ?? row.created_at),
+    deletedAt:     row.deleted_at ? new Date(row.deleted_at) : null,
+});
+
+export const mapProjectRecap = (row: any): ProjectRecap => ({
+    projectId:           row.project_id,
+    couturierId:         row.couturier_id,
+    nom:                 row.nom,
+    statut:              row.statut as ProjectStatut,
+    dateEvenement:       row.date_evenement ? new Date(row.date_evenement) : undefined,
+    nbPersonnes:         Number(row.nb_personnes ?? 0),
+    nbVetements:         Number(row.nb_vetements ?? 0),
+    nbVetementsTermines: Number(row.nb_vetements_termines ?? 0),
+    montantTotal:        Number(row.montant_total ?? 0),
+    totalPaye:           Number(row.total_paye ?? 0),
+    resteAPayer:         Number(row.reste_a_payer ?? 0),
+});
+
+export const projectService = {
+
+    /** Récupère tous les projets du couturier (non supprimés) */
+    getAll: async () => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('couturier_id', userId)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false });
+        return { data, error };
+    },
+
+    getById: async (projectId: string) => {
+        const { data, error } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('id', projectId)
+            .single();
+        return { data, error };
+    },
+
+    /** Récapitulatif agrégé (personnes, vêtements, montants) — vue `vue_projet_recap` */
+    getRecap: async (projectId: string) => {
+        const { data, error } = await supabase
+            .from('vue_projet_recap')
+            .select('*')
+            .eq('project_id', projectId)
+            .single();
+        return { data, error };
+    },
+
+    /** Récapitulatifs de tous les projets du couturier (pour la liste) */
+    getAllRecaps: async () => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('vue_projet_recap')
+            .select('*')
+            .eq('couturier_id', userId)
+            .order('date_evenement', { ascending: true, nullsFirst: false });
+        return { data, error };
+    },
+
+    create: async (project: {
+        clientId: string;
+        nom: string;
+        typeProjet?: string;
+        statut?: ProjectStatut;
+        dateEvenement?: Date;
+        notes?: string;
+    }) => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('projects')
+            .insert({
+                couturier_id:   userId,
+                client_id:      project.clientId,
+                nom:            project.nom,
+                type_projet:    project.typeProjet ?? null,
+                statut:         project.statut ?? 'brouillon',
+                date_evenement: project.dateEvenement?.toISOString().split('T')[0] ?? null,
+                notes:          project.notes ?? null,
+            })
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    update: async (projectId: string, updates: Partial<Project>) => {
+        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (updates.nom            !== undefined) patch.nom            = updates.nom;
+        if (updates.typeProjet     !== undefined) patch.type_projet    = updates.typeProjet;
+        if (updates.statut         !== undefined) patch.statut         = updates.statut;
+        if (updates.dateEvenement  !== undefined) patch.date_evenement = updates.dateEvenement?.toISOString().split('T')[0] ?? null;
+        if (updates.notes          !== undefined) patch.notes          = updates.notes;
+        const { data, error } = await supabase
+            .from('projects')
+            .update(patch)
+            .eq('id', projectId)
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    /** Soft delete, cohérent avec `clients`/`catalog` */
+    delete: async (projectId: string) => {
+        const { error } = await supabase
+            .from('projects')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', projectId);
+        return { error };
+    },
+};
+
+// ==========================================
+// PARTICIPANTS DE PROJET (Module 13)
+// ==========================================
+
+export const mapParticipant = (row: any): ProjectParticipant => ({
+    id:           row.id,
+    projectId:    row.project_id,
+    couturierId:  row.couturier_id,
+    clientId:     row.client_id ?? null,
+    nom:          row.nom,
+    telephone:    row.telephone ?? undefined,
+    role:         row.role ?? undefined,
+    isTemporary:  row.is_temporary ?? true,
+    createdAt:    new Date(row.created_at),
+});
+
+export const participantService = {
+
+    getByProject: async (projectId: string) => {
+        const { data, error } = await supabase
+            .from('project_participants')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: true });
+        return { data, error };
+    },
+
+    create: async (participant: {
+        projectId: string;
+        clientId?: string;
+        nom: string;
+        telephone?: string;
+        role?: string;
+        isTemporary?: boolean;
+    }) => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('project_participants')
+            .insert({
+                project_id:   participant.projectId,
+                couturier_id: userId,
+                client_id:    participant.clientId ?? null,
+                nom:          participant.nom,
+                telephone:    participant.telephone ?? null,
+                role:         participant.role ?? null,
+                is_temporary: participant.isTemporary ?? !participant.clientId,
+            })
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    update: async (participantId: string, updates: Partial<ProjectParticipant>) => {
+        const patch: Record<string, unknown> = {};
+        if (updates.clientId    !== undefined) patch.client_id    = updates.clientId;
+        if (updates.nom         !== undefined) patch.nom          = updates.nom;
+        if (updates.telephone   !== undefined) patch.telephone    = updates.telephone;
+        if (updates.role        !== undefined) patch.role         = updates.role;
+        if (updates.isTemporary !== undefined) patch.is_temporary = updates.isTemporary;
+        const { data, error } = await supabase
+            .from('project_participants')
+            .update(patch)
+            .eq('id', participantId)
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    /**
+     * "Promeut" un participant temporaire en client réel de l'atelier
+     * (crée la fiche `clients` puis relie `client_id` sur le participant).
+     */
+    promoteToClient: async (participantId: string, clientData: { telephone: string; sexe?: 'homme' | 'femme' | 'autre' }) => {
+        const userId = await getUserId();
+        const { data: participant, error: fetchError } = await supabase
+            .from('project_participants')
+            .select('*')
+            .eq('id', participantId)
+            .single();
+        if (fetchError || !participant) return { data: null, error: fetchError };
+
+        const { data: client, error: clientError } = await supabase
+            .from('clients')
+            .insert({
+                couturier_id: userId,
+                nom:          participant.nom,
+                telephone:    clientData.telephone,
+                sexe:         clientData.sexe ?? 'autre',
+            })
+            .select()
+            .single();
+        if (clientError || !client) return { data: null, error: clientError };
+
+        const { data, error } = await supabase
+            .from('project_participants')
+            .update({ client_id: client.id, is_temporary: false })
+            .eq('id', participantId)
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    delete: async (participantId: string) => {
+        const { error } = await supabase
+            .from('project_participants')
+            .delete()
+            .eq('id', participantId);
+        return { error };
+    },
+};
+
+// ==========================================
+// MESURES CONFIGURABLES PAR TYPE DE VÊTEMENT (Module 13)
+// ==========================================
+
+export const mapMeasurementField = (row: any): GarmentMeasurementField => ({
+    id:           row.id,
+    couturierId:  row.couturier_id ?? null,
+    typeVetement: row.type_vetement,
+    fieldKey:     row.field_key,
+    label:        row.label,
+    uniteDefaut:  row.unite_defaut,
+    sortOrder:    row.sort_order ?? 0,
+    createdAt:    new Date(row.created_at),
+});
+
+export const measurementFieldService = {
+
+    /** Récupère les champs de mesure d'un type de vêtement (globaux + personnalisés par le couturier), triés */
+    getForType: async (typeVetement: TypeVetementProjet) => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('garment_measurement_fields')
+            .select('*')
+            .eq('type_vetement', typeVetement)
+            .or(`couturier_id.is.null,couturier_id.eq.${userId}`)
+            .order('sort_order', { ascending: true });
+        return { data, error };
+    },
+
+    /** Récupère tous les champs, groupés côté client par type de vêtement */
+    getAll: async () => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('garment_measurement_fields')
+            .select('*')
+            .or(`couturier_id.is.null,couturier_id.eq.${userId}`)
+            .order('type_vetement', { ascending: true })
+            .order('sort_order', { ascending: true });
+        return { data, error };
+    },
+
+    /** Ajoute un champ de mesure personnalisé (ou un nouveau type de vêtement complet) */
+    create: async (field: {
+        typeVetement: string;
+        fieldKey: string;
+        label: string;
+        uniteDefaut?: 'cm' | 'pouces';
+        sortOrder?: number;
+    }) => {
+        const userId = await getUserId();
+        const { data, error } = await supabase
+            .from('garment_measurement_fields')
+            .insert({
+                couturier_id:  userId, // champ personnalisé du couturier (jamais global)
+                type_vetement: field.typeVetement,
+                field_key:     field.fieldKey,
+                label:         field.label,
+                unite_defaut:  field.uniteDefaut ?? 'cm',
+                sort_order:    field.sortOrder ?? 0,
+            })
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    delete: async (fieldId: string) => {
+        const { error } = await supabase
+            .from('garment_measurement_fields')
+            .delete()
+            .eq('id', fieldId);
+        return { error };
     },
 };

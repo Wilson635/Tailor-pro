@@ -131,12 +131,23 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const { orderId } = route.params;
     const insets = useSafeAreaInsets();
 
-    const { orders, updateOrder, loadStatistics, loadActivities, realisations } = useAppStore();
+    const { orders, updateOrder, loadStatistics, loadActivities, realisations, getProjectById, getParticipantsByProject, loadProjects, loadParticipants } = useAppStore();
     const order = orders.find(o => o.id === orderId);
     // Réalisation liée à cette commande (Module 7)
     const linkedRealisation = order
         ? Object.values(realisations).flat().find((r: any) => r.commandeId === orderId)
         : undefined;
+
+    // ── Contexte projet / commande groupée ──
+    const project = order?.projectId ? getProjectById(order.projectId) : undefined;
+    const participant = order?.projectId
+        ? getParticipantsByProject(order.projectId).find(p => p.id === order.participantId)
+        : undefined;
+
+    useEffect(() => {
+        if (order?.projectId && !project) loadProjects();
+        if (order?.projectId) loadParticipants(order.projectId);
+    }, [order?.projectId]);
 
     const [payments, setPayments]             = useState<LocalPayment[]>([]);
     const [loadingPayments, setLoadingPayments] = useState(true);
@@ -341,6 +352,22 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         <Text style={styles.clientBtnText}>Fiche client</Text>
                     </TouchableOpacity>
                 </View>
+
+                {/* ══ FIL D'ARIANE PROJET ══ */}
+                {project && (
+                    <TouchableOpacity
+                        style={styles.projectBreadcrumb}
+                        onPress={() => navigation.navigate('ProjectDetails', { projectId: project.id })}
+                        activeOpacity={0.7}
+                    >
+                        <Feather name="folder" size={13} color={P.primary} />
+                        <Text style={styles.projectBreadcrumbText} numberOfLines={1}>
+                            {project.nom}
+                            {participant ? ` · ${participant.nom}${participant.role ? ` (${participant.role})` : ''}` : ''}
+                        </Text>
+                        <Feather name="chevron-right" size={13} color={P.primary} />
+                    </TouchableOpacity>
+                )}
 
                 <ScrollView
                     style={styles.scroll}
@@ -786,6 +813,18 @@ const styles = StyleSheet.create({
         alignItems: 'center', justifyContent: 'center',
     },
     headerTitle: { flex: 1, fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text, textAlign: 'center' },
+
+    // ── Fil d'Ariane projet ──
+    projectBreadcrumb: {
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        backgroundColor: P.surface,
+        paddingHorizontal: SPACING.md, paddingVertical: 8,
+        borderBottomWidth: 0.5, borderBottomColor: P.borderHard,
+    },
+    projectBreadcrumbText: {
+        flex: 1, fontSize: 12.5, color: P.primary,
+        fontFamily: 'PlusJakartaSans_600SemiBold',
+    },
     clientBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 4,
         paddingHorizontal: 10, paddingVertical: 7,

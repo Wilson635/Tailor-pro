@@ -791,3 +791,1038 @@ export const useAppStore = create<AppState>((set, get) => ({
   getPaymentsByOrder: (orderId) =>
       get().payments[orderId] ?? [],
 }));
+
+
+
+--------------------------------------------------------------------------
+
+
+
+// store/useAppStore.ts
+
+// ==========================================
+// STORE PRINCIPAL - TailorPro (Supabase)
+// ==========================================
+
+import { create } from 'zustand';
+import { supabase } from '@/src/lib/supabase';
+import {
+  clientService, orderService, activityService, catalogService,
+  statisticsService, measurementService, mapClient, mapOrder, mapActivity, mapCatalogModel, paymentService,
+  ficheService, mapFiche,
+  realisationService, mapRealisation, uploadRealisationPhoto,
+  tissuService, mapTissu, uploadTissuPhoto,
+  historiqueStatutService,
+} from '@services/supabaseService';
+import type { Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics, FicheMensuration, TypeVetement, Realisation, StatutRealisation, Tissu } from '../types';
+
+// ==========================================
+// TYPE PROFIL
+// ==========================================
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  display_name: string | null;
+  atelier_name: string | null;
+  role: 'tailor' | 'client';
+  phone: string | null;
+  whatsapp: string | null;
+  city: string | null;
+  adresse: string | null;
+  description: string | null;
+  specialities: string[] | null;
+  horaires: Record<string, string> | null;
+  reseaux_sociaux: { facebook?: string; instagram?: string; tiktok?: string } | null;
+  statut_catalogue: 'public' | 'prive';
+  plan_abonnement: 'gratuit' | 'pro' | 'business';
+  devise: string | null;
+  langue: string | null;
+  unite_mesure: string | null;
+  avatar_url: string | null;
+  created_at: string | null;
+}
+
+// ==========================================
+// TYPES DU STORE
+// ==========================================
+
+interface AppState {
+  // ── Auth & Profil ──
+  isAuthenticated: boolean;
+  userId: string | null;
+  profile: UserProfile | null;
+
+  // ── Données ──
+  clients: Client[];
+  orders: Order[];
+  catalog: CatalogModel[];
+  tissus: Tissu[];
+  activities: Activity[];
+  statistics: Statistics;
+  measurements: Record<string, Measurements>;
+  fiches: Record<string, FicheMensuration[]>;
+  realisations: Record<string, Realisation[]>;
+  payments: Record<string, Payment[]>;
+
+  // ── UI ──
+  isLoading: boolean;
+  error: string | null;
+  selectedClientFilter: 'all' | 'recent' | 'favorite';
+  selectedCatalogCategory: string;
+  searchQuery: string;
+
+  // ── Actions Auth ──
+  setAuthenticated: (status: boolean, userId?: string) => void;
+  logout: () => Promise<void>;
+  fetchProfile: () => Promise<void>;
+
+  // ── Actions Data (Supabase) ──
+  loadClients: () => Promise<void>;
+  loadOrders: () => Promise<void>;
+  loadActivities: () => Promise<void>;
+  loadStatistics: () => Promise<void>;
+  loadAll: () => Promise<void>;
+
+  // ── Actions Clients (locales + sync) ──
+  addClient: (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Client | null>;
+  updateClient: (clientId: string, data: Partial<Client>) => Promise<void>;
+  deleteClient: (clientId: string) => Promise<void>;
+
+  // ── Actions Orders (locales + sync) ──
+  addOrder: (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Order | null>;
+  updateOrder: (orderId: string, data: Partial<Order>) => Promise<void>;
+  updateOrderStatut: (orderId: string, newStatut: string, commentaire?: string) => Promise<void>;
+  deleteOrder: (orderId: string) => Promise<void>;
+
+  // ── Actions Measurements (legacy) ──
+  setMeasurements: (clientId: string, measurements: Measurements) => void;
+  loadMeasurements: (clientId: string) => Promise<void>;
+  saveMeasurements: (
+      clientId: string,
+      data: Omit<Measurements, 'id' | 'clientId'>
+  ) => Promise<Measurements | null>;
+
+  // ── Actions Fiches Mensuration (Module 3) ──
+  loadFiches: (clientId: string) => Promise<void>;
+  addFiche: (clientId: string, data: Omit<FicheMensuration, 'id' | 'createdAt' | 'couturierId' | 'clientId'>) => Promise<FicheMensuration | null>;
+  duplicateFiche: (ficheId: string, clientId: string) => Promise<FicheMensuration | null>;
+  setFicheActive: (ficheId: string, clientId: string, typeVetement: TypeVetement) => Promise<void>;
+  deleteFiche: (ficheId: string, clientId: string) => Promise<void>;
+  getFichesByType: (clientId: string, type: TypeVetement) => FicheMensuration[];
+  getActiveFiche: (clientId: string, type: TypeVetement) => FicheMensuration | undefined;
+  getFicheById: (ficheId: string, clientId: string) => FicheMensuration | undefined;
+
+  // ── Actions Réalisations (Module 5) ──
+  loadRealisations: (clientId: string) => Promise<void>;
+  addRealisation: (
+      clientId: string,
+      data: Omit<Realisation, 'id' | 'createdAt' | 'couturierId' | 'clientId'>,
+      localPhotoUris?: string[],
+  ) => Promise<Realisation | null>;
+  updateRealisation: (
+      realisationId: string,
+      clientId: string,
+      data: Partial<Omit<Realisation, 'id' | 'createdAt' | 'couturierId'>>,
+  ) => Promise<void>;
+  updateRealisationStatut: (realisationId: string, clientId: string, statut: StatutRealisation) => Promise<void>;
+  deleteRealisation: (realisationId: string, clientId: string) => Promise<void>;
+  addRealisationPhoto: (realisationId: string, clientId: string, localUri: string) => Promise<void>;
+  getRealisationById: (realisationId: string, clientId: string) => Realisation | undefined;
+  getRealisationsByCommande: (commandeId: string, clientId: string) => Realisation[];
+  getRealisationsByTissu: (tissuId: string) => Realisation[];
+
+  // ── Actions Tissus (Module 6) ──
+  loadTissus: () => Promise<void>;
+  addTissu: (
+      data: Omit<Tissu, 'id' | 'createdAt' | 'updatedAt' | 'couturierId'>,
+      localPhotoUri?: string,
+  ) => Promise<Tissu | null>;
+  updateTissu: (
+      tissuId: string,
+      data: Partial<Omit<Tissu, 'id' | 'createdAt' | 'updatedAt' | 'couturierId'>>,
+      newLocalPhotoUri?: string,
+  ) => Promise<void>;
+  deleteTissu: (tissuId: string) => Promise<void>;
+  getTissuById: (tissuId: string) => Tissu | undefined;
+  getTissusByType: (type: string) => Tissu[];
+  getTissusByFournisseur: (fournisseur: string) => Tissu[];
+
+  // ── Actions Payments ──
+  ///addPayment: (clientId: string, payment: Payment) => void;
+  addPayment: (params: {
+    orderId: string;
+    clientId: string;
+    amount: number;
+    method: 'cash' | 'mobile_money' | 'bank_transfer' | 'other';
+    typePaiement?: 'acompte' | 'paiement_intermediaire' | 'solde_final';
+    notes?: string;
+  }) => Promise<Payment | null>;
+
+  loadPaymentsForOrder: (orderId: string) => Promise<void>;
+
+  // ── Actions Catalog ──
+  loadCatalog: () => Promise<void>;
+  addCatalogModel: (model: Omit<CatalogModel, 'id' | 'createdAt' | 'couturierId' | 'deletedAt'>) => Promise<CatalogModel | null>;
+  updateCatalogModel: (modelId: string, data: Partial<CatalogModel>) => Promise<void>;
+  deleteCatalogModel: (modelId: string) => Promise<void>;
+  archiveCatalogModel: (modelId: string) => Promise<void>;
+  duplicateCatalogModel: (modelId: string) => Promise<CatalogModel | null>;
+  toggleCatalogFavorite: (modelId: string) => Promise<void>;
+  toggleCatalogStatut: (modelId: string) => Promise<void>;
+  getModelById: (modelId: string) => CatalogModel | undefined;
+
+  // ── Actions UI ──
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  setClientFilter: (filter: 'all' | 'recent' | 'favorite') => void;
+  setCatalogCategory: (category: string) => void;
+  setSearchQuery: (query: string) => void;
+
+  // ── Helpers ──
+  getClientById: (clientId: string) => Client | undefined;
+  getOrdersByClient: (clientId: string) => Order[];
+  getMeasurementsByClient: (clientId: string) => Measurements | undefined;
+  getPaymentsByClient: (clientId: string) => Payment[];
+}
+
+// ==========================================
+// STATISTIQUES PAR DÉFAUT
+// ==========================================
+
+const DEFAULT_STATISTICS: Statistics = {
+  totalClients: 0,
+  monthlyRevenue: 0,
+  revenueGrowth: 0,
+  ordersInProgress: 0,
+  completedOrders: 0,
+  unpaidInvoices: 0,
+  unpaidAmount: 0,
+  totalExpenses: 0,
+  netProfit: 0,
+};
+
+// ==========================================
+// HELPER : mappe une ligne Supabase → Measurements
+// ==========================================
+
+const mapMeasurements = (row: Record<string, unknown>): Measurements => ({
+  id: row.id as string,
+  clientId: row.client_id as string,
+  recordedAt: new Date(row.recorded_at as string),
+  chestCircumference: row.chest_circumference as number | undefined,
+  waistCircumference: row.waist_circumference as number | undefined,
+  hipCircumference: row.hip_circumference as number | undefined,
+  backWidth: row.back_width as number | undefined,
+  shoulderWidth: row.shoulder_width as number | undefined,
+  sleeveLength: row.sleeve_length as number | undefined,
+  armCircumference: row.arm_circumference as number | undefined,
+  neckCircumference: row.neck_circumference as number | undefined,
+  dressLength: row.dress_length as number | undefined,
+  bustHeight: row.bust_height as number | undefined,
+  thighCircumference: row.thigh_circumference as number | undefined,
+});
+
+// ==========================================
+// STORE
+// ==========================================
+
+export const useAppStore = create<AppState>((set, get) => ({
+
+  // ── État initial ──
+  isAuthenticated: false,
+  userId: null,
+  profile: null,
+
+  clients: [],
+  orders: [],
+  catalog: [],
+  activities: [],
+  statistics: DEFAULT_STATISTICS,
+  measurements: {},
+  fiches: {},
+  realisations: {},
+  tissus: [],
+  payments: {},
+
+  isLoading: false,
+  error: null,
+  selectedClientFilter: 'all',
+  selectedCatalogCategory: 'all',
+  searchQuery: '',
+
+  // ==========================================
+  // AUTH
+  // ==========================================
+
+  setAuthenticated: (status, userId) =>
+      set({ isAuthenticated: status, userId: userId ?? null }),
+
+  logout: async () => {
+    await supabase.auth.signOut();
+    set({
+      isAuthenticated: false,
+      userId: null,
+      profile: null,
+      clients: [],
+      orders: [],
+      activities: [],
+      statistics: DEFAULT_STATISTICS,
+      measurements: {},
+    });
+  },
+
+  fetchProfile: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+        .from('users')
+        .select('id, email, display_name, atelier_name, role, phone, whatsapp, city, adresse, description, specialities, horaires, reseaux_sociaux, statut_catalogue, plan_abonnement, devise, langue, unite_mesure, avatar_url, created_at')
+        .eq('id', user.id)
+        .single();
+
+    if (!error && data) {
+      set({ profile: data as UserProfile, userId: user.id, isAuthenticated: true });
+    }
+  },
+
+  // ==========================================
+  // CHARGEMENT DONNÉES (SUPABASE)
+  // ==========================================
+
+  loadClients: async () => {
+    const { data, error } = await clientService.getAll();
+    if (error) { set({ error: error.message }); return; }
+    set({ clients: (data ?? []).map(mapClient) });
+  },
+
+  loadOrders: async () => {
+    const { profile, userId } = get();
+    if (!userId) return;
+
+    if (profile?.role === 'client') {
+      const { data, error } = await supabase
+          .from('orders')
+          .select('*, order_items(*)')
+          .eq('client_id', userId);
+      if (error) { set({ error: error.message }); return; }
+      set({ orders: (data ?? []).map(mapOrder) });
+    } else {
+      const { data, error } = await orderService.getAll();
+      if (error) { set({ error: error.message }); return; }
+      set({ orders: (data ?? []).map(mapOrder) });
+    }
+  },
+
+  loadActivities: async () => {
+    const { profile, userId } = get();
+    if (!userId) return;
+
+    if (profile?.role === 'client') {
+      const { data, error } = await supabase
+          .from('activities')
+          .select('*')
+          .eq('client_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+      if (error) { set({ error: error.message }); return; }
+      set({ activities: (data ?? []).map(mapActivity) });
+    } else {
+      const { data, error } = await activityService.getRecent(20);
+      if (error) { set({ error: error.message }); return; }
+      set({ activities: (data ?? []).map(mapActivity) });
+    }
+  },
+
+  loadStatistics: async () => {
+    const { data, error } = await statisticsService.compute();
+    if (error || !data) return;
+    set({ statistics: data });
+  },
+
+  loadAll: async () => {
+    set({ isLoading: true, error: null });
+    await get().fetchProfile();
+    const currentProfile = get().profile;
+
+    if (currentProfile?.role === 'client') {
+      await Promise.all([
+        get().loadOrders(),
+        get().loadActivities(),
+      ]);
+    } else {
+      await Promise.all([
+        get().loadClients(),
+        get().loadOrders(),
+        get().loadActivities(),
+        get().loadCatalog(),
+        get().loadStatistics(),
+      ]);
+    }
+    set({ isLoading: false });
+  },
+
+  // ==========================================
+  // CLIENTS
+  // ==========================================
+
+  addClient: async (clientData) => {
+    const { data, error } = await clientService.create(clientData);
+    if (error || !data) { set({ error: error?.message }); return null; }
+
+    const newClient = mapClient(data);
+    set(state => ({ clients: [newClient, ...state.clients] }));
+
+    await activityService.create({
+      type: 'new_client',
+      title: 'Nouveau client',
+      subtitle: newClient.nom,
+      clientId: newClient.id,
+    });
+
+    get().loadStatistics();
+    get().loadActivities();
+    return newClient;
+  },
+
+  updateClient: async (clientId, updates) => {
+    const { error } = await clientService.update(clientId, updates);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      clients: state.clients.map(c =>
+          c.id === clientId ? { ...c, ...updates, updatedAt: new Date() } : c
+      ),
+    }));
+  },
+
+  deleteClient: async (clientId) => {
+    const { error } = await clientService.delete(clientId);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      clients: state.clients.filter(c => c.id !== clientId),
+    }));
+    get().loadStatistics();
+  },
+
+  // ==========================================
+  // COMMANDES
+  // ==========================================
+
+  addOrder: async (orderData) => {
+    const { data, error } = await orderService.create(orderData);
+    if (error || !data) { set({ error: error?.message }); return null; }
+
+    const newOrder = mapOrder(data);
+    set(state => ({ orders: [newOrder, ...state.orders] }));
+
+    await activityService.create({
+      type: 'new_order',
+      title: 'Nouvelle commande',
+      subtitle: newOrder.clientName,
+      clientId: newOrder.clientId,
+      orderId: newOrder.id,
+    });
+
+    const client = get().getClientById(newOrder.clientId);
+    if (client) {
+      await clientService.update(newOrder.clientId, {
+        balance: client.balance + newOrder.remainingAmount,
+      });
+      set(state => ({
+        clients: state.clients.map(c =>
+            c.id === newOrder.clientId
+                ? { ...c, balance: c.balance + newOrder.remainingAmount }
+                : c
+        ),
+      }));
+    }
+
+    get().loadStatistics();
+    get().loadActivities();
+    // Auto-créer une Réalisation liée à cette commande (Module 7)
+    try {
+      await get().addRealisation(newOrder.clientId, {
+        commandeId: newOrder.id,
+        statut: 'en_cours' as StatutRealisation,
+        photos: [],
+        couleur: '',
+        accessoires: [],
+        dateCreation: new Date().toISOString().split('T')[0],
+        dateLivraison: newOrder.deliveryDate instanceof Date
+            ? newOrder.deliveryDate.toISOString().split('T')[0]
+            : undefined,
+        observations: newOrder.description ?? undefined,
+      });
+    } catch (_e) { /* non critique */ }
+    return newOrder;
+  },
+
+  updateOrder: async (orderId, updates) => {
+    const { error } = await orderService.update(orderId, updates);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      orders: state.orders.map(o =>
+          o.id === orderId ? { ...o, ...updates, updatedAt: new Date() } : o
+      ),
+    }));
+
+    if (updates.orderStatus === 'completed' || updates.orderStatus === 'delivered') {
+      const order = get().orders.find(o => o.id === orderId);
+      if (order) {
+        await activityService.create({
+          type: 'order_completed',
+          title: 'Commande terminée',
+          subtitle: order.clientName,
+          clientId: order.clientId,
+          orderId: order.id,
+        });
+        get().loadActivities();
+      }
+    }
+
+    get().loadStatistics();
+  },
+
+
+  updateOrderStatut: async (orderId, newStatut, commentaire) => {
+    const order = get().orders.find(o => o.id === orderId);
+    if (!order) return;
+    const ancienStatut = String(order.orderStatus);
+    const { error } = await orderService.update(orderId, { orderStatus: newStatut as any });
+    if (error) { set({ error: error.message }); return; }
+    try { await historiqueStatutService.create(orderId, ancienStatut, newStatut, commentaire); } catch (_) {}
+    set(state => ({
+      orders: state.orders.map(o =>
+          o.id === orderId ? { ...o, orderStatus: newStatut as any, updatedAt: new Date() } : o
+      ),
+    }));
+    get().loadStatistics();
+  },
+  deleteOrder: async (orderId) => {
+    const { error } = await orderService.delete(orderId);
+    if (error) { set({ error: error.message }); return; }
+
+    set(state => ({
+      orders: state.orders.filter(o => o.id !== orderId),
+    }));
+    get().loadStatistics();
+  },
+
+  // ==========================================
+  // MESURES
+  // ==========================================
+
+  /** Met à jour les mesures localement dans le store */
+  setMeasurements: (clientId, measurements) =>
+      set(state => ({
+        measurements: { ...state.measurements, [clientId]: measurements },
+      })),
+
+  /** Charge les mesures d'un client depuis Supabase */
+  loadMeasurements: async (clientId: string) => {
+    const { data, error } = await measurementService.getByClient(clientId);
+    // PGRST116 = aucune ligne trouvée (client sans mesures), ce n'est pas une erreur
+    if (error && error.code !== 'PGRST116') {
+      set({ error: error.message });
+      return;
+    }
+    if (data) {
+      const mapped = mapMeasurements(data as Record<string, unknown>);
+      set(state => ({
+        measurements: { ...state.measurements, [clientId]: mapped },
+      }));
+    }
+  },
+
+  /** Crée ou met à jour les mesures dans Supabase puis met à jour le store */
+  saveMeasurements: async (clientId, data) => {
+    const { data: saved, error } = await measurementService.upsert(clientId, data);
+    if (error || !saved) {
+      set({ error: error?.message ?? 'Erreur lors de l\'enregistrement des mesures' });
+      return null;
+    }
+    const mapped = mapMeasurements(saved as Record<string, unknown>);
+    set(state => ({
+      measurements: { ...state.measurements, [clientId]: mapped },
+    }));
+    return mapped;
+  },
+
+  // ==========================================
+  // FICHES MENSURATION (Module 3)
+  // ==========================================
+
+  loadFiches: async (clientId: string) => {
+    const { data, error } = await ficheService.getAll(clientId);
+    if (error) { set({ error: error.message }); return; }
+    const mapped = (data ?? []).map(row => mapFiche(row as Record<string, unknown>));
+    set(state => ({ fiches: { ...state.fiches, [clientId]: mapped } }));
+  },
+
+  addFiche: async (clientId: string, ficheData: Omit<FicheMensuration, 'id' | 'createdAt' | 'couturierId' | 'clientId'>) => {
+    const { data, error } = await ficheService.create(clientId, ficheData);
+    if (error || !data) { set({ error: error?.message }); return null; }
+    const newFiche = mapFiche(data as Record<string, unknown>);
+    set(state => {
+      const existing = (state.fiches[clientId] ?? []).map(f =>
+          f.typeVetement === newFiche.typeVetement && newFiche.isActive
+              ? { ...f, isActive: false } : f
+      );
+      return { fiches: { ...state.fiches, [clientId]: [newFiche, ...existing] } };
+    });
+    return newFiche;
+  },
+
+  duplicateFiche: async (ficheId: string, clientId: string) => {
+    const fiche = get().fiches[clientId]?.find(f => f.id === ficheId);
+    if (!fiche) return null;
+    const { data, error } = await ficheService.duplicate(fiche);
+    if (error || !data) { set({ error: error?.message }); return null; }
+    const copy = mapFiche(data as Record<string, unknown>);
+    set(state => ({
+      fiches: { ...state.fiches, [clientId]: [copy, ...(state.fiches[clientId] ?? [])] },
+    }));
+    return copy;
+  },
+
+  setFicheActive: async (ficheId: string, clientId: string, typeVetement: TypeVetement) => {
+    const { error } = await ficheService.setActive(ficheId, clientId, typeVetement);
+    if (error) { set({ error: error.message }); return; }
+    set(state => ({
+      fiches: {
+        ...state.fiches,
+        [clientId]: (state.fiches[clientId] ?? []).map(f =>
+            f.typeVetement === typeVetement
+                ? { ...f, isActive: f.id === ficheId }
+                : f
+        ),
+      },
+    }));
+  },
+
+  deleteFiche: async (ficheId: string, clientId: string) => {
+    const { error } = await ficheService.delete(ficheId);
+    if (error) { set({ error: error.message }); return; }
+    set(state => ({
+      fiches: {
+        ...state.fiches,
+        [clientId]: (state.fiches[clientId] ?? []).filter(f => f.id !== ficheId),
+      },
+    }));
+  },
+
+  getFichesByType: (clientId: string, type: TypeVetement) =>
+      get().fiches[clientId]?.filter(f => f.typeVetement === type) ?? [],
+
+  getActiveFiche: (clientId: string, type: TypeVetement) =>
+      get().fiches[clientId]?.find(f => f.typeVetement === type && f.isActive),
+
+  getFicheById: (ficheId: string, clientId: string) =>
+      get().fiches[clientId]?.find(f => f.id === ficheId),
+
+  // ==========================================
+  // RÉALISATIONS (Module 5)
+  // ==========================================
+
+  loadRealisations: async (clientId: string) => {
+    const { data, error } = await realisationService.getAll(clientId);
+    if (error) { set({ error: (error as any).message }); return; }
+    const mapped = (data ?? []).map((row: any) => mapRealisation(row));
+    set(state => ({ realisations: { ...state.realisations, [clientId]: mapped } }));
+  },
+
+  addRealisation: async (clientId, realisationData, localPhotoUris = []) => {
+    const couturierId = get().userId ?? '';
+    // Upload local photos to Supabase Storage first
+    const uploadedUrls: string[] = [];
+    for (const uri of localPhotoUris) {
+      // Placeholder id for path — will be replaced with real id after insert
+      const { publicUrl } = await uploadRealisationPhoto(uri, couturierId, 'tmp');
+      if (publicUrl) uploadedUrls.push(publicUrl);
+    }
+    const { data, error } = await realisationService.create(clientId, {
+      ...realisationData,
+      photos: uploadedUrls,
+    });
+    if (error || !data) { set({ error: (error as any)?.message }); return null; }
+    const created = mapRealisation(data as any);
+
+    // Re-upload with real id for clean paths (best-effort)
+    if (localPhotoUris.length > 0) {
+      const finalUrls: string[] = [];
+      for (const uri of localPhotoUris) {
+        const { publicUrl } = await uploadRealisationPhoto(uri, couturierId, created.id);
+        if (publicUrl) finalUrls.push(publicUrl);
+      }
+      if (finalUrls.length > 0) {
+        const { data: updated } = await realisationService.update(created.id, { photos: finalUrls });
+        if (updated) {
+          const final = mapRealisation(updated as any);
+          set(state => ({
+            realisations: {
+              ...state.realisations,
+              [clientId]: [final, ...(state.realisations[clientId] ?? [])],
+            },
+          }));
+          return final;
+        }
+      }
+    }
+
+    set(state => ({
+      realisations: {
+        ...state.realisations,
+        [clientId]: [created, ...(state.realisations[clientId] ?? [])],
+      },
+    }));
+    return created;
+  },
+
+  updateRealisation: async (realisationId, clientId, data) => {
+    const { data: updated, error } = await realisationService.update(realisationId, data);
+    if (error || !updated) { set({ error: (error as any)?.message }); return; }
+    const mapped = mapRealisation(updated as any);
+    set(state => ({
+      realisations: {
+        ...state.realisations,
+        [clientId]: (state.realisations[clientId] ?? []).map(r =>
+            r.id === realisationId ? mapped : r
+        ),
+      },
+    }));
+  },
+
+  updateRealisationStatut: async (realisationId, clientId, statut) => {
+    const { data: updated, error } = await realisationService.updateStatut(realisationId, statut);
+    if (error || !updated) { set({ error: (error as any)?.message }); return; }
+    const mapped = mapRealisation(updated as any);
+    set(state => ({
+      realisations: {
+        ...state.realisations,
+        [clientId]: (state.realisations[clientId] ?? []).map(r =>
+            r.id === realisationId ? mapped : r
+        ),
+      },
+    }));
+  },
+
+  deleteRealisation: async (realisationId, clientId) => {
+    const { error } = await realisationService.delete(realisationId);
+    if (error) { set({ error: (error as any).message }); return; }
+    set(state => ({
+      realisations: {
+        ...state.realisations,
+        [clientId]: (state.realisations[clientId] ?? []).filter(r => r.id !== realisationId),
+      },
+    }));
+  },
+
+  addRealisationPhoto: async (realisationId, clientId, localUri) => {
+    const couturierId = get().userId ?? '';
+    const { publicUrl, error } = await uploadRealisationPhoto(localUri, couturierId, realisationId);
+    if (error || !publicUrl) { set({ error: error?.message }); return; }
+    const { data: updated } = await realisationService.addPhoto(realisationId, publicUrl);
+    if (!updated) return;
+    const mapped = mapRealisation(updated as any);
+    set(state => ({
+      realisations: {
+        ...state.realisations,
+        [clientId]: (state.realisations[clientId] ?? []).map(r =>
+            r.id === realisationId ? mapped : r
+        ),
+      },
+    }));
+  },
+
+  getRealisationById: (realisationId, clientId) =>
+      get().realisations[clientId]?.find(r => r.id === realisationId),
+
+  getRealisationsByCommande: (commandeId, clientId) =>
+      get().realisations[clientId]?.filter(r => r.commandeId === commandeId) ?? [],
+
+  getRealisationsByTissu: (tissuId: string) => {
+    const all = get().realisations;
+    return Object.values(all).flat().filter(r => r.tissuId === tissuId);
+  },
+
+  // ==========================================
+  // TISSUS (Module 6)
+  // ==========================================
+
+  loadTissus: async () => {
+    const { data, error } = await tissuService.getAll();
+    if (error) { set({ error: (error as any).message }); return; }
+    set({ tissus: (data ?? []).map((row: any) => mapTissu(row)) });
+  },
+
+  addTissu: async (tissuData, localPhotoUri) => {
+    const couturierId = get().userId ?? '';
+    let photoUrl: string | undefined;
+    if (localPhotoUri) {
+      const { publicUrl } = await uploadTissuPhoto(localPhotoUri, couturierId, 'tmp');
+      if (publicUrl) photoUrl = publicUrl;
+    }
+    const { data, error } = await tissuService.create({ ...tissuData, photo: photoUrl });
+    if (error || !data) { set({ error: (error as any)?.message }); return null; }
+    const created = mapTissu(data as any);
+    // Re-upload with real id
+    if (localPhotoUri) {
+      const { publicUrl } = await uploadTissuPhoto(localPhotoUri, couturierId, created.id);
+      if (publicUrl) {
+        const { data: updated } = await tissuService.update(created.id, { photo: publicUrl });
+        if (updated) {
+          const final = mapTissu(updated as any);
+          set(state => ({ tissus: [final, ...state.tissus] }));
+          return final;
+        }
+      }
+    }
+    set(state => ({ tissus: [created, ...state.tissus] }));
+    return created;
+  },
+
+  updateTissu: async (tissuId, data, newLocalPhotoUri) => {
+    const couturierId = get().userId ?? '';
+    let photoUrl = data.photo;
+    if (newLocalPhotoUri) {
+      const { publicUrl } = await uploadTissuPhoto(newLocalPhotoUri, couturierId, tissuId);
+      if (publicUrl) photoUrl = publicUrl;
+    }
+    const { data: updated, error } = await tissuService.update(tissuId, { ...data, photo: photoUrl });
+    if (error || !updated) { set({ error: (error as any)?.message }); return; }
+    const mapped = mapTissu(updated as any);
+    set(state => ({ tissus: state.tissus.map(t => t.id === tissuId ? mapped : t) }));
+  },
+
+  deleteTissu: async (tissuId) => {
+    const { error } = await tissuService.delete(tissuId);
+    if (error) { set({ error: (error as any).message }); return; }
+    set(state => ({ tissus: state.tissus.filter(t => t.id !== tissuId) }));
+  },
+
+  getTissuById: (tissuId) => get().tissus.find(t => t.id === tissuId),
+  getTissusByType: (type) => get().tissus.filter(t => t.typeTissu === type),
+  getTissusByFournisseur: (fournisseur) =>
+      get().tissus.filter(t => t.fournisseur?.toLowerCase() === fournisseur.toLowerCase()),
+
+  // ==========================================
+  // PAIEMENTS
+  // ==========================================
+
+  /*addPayment: (clientId, payment) =>
+      set(state => ({
+        payments: {
+          ...state.payments,
+          [clientId]: [...(state.payments[clientId] ?? []), payment],
+        },
+      })),*/
+  addPayment: async ({ orderId, clientId, amount, method, typePaiement, notes }) => {
+    // 1. Persiste dans Supabase
+    const { data, error } = await paymentService.create({
+      orderId,
+      amount,
+      method,
+      notes,
+    });
+
+    if (error || !data) {
+      set({ error: error?.message ?? 'Erreur lors de l\'enregistrement du paiement' });
+      return null;
+    }
+
+    const newPayment: Payment = {
+      id:            data.id,
+      orderId,
+      clientId,
+      amount,
+      method,
+      notes,
+      date:          new Date(data.payment_date),
+      createdAt:     new Date(data.created_at),
+      updatedAt:     new Date(data.created_at),
+    };
+
+    // 2. Met à jour le store local (keyed by orderId)
+    set(state => ({
+      payments: {
+        ...state.payments,
+        [orderId]: [...(state.payments[orderId] ?? []), newPayment],
+      },
+    }));
+
+    // 3. Recalcule remaining_amount et payment_status de la commande
+    const order = get().orders.find(o => o.id === orderId);
+    if (order) {
+      const newRemaining = Math.max(0, order.remainingAmount - amount);
+      const newPayStatus =
+          newRemaining <= 0 ? 'paid' :
+              newRemaining < order.totalPrice ? 'partial' :
+                  'unpaid';
+
+      await get().updateOrder(orderId, {
+        remainingAmount: newRemaining,
+        paymentStatus:   newPayStatus,
+      });
+
+      // 4. Met à jour la balance du client
+      const client = get().getClientById(clientId);
+      if (client) {
+        await clientService.update(clientId, {
+          balance: Math.max(0, client.balance - amount),
+        });
+        set(state => ({
+          clients: state.clients.map(c =>
+              c.id === clientId
+                  ? { ...c, balance: Math.max(0, c.balance - amount) }
+                  : c
+          ),
+        }));
+      }
+    }
+
+    // 5. Activité + stats
+    await activityService.create({
+      type:     'payment_received',
+      title:    'Paiement reçu',
+      subtitle: order?.clientName,
+      amount,
+      clientId,
+      orderId,
+    });
+
+    get().loadStatistics();
+    get().loadActivities();
+
+    return newPayment;
+  },
+
+  loadPaymentsForOrder: async (orderId: string) => {
+    const { data, error } = await paymentService.getByOrder(orderId);
+    if (error || !data) return;
+
+    const mapped: Payment[] = (data as any[]).map(p => ({
+      id:        p.id,
+      orderId:   p.order_id,
+      clientId:  '', // non stocké dans payments table, à compléter si besoin
+      amount:    Number(p.amount),
+      method:    p.payment_method,
+      notes:     p.notes ?? undefined,
+      date:      new Date(p.payment_date),
+      createdAt: new Date(p.created_at),
+      updatedAt: new Date(p.created_at),
+    }));
+
+    set(state => ({
+      payments: { ...state.payments, [orderId]: mapped },
+    }));
+  },
+
+  // ==========================================
+  // CATALOG (local)
+  // ==========================================
+
+  loadCatalog: async () => {
+    const { data, error } = await catalogService.getAll();
+    if (error) { set({ error: error.message }); return; }
+    set({ catalog: (data ?? []).map(mapCatalogModel) });
+  },
+
+  addCatalogModel: async (modelData) => {
+    const { data, error } = await catalogService.create(modelData);
+    if (error || !data) { set({ error: error?.message }); return null; }
+    const newModel = mapCatalogModel(data);
+    set((state: any) => ({ catalog: [newModel, ...state.catalog] }));
+    return newModel;
+  },
+
+  updateCatalogModel: async (modelId: string, updates: Partial<CatalogModel>) => {
+    const { error } = await catalogService.update(modelId, updates);
+    if (error) { set({ error: error.message }); return; }
+    set((state: any) => ({
+      catalog: state.catalog.map((m: CatalogModel) =>
+          m.id === modelId ? { ...m, ...updates } : m
+      ),
+    }));
+  },
+
+  deleteCatalogModel: async (modelId: string) => {
+    const { error } = await catalogService.archive(modelId);
+    if (error) { set({ error: error.message }); return; }
+    set((state: any) => ({
+      catalog: state.catalog.filter((m: CatalogModel) => m.id !== modelId),
+    }));
+  },
+
+  archiveCatalogModel: async (modelId: string) => {
+    const { error } = await catalogService.archive(modelId);
+    if (error) { set({ error: error.message }); return; }
+    set((state: any) => ({
+      catalog: state.catalog.filter((m: CatalogModel) => m.id !== modelId),
+    }));
+  },
+
+  duplicateCatalogModel: async (modelId: string) => {
+    const model = get().catalog.find((m: CatalogModel) => m.id === modelId);
+    if (!model) return null;
+    const { data, error } = await catalogService.duplicate(model);
+    if (error || !data) { set({ error: error?.message }); return null; }
+    const newModel = mapCatalogModel(data);
+    set((state: any) => ({ catalog: [newModel, ...state.catalog] }));
+    return newModel;
+  },
+
+  toggleCatalogFavorite: async (modelId: string) => {
+    const model = get().catalog.find((m: CatalogModel) => m.id === modelId);
+    if (!model) return;
+    const newFav = !model.isFavorite;
+    set((state: any) => ({
+      catalog: state.catalog.map((m: CatalogModel) =>
+          m.id === modelId ? { ...m, isFavorite: newFav } : m
+      ),
+    }));
+    await catalogService.update(modelId, { isFavorite: newFav });
+  },
+
+  toggleCatalogStatut: async (modelId: string) => {
+    const model = get().catalog.find((m: CatalogModel) => m.id === modelId);
+    if (!model) return;
+    const newStatut: 'public' | 'prive' = model.statut === 'public' ? 'prive' : 'public';
+    set((state: any) => ({
+      catalog: state.catalog.map((m: CatalogModel) =>
+          m.id === modelId ? { ...m, statut: newStatut } : m
+      ),
+    }));
+    await catalogService.update(modelId, { statut: newStatut });
+  },
+  // ==========================================
+  // UI
+  // ==========================================
+
+  setLoading: (loading) => set({ isLoading: loading }),
+  setError: (error) => set({ error }),
+  setClientFilter: (filter) => set({ selectedClientFilter: filter }),
+  setCatalogCategory: (category) => set({ selectedCatalogCategory: category }),
+  setSearchQuery: (query) => set({ searchQuery: query }),
+
+  // ==========================================
+  // HELPERS
+  // ==========================================
+
+  getClientById: (clientId) =>
+      get().clients.find(c => c.id === clientId),
+
+  getOrdersByClient: (clientId) =>
+      get().orders.filter(o => o.clientId === clientId),
+
+  getMeasurementsByClient: (clientId) =>
+      get().measurements[clientId],
+
+  getPaymentsByClient: (clientId) =>
+      get().payments[clientId] ?? [],
+  getModelById: (modelId) =>
+      get().catalog.find(m => m.id === modelId),
+}));

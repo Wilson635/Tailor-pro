@@ -123,12 +123,19 @@ const StyledInput = ({
 export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
-  const { addOrder, getClientById, clients } = useAppStore();
+  const { addOrder, getClientById, clients, participants, promoteParticipant, loadProjectRecap } = useAppStore();
 
   const preselectedClientId = route.params?.clientId ?? '';
+  // ── Contexte "commande groupée" (arrivée depuis un Projet) ──
+  const projectId = (route.params as any)?.projectId as string | undefined;
+  const participantId = (route.params as any)?.participantId as string | undefined;
+  const participant = useMemo(
+      () => (projectId && participantId ? (participants[projectId] ?? []).find(p => p.id === participantId) : undefined),
+      [participants, projectId, participantId]
+  );
 
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedClientId, setSelectedClientId] = useState(preselectedClientId);
+  const [selectedClientId, setSelectedClientId] = useState(preselectedClientId || participant?.clientId || '');
   const [clothingType, setClothingType] = useState<ClothingType>('robe_longue');
   const [urgency, setUrgency] = useState<UrgencyLevel>('medium');
   const [description, setDescription] = useState('');
@@ -196,12 +203,18 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const handleSubmit = async () => {
-    if (!selectedClientId || !clothingType || !totalPrice) {
+    // En contexte "projet", le client peut être résolu automatiquement depuis le participant.
+    const effectiveClientId = selectedClientId || participant?.clientId;
+
+    if (!effectiveClientId && !participant) {
+      showToast({ type: 'error', message: 'Veuillez remplir les champs obligatoires.' });
+      return;
+    }
+    if (!clothingType || !totalPrice) {
       showToast({
         type: 'error',
         message: 'Veuillez remplir les champs obligatoires.',
       });
-      //Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires (Client, Type de vêtement, Prix total).');
       return;
     }
 
@@ -211,37 +224,51 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Utilisateur non connecté");
 
+      // Une commande (vêtement) doit toujours être rattachée à un client réel.
+      // Si la personne du projet est encore temporaire (pas de fiche client), on la
+      // promeut d'abord silencieusement — l'historique/mensurations restent attachés
+      // à elle, seule sa fiche `clients` est créée à la volée.
+      let clientId = effectiveClientId;
+      if (!clientId && participant) {
+        await promoteParticipant(participant.id, projectId!, { telephone: participant.telephone || '' });
+        const updated = (useAppStore.getState().participants[projectId!] ?? []).find(p => p.id === participant.id);
+        clientId = updated?.clientId ?? undefined;
+        if (!clientId) throw new Error("Impossible de créer la fiche client pour cette personne.");
+      }
+
       const parsedTotalPrice = parseFloat(totalPrice);
       const parsedAdvancePayment = parseFloat(advancePayment) || 0;
       const remainingAmount = parsedTotalPrice - parsedAdvancePayment;
 
-      let paymentStatus: 'unpaid' | 'partial' | 'paid' = 'unpaid';
-      if (parsedAdvancePayment >= parsedTotalPrice) paymentStatus = 'paid';
-      else if (parsedAdvancePayment > 0) paymentStatus = 'partial';
+      let computedPaymentStatus: 'unpaid' | 'partial' | 'paid' = 'unpaid';
+      if (parsedAdvancePayment >= parsedTotalPrice) computedPaymentStatus = 'paid';
+      else if (parsedAdvancePayment > 0) computedPaymentStatus = 'partial';
 
-      // 1. Création de la commande sur Supabase
-      const { data: newOrder, error: orderError } = await supabase
-          .from('orders')
-          .insert({
-            couturier_id: user.id,
-            client_id: selectedClientId,
-            client_name: selectedClient?.nom ?? '',
-            clothing_type: clothingType,
-            description: description || null,
-            delivery_date: toSupabaseDate(deliveryDate),
-            urgency_level: urgency,
-            total_price: parsedTotalPrice,
-            advance_payment: parsedAdvancePayment,
-            remaining_amount: remainingAmount,
-            payment_status: paymentStatus,
-            order_status: 'pending',
-          })
-          .select()
-          .single();
+      const resolvedClient = getClientById(clientId!);
 
-      if (orderError) throw orderError;
+      // 1. Création de la commande — un seul insert, via l'action du store
+      //    (couvre aussi : mise à jour de la balance client, activité, réalisation auto-créée).
+      const newOrder = await addOrder({
+        clientId: clientId!,
+        clientName: resolvedClient?.nom ?? participant?.nom ?? '',
+        clothingType,
+        description: description || undefined,
+        fabricPhotos: [],
+        inspirationPhotos: [],
+        deliveryDate: selectedDate,
+        urgencyLevel: urgency,
+        totalPrice: parsedTotalPrice,
+        advancePayment: parsedAdvancePayment,
+        remainingAmount,
+        paymentStatus: computedPaymentStatus,
+        orderStatus: 'pending',
+        projectId,
+        participantId,
+      });
 
-      // 2. Traitement des photos d'inspiration
+      if (!newOrder) throw new Error("La commande n'a pas pu être créée.");
+
+      // 2. Traitement des photos d'inspiration (inchangé — enrichit le catalogue)
       if (inspirationPhotos && inspirationPhotos.length > 0) {
         for (const photoUri of inspirationPhotos) {
 
@@ -249,10 +276,10 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               .from('catalog')
               .insert({
                 couturier_id: user.id,
-                name: `Modèle ${CLOTHING_TYPE_LABELS[clothingType] || clothingType} - ${selectedClient?.nom ?? ''}`,
+                name: `Modèle ${CLOTHING_TYPE_LABELS[clothingType] || clothingType} - ${resolvedClient?.nom ?? ''}`,
                 category: clothingType,
                 price: parsedTotalPrice,
-                description: `Ajouté automatiquement depuis la commande de ${selectedClient?.nom ?? ''}`,
+                description: `Ajouté automatiquement depuis la commande de ${resolvedClient?.nom ?? ''}`,
                 is_favorite: false
               })
               .select()
@@ -304,20 +331,6 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
             console.error("Erreur insertion catalog_photos:", photoError);
           }
 
-          const { error: orderItemError } = await supabase
-              .from('order_items')
-              .insert({
-                order_id: newOrder.id,
-                couturier_id: user.id,
-                item_type: 'inspiration',
-                photo_url: publicUrl,
-                catalog_id: newCatalogModel.id
-              });
-
-          if (orderItemError) {
-            console.error("Erreur insertion order_items:", orderItemError);
-          }
-
           const modelWithPhoto = {
             ...newCatalogModel,
             catalog_photos: addedPhoto ? [addedPhoto] : [{ photo_url: publicUrl }]
@@ -326,13 +339,15 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
         }
       }
 
-      // 3. Mise à jour du store Zustand
-      useAppStore.getState().addOrder(newOrder);
+      // 3. Rafraîchit le récap du projet, si applicable
+      if (projectId) loadProjectRecap(projectId);
 
       showToast({
         type: 'success',
         message: 'La commande a bien été enregistrée ! et votre catalogue enrichi',
       });
+
+      if (projectId) navigation.goBack();
 
     } catch (error: any) {
       console.error(error);
@@ -340,7 +355,6 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
         type: 'error',
         message: 'Une erreur est survenue lors de l\'enregistrement.',
       });
-      //Alert.alert('Erreur', error.message || "Une erreur est survenue lors de l'enregistrement.");
     } finally {
       setIsLoading(false);
     }
@@ -383,46 +397,68 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
         >
 
           {/* ── Client ── */}
-          <SectionCard
-              iconName="person-outline"
-              iconBg="#EDE9FE" iconColor="#6B21A8"
-              title="Client"
-              subtitle="Sélectionnez la personne concernée"
-          >
-            <TouchableOpacity
-                style={styles.clientRow}
-                onPress={() => setClientModalVisible(true)}
-                activeOpacity={0.7}
-            >
-              {selectedClient ? (
-                  <>
-                    <View style={styles.clientAvatar}>
-                      <Text style={styles.clientAvatarText}>{getInitials(selectedClient.nom)}</Text>
+          {participant ? (
+              <SectionCard
+                  iconName="people-outline"
+                  iconBg="#EDE9FE" iconColor="#6B21A8"
+                  title="Vêtement pour"
+                  subtitle="Commande groupée / Projet"
+              >
+                <View style={styles.clientRow}>
+                  <View style={styles.clientAvatar}>
+                    <Text style={styles.clientAvatarText}>{getInitials(participant.nom)}</Text>
+                  </View>
+                  <View style={styles.clientInfo}>
+                    <Text style={styles.clientName}>{participant.nom}</Text>
+                    <View style={styles.clientSubRow}>
+                      <Ionicons name="ribbon-outline" size={12} color={COLORS.textSecondary} />
+                      <Text style={styles.clientSub}>{participant.role ?? 'Participant'}</Text>
                     </View>
-                    <View style={styles.clientInfo}>
-                      <Text style={styles.clientName}>{selectedClient.nom}</Text>
-                      <View style={styles.clientSubRow}>
-                        <Ionicons name="location-outline" size={12} color={COLORS.textSecondary} />
-                        <Text style={styles.clientSub}>{selectedClient.adresse ?? '—'}</Text>
-                      </View>
-                    </View>
-                  </>
-              ) : (
-                  <>
-                    <View style={[styles.clientAvatar, { backgroundColor: COLORS.gray100 }]}>
-                      <Ionicons name="person-add-outline" size={20} color={COLORS.gray400} />
-                    </View>
-                    <View style={styles.clientInfo}>
-                      <Text style={styles.clientPlaceholder}>Sélectionner un client</Text>
-                      <Text style={styles.clientSub}>Touchez pour parcourir la liste</Text>
-                    </View>
-                  </>
-              )}
-              <View style={styles.chevWrap}>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.gray400} />
-              </View>
-            </TouchableOpacity>
-          </SectionCard>
+                  </View>
+                </View>
+              </SectionCard>
+          ) : (
+              <SectionCard
+                  iconName="person-outline"
+                  iconBg="#EDE9FE" iconColor="#6B21A8"
+                  title="Client"
+                  subtitle="Sélectionnez la personne concernée"
+              >
+                <TouchableOpacity
+                    style={styles.clientRow}
+                    onPress={() => setClientModalVisible(true)}
+                    activeOpacity={0.7}
+                >
+                  {selectedClient ? (
+                      <>
+                        <View style={styles.clientAvatar}>
+                          <Text style={styles.clientAvatarText}>{getInitials(selectedClient.nom)}</Text>
+                        </View>
+                        <View style={styles.clientInfo}>
+                          <Text style={styles.clientName}>{selectedClient.nom}</Text>
+                          <View style={styles.clientSubRow}>
+                            <Ionicons name="location-outline" size={12} color={COLORS.textSecondary} />
+                            <Text style={styles.clientSub}>{selectedClient.adresse ?? '—'}</Text>
+                          </View>
+                        </View>
+                      </>
+                  ) : (
+                      <>
+                        <View style={[styles.clientAvatar, { backgroundColor: COLORS.gray100 }]}>
+                          <Ionicons name="person-add-outline" size={20} color={COLORS.gray400} />
+                        </View>
+                        <View style={styles.clientInfo}>
+                          <Text style={styles.clientPlaceholder}>Sélectionner un client</Text>
+                          <Text style={styles.clientSub}>Touchez pour parcourir la liste</Text>
+                        </View>
+                      </>
+                  )}
+                  <View style={styles.chevWrap}>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.gray400} />
+                  </View>
+                </TouchableOpacity>
+              </SectionCard>
+          )}
 
           {/* ── Type de vêtement ── */}
           <SectionCard
