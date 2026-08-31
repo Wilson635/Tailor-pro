@@ -1,0 +1,1429 @@
+// ==========================================
+// ÉCRAN CRÉATION RÉALISATION — TailorPro (Module 5)
+// ==========================================
+
+import React, { useState, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
+  Alert, ActivityIndicator, Image, Platform, FlatList,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
+import { useAppStore } from '@store/useAppStore';
+import { COULEURS_RAPIDES, STATUT_REALISATION_LABELS } from '@constants/realisationConstants';
+import { TYPE_VETEMENT_LABELS } from '@constants/mensurationConstants';
+import type { RootStackParamList } from '@/src/navigation/AppNavigator';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'AddRealisation'>;
+
+// ── PALETTE ──────────────────────────────────────────────────────────
+const C = {
+  purple900: '#1A0033', purple600: '#534AB7', purple100: '#EEEDFE',
+  gold: '#D4AF37', bg: '#FFFFFF', surface: '#F7F6F4', border: '#EBEBEB',
+  text: '#0E0B14', textSec: '#7A7787', textTer: '#B0ACBA', error: '#EF4444',
+};
+
+// ── TAG INPUT ─────────────────────────────────────────────────────────
+const TagInput = ({
+  tags, onAdd, onRemove, placeholder,
+}: {
+  tags: string[];
+  onAdd: (t: string) => void;
+  onRemove: (t: string) => void;
+  placeholder?: string;
+}) => {
+  const [input, setInput] = useState('');
+  const commit = () => {
+    const v = input.trim();
+    if (v && !tags.includes(v)) { onAdd(v); }
+    setInput('');
+  };
+  return (
+    <View>
+      <View style={tagStyles.chips}>
+        {tags.map(t => (
+          <TouchableOpacity key={t} style={tagStyles.chip} onPress={() => onRemove(t)}>
+            <Text style={tagStyles.chipText}>{t}</Text>
+            <Ionicons name="close" size={12} color={C.purple600} />
+          </TouchableOpacity>
+        ))}
+      </View>
+      <View style={tagStyles.inputRow}>
+        <TextInput
+          style={tagStyles.input}
+          value={input}
+          onChangeText={setInput}
+          placeholder={placeholder ?? 'Ajouter…'}
+          placeholderTextColor={C.textTer}
+          onSubmitEditing={commit}
+          returnKeyType="done"
+        />
+        <TouchableOpacity onPress={commit} style={tagStyles.addBtn}>
+          <Ionicons name="add" size={18} color={C.purple600} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+const tagStyles = StyleSheet.create({
+  chips:   { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
+  chip:    { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.purple100,
+    borderRadius: 16, paddingHorizontal: 10, paddingVertical: 4 },
+  chipText:{ fontSize: 13, color: C.purple600, fontWeight: '500' },
+  inputRow:{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.border,
+    borderRadius: 10, overflow: 'hidden' },
+  input:   { flex: 1, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: C.text },
+  addBtn:  { padding: 10, backgroundColor: C.surface },
+});
+
+// ── SECTION LABEL ──────────────────────────────────────────────────────
+const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <View style={secStyles.wrap}>
+    <Text style={secStyles.title}>{title}</Text>
+    {children}
+  </View>
+);
+const secStyles = StyleSheet.create({
+  wrap:  { marginBottom: 24 },
+  title: { fontSize: 13, fontWeight: '700', color: C.textSec, textTransform: 'uppercase',
+    letterSpacing: 0.8, marginBottom: 12 },
+});
+
+// ── FIELD WRAP ─────────────────────────────────────────────────────────
+const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <View style={fieldStyles.wrap}>
+    <Text style={fieldStyles.label}>{label}</Text>
+    {children}
+  </View>
+);
+const fieldStyles = StyleSheet.create({
+  wrap:  { marginBottom: 14 },
+  label: { fontSize: 13, color: C.textSec, marginBottom: 6, fontWeight: '500' },
+});
+
+// ── INPUT ──────────────────────────────────────────────────────────────
+const Inp = (props: React.ComponentProps<typeof TextInput>) => (
+  <TextInput
+    style={[inpStyles.inp, props.multiline && { height: 90, textAlignVertical: 'top' }]}
+    placeholderTextColor={C.textTer}
+    {...props}
+  />
+);
+const inpStyles = StyleSheet.create({
+  inp: { borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12,
+    paddingVertical: 10, fontSize: 14, color: C.text, backgroundColor: C.surface },
+});
+
+// ── DATE PICKER SIMPLE (texte) ──────────────────────────────────────────
+const DateField = ({
+  label, value, onChange, optional,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  optional?: boolean;
+}) => (
+  <Field label={`${label}${optional ? ' (optionnel)' : ''}`}>
+    <Inp
+      value={value}
+      onChangeText={onChange}
+      placeholder="JJ/MM/AAAA"
+      keyboardType="numeric"
+    />
+  </Field>
+);
+
+// Convertit "JJ/MM/AAAA" → "YYYY-MM-DD" pour la DB
+const parseDate = (d: string): string | undefined => {
+  const parts = d.split('/');
+  if (parts.length !== 3 || parts[2].length !== 4) return undefined;
+  return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+};
+const formatDate = (iso: string): string => {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+};
+
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+export const AddRealisationScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { clientId, commandeId, modeleId: preModeleId } = route.params;
+
+  const { addRealisation, catalog, fiches, tissus, getClientById } = useAppStore();
+  const client     = getClientById(clientId);
+  const clientFiches = fiches[clientId] ?? [];
+
+  // ── Formulaire ─────────────────────────────────────────────────────
+  const today = new Date().toLocaleDateString('fr-FR');
+  const [modeleId,      setModeleId]      = useState<string | undefined>(preModeleId);
+  const [ficheId,       setFicheId]       = useState<string | undefined>(undefined);
+  const [tissuId,       setTissuId]       = useState<string | undefined>(undefined);
+  const [tissuLabel,    setTissuLabel]    = useState('');
+  const [couleur,       setCouleur]       = useState('');
+  const [accessoires,   setAccessoires]   = useState<string[]>([]);
+  const [observations,  setObservations]  = useState('');
+  const [dateCreation,  setDateCreation]  = useState(today);
+  const [dateEssayage,  setDateEssayage]  = useState('');
+  const [dateLivraison, setDateLivraison] = useState('');
+  const [photos,        setPhotos]        = useState<string[]>([]);
+  const [isSaving,      setIsSaving]      = useState(false);
+
+  // ── Photos ──────────────────────────────────────────────────────────
+  const pickPhotos = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission requise', "L'accès à la galerie est nécessaire pour ajouter des photos.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.85,
+    });
+    if (!result.canceled) {
+      const uris = result.assets.map(a => a.uri);
+      setPhotos(prev => [...prev, ...uris]);
+    }
+  }, []);
+
+  const takePhoto = useCallback(async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission requise', "L'accès à la caméra est nécessaire.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
+    if (!result.canceled) setPhotos(prev => [...prev, result.assets[0].uri]);
+  }, []);
+
+  const removePhoto = (uri: string) => setPhotos(prev => prev.filter(p => p !== uri));
+
+  // ── Soumission ──────────────────────────────────────────────────────
+  const handleSubmit = async () => {
+    const dc = parseDate(dateCreation);
+    if (!dc) { Alert.alert('Erreur', 'Date de création invalide (format JJ/MM/AAAA).'); return; }
+    const dl = dateLivraison ? parseDate(dateLivraison) : undefined;
+    const de = dateEssayage  ? parseDate(dateEssayage)  : undefined;
+
+    setIsSaving(true);
+    const result = await addRealisation(clientId, {
+      commandeId: commandeId ?? undefined,
+      modeleId: modeleId ?? undefined,
+      ficheMensurationId: ficheId ?? undefined,
+      tissuId: tissuId ?? undefined,
+      tissuLabel: tissuLabel.trim() || undefined,
+      couleur: couleur.trim(),
+      accessoires,
+      photos: [],        // les URIs locales seront uploadées par le store
+      observations: observations.trim() || undefined,
+      statut: 'en_cours',
+      dateCreation: dc,
+      dateEssayage: de,
+      dateLivraison: dl,
+    }, photos);
+    setIsSaving(false);
+
+    if (result) {
+      navigation.replace('RealisationDetails', { realisationId: result.id, clientId });
+    } else {
+      Alert.alert('Erreur', "Impossible de créer la réalisation.");
+    }
+  };
+
+  // ── Modèles disponibles ─────────────────────────────────────────────
+  const availableModels = catalog.filter(m => !m.deletedAt && m.statut === 'public');
+
+  return (
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="close" size={22} color={C.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Nouvelle réalisation</Text>
+        <View style={{ width: 36 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* Photos */}
+        <Section title="Photos">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.photoRow}>
+              {photos.map(uri => (
+                <View key={uri} style={styles.photoWrap}>
+                  <Image source={{ uri }} style={styles.photoThumb} resizeMode="cover" />
+                  <TouchableOpacity style={styles.removePhoto} onPress={() => removePhoto(uri)}>
+                    <Ionicons name="close-circle" size={20} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addPhotoBtn} onPress={pickPhotos}>
+                <Ionicons name="images-outline" size={24} color={C.purple600} />
+                <Text style={styles.addPhotoText}>Galerie</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.addPhotoBtn} onPress={takePhoto}>
+                <Ionicons name="camera-outline" size={24} color={C.purple600} />
+                <Text style={styles.addPhotoText}>Caméra</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </Section>
+
+        {/* Vêtement */}
+        <Section title="Vêtement">
+          {/* Picker tissu du catalogue */}
+          {tissus.length > 0 && (
+            <Field label="Tissu (sélectionner)">
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.pickersRow}>
+                  <TouchableOpacity
+                    style={[styles.pickerChip, !tissuId && styles.pickerChipActive]}
+                    onPress={() => { setTissuId(undefined); setTissuLabel(''); }}
+                  >
+                    <Ionicons name="text-outline" size={13} color={!tissuId ? C.purple600 : C.textSec} />
+                    <Text style={[styles.pickerChipText, !tissuId && { color: C.purple600 }]}>Saisir manuellement</Text>
+                  </TouchableOpacity>
+                  {tissus.map(t => (
+                    <TouchableOpacity
+                      key={t.id}
+                      style={[styles.pickerChip, tissuId === t.id && styles.pickerChipActive]}
+                      onPress={() => { setTissuId(t.id); setTissuLabel(t.nomCommercial); }}
+                    >
+                      <Text style={[styles.pickerChipText, tissuId === t.id && { color: C.purple600 }]}
+                        numberOfLines={1}>{t.nomCommercial}</Text>
+                      {t.couleur ? <Text style={{ fontSize: 10, color: C.textSec }}>({t.couleur})</Text> : null}
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={[styles.pickerChip, { borderColor: C.gold, borderStyle: 'dashed' }]}
+                    onPress={() => navigation.navigate('AddTissu', {})}
+                  >
+                    <Ionicons name="add" size={13} color={C.gold} />
+                    <Text style={[styles.pickerChipText, { color: C.gold }]}>Nouveau tissu</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </Field>
+          )}
+
+          {/* Saisie manuelle (si pas de tissu sélectionné ou pas de tissus dans le catalogue) */}
+          {!tissuId && (
+            <Field label={tissus.length > 0 ? 'Description du tissu' : 'Tissu (description)'}>
+              <Inp
+                value={tissuLabel}
+                onChangeText={setTissuLabel}
+                placeholder="Ex: Bazin riche, Wax, Ankara…"
+              />
+            </Field>
+          )}
+
+          <Field label="Couleur principale">
+            <Inp value={couleur} onChangeText={setCouleur} placeholder="Ex: Bleu nuit, Rouge bordeaux…" />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+              <View style={styles.colorsRow}>
+                {COULEURS_RAPIDES.map(c => (
+                  <TouchableOpacity
+                    key={c.hex}
+                    style={[styles.colorDot, { backgroundColor: c.hex,
+                      borderWidth: couleur === c.label ? 3 : 1,
+                      borderColor: couleur === c.label ? C.purple600 : C.border }]}
+                    onPress={() => setCouleur(couleur === c.label ? '' : c.label)}
+                  />
+                ))}
+              </View>
+            </ScrollView>
+          </Field>
+
+          <Field label="Accessoires">
+            <TagInput
+              tags={accessoires}
+              onAdd={t => setAccessoires(p => [...p, t])}
+              onRemove={t => setAccessoires(p => p.filter(x => x !== t))}
+              placeholder="Boutons, fermeture, broderie…"
+            />
+          </Field>
+        </Section>
+
+        {/* Modèle catalogue (optionnel) */}
+        <Section title="Modèle de catalogue (optionnel)">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.pickersRow}>
+              <TouchableOpacity
+                style={[styles.pickerChip, !modeleId && styles.pickerChipActive]}
+                onPress={() => setModeleId(undefined)}
+              >
+                <Ionicons name="close-circle-outline" size={14} color={!modeleId ? C.purple600 : C.textSec} />
+                <Text style={[styles.pickerChipText, !modeleId && { color: C.purple600 }]}>Sur-mesure</Text>
+              </TouchableOpacity>
+              {availableModels.map(m => (
+                <TouchableOpacity
+                  key={m.id}
+                  style={[styles.pickerChip, modeleId === m.id && styles.pickerChipActive]}
+                  onPress={() => setModeleId(modeleId === m.id ? undefined : m.id)}
+                >
+                  <Text style={[styles.pickerChipText, modeleId === m.id && { color: C.purple600 }]}
+                    numberOfLines={1}>{m.nom}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </Section>
+
+        {/* Fiche mensuration */}
+        <Section title="Fiche de mensuration">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.pickersRow}>
+              <TouchableOpacity
+                style={[styles.pickerChip, !ficheId && styles.pickerChipActive]}
+                onPress={() => setFicheId(undefined)}
+              >
+                <Text style={[styles.pickerChipText, !ficheId && { color: C.purple600 }]}>Aucune</Text>
+              </TouchableOpacity>
+              {clientFiches.map(f => (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[styles.pickerChip, ficheId === f.id && styles.pickerChipActive]}
+                  onPress={() => setFicheId(ficheId === f.id ? undefined : f.id)}
+                >
+                  <View style={[styles.ficheDot, f.isActive && { backgroundColor: C.purple600 }]} />
+                  <Text style={[styles.pickerChipText, ficheId === f.id && { color: C.purple600 }]}
+                    numberOfLines={1}>
+                    {TYPE_VETEMENT_LABELS[f.typeVetement]} — {new Date(f.datePrise).toLocaleDateString('fr-FR')}
+                    {f.isActive ? ' ★' : ''}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </Section>
+
+        {/* Dates */}
+        <Section title="Dates">
+          <DateField label="Date de création" value={dateCreation} onChange={setDateCreation} />
+          <DateField label="Date d'essayage" value={dateEssayage} onChange={setDateEssayage} optional />
+          <DateField label="Date de livraison prévue" value={dateLivraison} onChange={setDateLivraison} optional />
+        </Section>
+
+        {/* Observations */}
+        <Section title="Notes & observations">
+          <Inp
+            value={observations}
+            onChangeText={setObservations}
+            placeholder="Remarques, instructions particulières…"
+            multiline
+          />
+        </Section>
+
+        <View style={{ height: 120 }} />
+      </ScrollView>
+
+      {/* Footer */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
+        <TouchableOpacity
+          style={[styles.submitBtn, isSaving && { opacity: 0.6 }]}
+          onPress={handleSubmit}
+          disabled={isSaving}
+        >
+          {isSaving
+            ? <ActivityIndicator color="#FFF" />
+            : <Text style={styles.submitText}>Créer la réalisation</Text>}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+// ==========================================
+// STYLES
+// ==========================================
+const styles = StyleSheet.create({
+  root:       { flex: 1, backgroundColor: C.bg },
+  header:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: C.border },
+  backBtn:    { padding: 4, marginRight: 8 },
+  headerTitle:{ flex: 1, fontSize: 18, fontWeight: '700', color: C.text, textAlign: 'center' },
+  scroll:     { paddingHorizontal: 20, paddingTop: 20 },
+
+  photoRow:   { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  photoWrap:  { position: 'relative' },
+  photoThumb: { width: 88, height: 88, borderRadius: 12 },
+  removePhoto:{ position: 'absolute', top: -6, right: -6 },
+  addPhotoBtn:{ width: 88, height: 88, borderRadius: 12, borderWidth: 1.5, borderColor: C.border,
+    borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: C.surface },
+  addPhotoText:{ fontSize: 11, color: C.textSec },
+
+  colorsRow:  { flexDirection: 'row', gap: 8 },
+  colorDot:   { width: 28, height: 28, borderRadius: 14 },
+
+  pickersRow: { flexDirection: 'row', gap: 8 },
+  pickerChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 20, borderWidth: 1, borderColor: C.border, backgroundColor: C.surface },
+  pickerChipActive: { borderColor: C.purple600, backgroundColor: C.purple100 },
+  pickerChipText: { fontSize: 13, color: C.textSec, maxWidth: 160 },
+  ficheDot:   { width: 8, height: 8, borderRadius: 4, backgroundColor: C.border },
+
+  footer:     { borderTopWidth: 1, borderTopColor: C.border, padding: 16, backgroundColor: C.bg },
+  submitBtn:  { backgroundColor: C.purple900, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  submitText: { fontSize: 16, fontWeight: '700', color: C.gold },
+});
+
+
+---------------- EditRealisationScreen
+
+
+// ==========================================
+// ÉCRAN MODIFICATION RÉALISATION — TailorPro (Module 5)
+// ==========================================
+
+import React, { useState, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
+  Alert, ActivityIndicator, Image,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
+import { useAppStore } from '@store/useAppStore';
+import { COULEURS_RAPIDES } from '@constants/realisationConstants';
+import { TYPE_VETEMENT_LABELS } from '@constants/mensurationConstants';
+import type { RootStackParamList } from '@/src/navigation/AppNavigator';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'EditRealisation'>;
+
+// ── PALETTE ──────────────────────────────────────────────────────────
+const C = {
+  purple900: '#1A0033', purple600: '#534AB7', purple100: '#EEEDFE',
+  gold: '#D4AF37', bg: '#FFFFFF', surface: '#F7F6F4', border: '#EBEBEB',
+  text: '#0E0B14', textSec: '#7A7787', textTer: '#B0ACBA', error: '#EF4444',
+};
+
+// ── Helpers partagés ───────────────────────────────────────────────────
+const TagInput = ({
+  tags, onAdd, onRemove, placeholder,
+}: {
+  tags: string[]; onAdd: (t: string) => void;
+  onRemove: (t: string) => void; placeholder?: string;
+}) => {
+  const [input, setInput] = useState('');
+  const commit = () => {
+    const v = input.trim();
+    if (v && !tags.includes(v)) onAdd(v);
+    setInput('');
+  };
+  return (
+    <View>
+      <View style={tagS.chips}>
+        {tags.map(t => (
+          <TouchableOpacity key={t} style={tagS.chip} onPress={() => onRemove(t)}>
+            <Text style={tagS.chipText}>{t}</Text>
+            <Ionicons name="close" size={12} color={C.purple600} />
+          </TouchableOpacity>
+        ))}
+      </View>
+      <View style={tagS.row}>
+        <TextInput style={tagS.inp} value={input} onChangeText={setInput}
+          placeholder={placeholder ?? 'Ajouter…'} placeholderTextColor={C.textTer}
+          onSubmitEditing={commit} returnKeyType="done" />
+        <TouchableOpacity onPress={commit} style={tagS.add}>
+          <Ionicons name="add" size={18} color={C.purple600} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+const tagS = StyleSheet.create({
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
+  chip:  { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.purple100,
+    borderRadius: 16, paddingHorizontal: 10, paddingVertical: 4 },
+  chipText: { fontSize: 13, color: C.purple600 },
+  row:   { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.border,
+    borderRadius: 10, overflow: 'hidden' },
+  inp:   { flex: 1, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: C.text },
+  add:   { padding: 10, backgroundColor: C.surface },
+});
+
+const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <View style={{ marginBottom: 14 }}>
+    <Text style={fS.label}>{label}</Text>
+    {children}
+  </View>
+);
+const fS = StyleSheet.create({ label: { fontSize: 13, color: C.textSec, marginBottom: 6, fontWeight: '500' } });
+
+const Inp = (props: React.ComponentProps<typeof TextInput>) => (
+  <TextInput
+    style={[iS.inp, props.multiline && { height: 90, textAlignVertical: 'top' }]}
+    placeholderTextColor={C.textTer}
+    {...props}
+  />
+);
+const iS = StyleSheet.create({
+  inp: { borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12,
+    paddingVertical: 10, fontSize: 14, color: C.text, backgroundColor: C.surface },
+});
+
+const parseDate = (d: string): string | undefined => {
+  const parts = d.split('/');
+  if (parts.length !== 3 || parts[2].length !== 4) return undefined;
+  return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+};
+const isoToDisplay = (iso?: string): string => {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+};
+
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+export const EditRealisationScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { realisationId, clientId } = route.params;
+
+  const { getRealisationById, updateRealisation, catalog, fiches } = useAppStore();
+  const realisation = getRealisationById(realisationId, clientId);
+  const clientFiches = fiches[clientId] ?? [];
+
+  if (!realisation) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: C.textSec }}>Réalisation introuvable</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
+          <Text style={{ color: C.purple600, fontWeight: '600' }}>Retour</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // ── État initialisé depuis la réalisation existante ─────────────────
+  const [modeleId,      setModeleId]      = useState(realisation.modeleId);
+  const [ficheId,       setFicheId]       = useState(realisation.ficheMensurationId);
+  const [tissuLabel,    setTissuLabel]    = useState(realisation.tissuLabel ?? '');
+  const [couleur,       setCouleur]       = useState(realisation.couleur);
+  const [accessoires,   setAccessoires]   = useState(realisation.accessoires);
+  const [observations,  setObservations]  = useState(realisation.observations ?? '');
+  const [dateEssayage,  setDateEssayage]  = useState(isoToDisplay(realisation.dateEssayage));
+  const [dateLivraison, setDateLivraison] = useState(isoToDisplay(realisation.dateLivraison));
+  const [isSaving,      setIsSaving]      = useState(false);
+
+  const availableModels = catalog.filter(m => !m.deletedAt && m.statut === 'public');
+
+  const handleSubmit = async () => {
+    setIsSaving(true);
+    await updateRealisation(realisationId, clientId, {
+      modeleId: modeleId ?? undefined,
+      ficheMensurationId: ficheId ?? undefined,
+      tissuLabel: tissuLabel.trim() || undefined,
+      couleur: couleur.trim(),
+      accessoires,
+      observations: observations.trim() || undefined,
+      dateEssayage:  dateLivraison ? parseDate(dateEssayage)  : undefined,
+      dateLivraison: dateLivraison ? parseDate(dateLivraison) : undefined,
+    });
+    setIsSaving(false);
+    navigation.goBack();
+  };
+
+  return (
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="close" size={22} color={C.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Modifier la réalisation</Text>
+        <View style={{ width: 36 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* Tissu & Couleur */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Vêtement</Text>
+          <Field label="Tissu">
+            <Inp value={tissuLabel} onChangeText={setTissuLabel} placeholder="Bazin, Wax, Ankara…" />
+          </Field>
+          <Field label="Couleur">
+            <Inp value={couleur} onChangeText={setCouleur} placeholder="Ex: Bleu nuit…" />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+              <View style={styles.colorRow}>
+                {COULEURS_RAPIDES.map(c => (
+                  <TouchableOpacity
+                    key={c.hex}
+                    style={[styles.colorDot, { backgroundColor: c.hex,
+                      borderWidth: couleur === c.label ? 3 : 1,
+                      borderColor: couleur === c.label ? C.purple600 : C.border }]}
+                    onPress={() => setCouleur(couleur === c.label ? '' : c.label)}
+                  />
+                ))}
+              </View>
+            </ScrollView>
+          </Field>
+          <Field label="Accessoires">
+            <TagInput
+              tags={accessoires}
+              onAdd={t => setAccessoires(p => [...p, t])}
+              onRemove={t => setAccessoires(p => p.filter(x => x !== t))}
+              placeholder="Boutons, broderie…"
+            />
+          </Field>
+        </View>
+
+        {/* Modèle */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Modèle de catalogue (optionnel)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.pickersRow}>
+              <TouchableOpacity
+                style={[styles.chip, !modeleId && styles.chipActive]}
+                onPress={() => setModeleId(undefined)}
+              >
+                <Text style={[styles.chipText, !modeleId && { color: C.purple600 }]}>Sur-mesure</Text>
+              </TouchableOpacity>
+              {availableModels.map(m => (
+                <TouchableOpacity
+                  key={m.id}
+                  style={[styles.chip, modeleId === m.id && styles.chipActive]}
+                  onPress={() => setModeleId(modeleId === m.id ? undefined : m.id)}
+                >
+                  <Text style={[styles.chipText, modeleId === m.id && { color: C.purple600 }]}
+                    numberOfLines={1}>{m.nom}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        {/* Fiche mensuration */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Fiche de mensuration</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.pickersRow}>
+              <TouchableOpacity
+                style={[styles.chip, !ficheId && styles.chipActive]}
+                onPress={() => setFicheId(undefined)}
+              >
+                <Text style={[styles.chipText, !ficheId && { color: C.purple600 }]}>Aucune</Text>
+              </TouchableOpacity>
+              {clientFiches.map(f => (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[styles.chip, ficheId === f.id && styles.chipActive]}
+                  onPress={() => setFicheId(ficheId === f.id ? undefined : f.id)}
+                >
+                  <Text style={[styles.chipText, ficheId === f.id && { color: C.purple600 }]}
+                    numberOfLines={1}>
+                    {TYPE_VETEMENT_LABELS[f.typeVetement]} — {new Date(f.datePrise).toLocaleDateString('fr-FR')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        {/* Dates */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Dates</Text>
+          <Field label="Date d'essayage (optionnel)">
+            <Inp value={dateEssayage} onChangeText={setDateEssayage} placeholder="JJ/MM/AAAA" keyboardType="numeric" />
+          </Field>
+          <Field label="Date de livraison prévue (optionnel)">
+            <Inp value={dateLivraison} onChangeText={setDateLivraison} placeholder="JJ/MM/AAAA" keyboardType="numeric" />
+          </Field>
+        </View>
+
+        {/* Observations */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notes & observations</Text>
+          <Inp value={observations} onChangeText={setObservations}
+            placeholder="Remarques…" multiline />
+        </View>
+
+        <View style={{ height: 120 }} />
+      </ScrollView>
+
+      {/* Footer */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
+        <TouchableOpacity
+          style={[styles.submitBtn, isSaving && { opacity: 0.6 }]}
+          onPress={handleSubmit}
+          disabled={isSaving}
+        >
+          {isSaving
+            ? <ActivityIndicator color="#FFF" />
+            : <Text style={styles.submitText}>Enregistrer les modifications</Text>}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+// ==========================================
+// STYLES
+// ==========================================
+const styles = StyleSheet.create({
+  root:       { flex: 1, backgroundColor: C.bg },
+  header:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: C.border },
+  backBtn:    { padding: 4, marginRight: 8 },
+  headerTitle:{ flex: 1, fontSize: 18, fontWeight: '700', color: C.text, textAlign: 'center' },
+  scroll:     { paddingHorizontal: 20, paddingTop: 20 },
+  section:    { marginBottom: 24 },
+  sectionTitle:{ fontSize: 13, fontWeight: '700', color: C.textSec, textTransform: 'uppercase',
+    letterSpacing: 0.8, marginBottom: 12 },
+  colorRow:   { flexDirection: 'row', gap: 8 },
+  colorDot:   { width: 28, height: 28, borderRadius: 14 },
+  pickersRow: { flexDirection: 'row', gap: 8 },
+  chip:       { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1,
+    borderColor: C.border, backgroundColor: C.surface },
+  chipActive: { borderColor: C.purple600, backgroundColor: C.purple100 },
+  chipText:   { fontSize: 13, color: C.textSec, maxWidth: 160 },
+  footer:     { borderTopWidth: 1, borderTopColor: C.border, padding: 16, backgroundColor: C.bg },
+  submitBtn:  { backgroundColor: C.purple900, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  submitText: { fontSize: 16, fontWeight: '700', color: C.gold },
+});
+
+
+----- RealisationDetailScreen
+
+
+// ==========================================
+// ÉCRAN DÉTAILS RÉALISATION — TailorPro (Module 5)
+// ==========================================
+
+import React, { useState, useRef } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Image, Alert, FlatList, Dimensions, ActivityIndicator,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
+import { useAppStore } from '@store/useAppStore';
+import {
+  STATUT_REALISATION_LABELS, STATUT_REALISATION_COLORS, STATUT_REALISATION_ICONS,
+  STATUT_REALISATION_LIST, STATUT_TRANSITIONS, STATUT_STEP,
+} from '@constants/realisationConstants';
+import { TYPE_VETEMENT_LABELS } from '@constants/mensurationConstants';
+import type { RootStackParamList } from '@/src/navigation/AppNavigator';
+import type { StatutRealisation } from '../../types';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'RealisationDetails'>;
+
+const { width: SCREEN_W } = Dimensions.get('window');
+
+// ── PALETTE ──────────────────────────────────────────────────────────
+const C = {
+  purple900: '#1A0033', purple600: '#534AB7', purple100: '#EEEDFE',
+  gold: '#D4AF37', bg: '#FFFFFF', surface: '#F7F6F4', border: '#EBEBEB',
+  text: '#0E0B14', textSec: '#7A7787', textTer: '#B0ACBA', error: '#EF4444',
+};
+
+// ── INFO ROW ─────────────────────────────────────────────────────────
+const InfoRow = ({
+  icon, label, value,
+}: {
+  icon: string; label: string; value: string;
+}) => (
+  <View style={infoStyles.row}>
+    <Ionicons name={icon as any} size={16} color={C.purple600} style={{ marginTop: 1 }} />
+    <View style={{ flex: 1 }}>
+      <Text style={infoStyles.label}>{label}</Text>
+      <Text style={infoStyles.value}>{value}</Text>
+    </View>
+  </View>
+);
+const infoStyles = StyleSheet.create({
+  row:   { flexDirection: 'row', gap: 10, paddingVertical: 10,
+    borderBottomWidth: 0.5, borderBottomColor: C.border, alignItems: 'flex-start' },
+  label: { fontSize: 11, color: C.textSec, textTransform: 'uppercase', letterSpacing: 0.5 },
+  value: { fontSize: 15, color: C.text, fontWeight: '500', marginTop: 1 },
+});
+
+// ── STATUT STEPPER ───────────────────────────────────────────────────
+const StatutStepper = ({
+  current,
+  onTransition,
+}: {
+  current: StatutRealisation;
+  onTransition: (s: StatutRealisation) => void;
+}) => {
+  const step = STATUT_STEP[current];
+  return (
+    <View style={stepperStyles.wrap}>
+      {STATUT_REALISATION_LIST.map((s, i) => {
+        const done    = i <= step;
+        const color   = STATUT_REALISATION_COLORS[s];
+        const isNext  = STATUT_TRANSITIONS[current].includes(s);
+        return (
+          <React.Fragment key={s}>
+            <TouchableOpacity
+              style={stepperStyles.step}
+              onPress={() => isNext && onTransition(s)}
+              disabled={!isNext && s !== current}
+            >
+              <View style={[stepperStyles.dot,
+                done ? { backgroundColor: color, borderColor: color } : { borderColor: C.border },
+              ]}>
+                {done && <Ionicons name="checkmark" size={10} color="#FFF" />}
+              </View>
+              <Text style={[stepperStyles.stepLabel, done && { color }]} numberOfLines={1}>
+                {STATUT_REALISATION_LABELS[s]}
+              </Text>
+            </TouchableOpacity>
+            {i < STATUT_REALISATION_LIST.length - 1 && (
+              <View style={[stepperStyles.line, i < step && { backgroundColor: STATUT_REALISATION_COLORS[STATUT_REALISATION_LIST[i + 1]] }]} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+};
+const stepperStyles = StyleSheet.create({
+  wrap:      { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12 },
+  step:      { alignItems: 'center', gap: 4, flex: 1 },
+  dot:       { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: C.border,
+    backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  stepLabel: { fontSize: 9, color: C.textTer, textAlign: 'center' },
+  line:      { flex: 0.3, height: 2, backgroundColor: C.border, marginTop: 11 },
+});
+
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { realisationId, clientId } = route.params;
+
+  const { getRealisationById, updateRealisationStatut, deleteRealisation, addRealisationPhoto, getClientById } = useAppStore();
+  const realisation = getRealisationById(realisationId, clientId);
+  const client      = getClientById(clientId);
+
+  const [photoIdx,    setPhotoIdx]    = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+
+  if (!realisation) {
+    return (
+      <View style={[styles.root, { justifyContent: 'center', alignItems: 'center', paddingTop: insets.top }]}>
+        <Ionicons name="alert-circle-outline" size={48} color={C.textTer} />
+        <Text style={{ color: C.textSec, marginTop: 12 }}>Réalisation introuvable</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20 }}>
+          <Text style={{ color: C.purple600, fontWeight: '600' }}>Retour</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const { photos, statut } = realisation;
+  const statutColor = STATUT_REALISATION_COLORS[statut];
+
+  // ── Ajouter une photo ────────────────────────────────────────────────
+  const handleAddPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission requise', "L'accès à la galerie est nécessaire.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.85,
+    });
+    if (!result.canceled) {
+      setIsUploading(true);
+      for (const asset of result.assets) {
+        await addRealisationPhoto(realisationId, clientId, asset.uri);
+      }
+      setIsUploading(false);
+    }
+  };
+
+  // ── Transition de statut ─────────────────────────────────────────────
+  const handleTransition = (newStatut: StatutRealisation) => {
+    Alert.alert(
+      'Changer le statut',
+      `Passer à « ${STATUT_REALISATION_LABELS[newStatut]} » ?`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Confirmer', onPress: () => updateRealisationStatut(realisationId, clientId, newStatut) },
+      ]
+    );
+  };
+
+  // ── Supprimer ────────────────────────────────────────────────────────
+  const handleDelete = () => {
+    Alert.alert(
+      'Supprimer la réalisation',
+      'Cette action est irréversible. Continuer ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteRealisation(realisationId, clientId);
+            navigation.goBack();
+          },
+        },
+      ]
+    );
+  };
+
+  return (
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color={C.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {realisation.tissuLabel ?? 'Réalisation'}
+        </Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => navigation.navigate('EditRealisation', { realisationId, clientId })}
+          >
+            <Ionicons name="create-outline" size={20} color={C.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtn} onPress={handleDelete}>
+            <Ionicons name="trash-outline" size={20} color={C.error} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Galerie photos */}
+        <View style={styles.gallery}>
+          {photos.length > 0 ? (
+            <>
+              <FlatList
+                data={photos}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={e => setPhotoIdx(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}
+                keyExtractor={u => u}
+                renderItem={({ item: uri }) => (
+                  <Image source={{ uri }} style={styles.galleryImg} resizeMode="cover" />
+                )}
+              />
+              {/* Indicateurs */}
+              <View style={styles.dots}>
+                {photos.map((_, i) => (
+                  <View key={i} style={[styles.dot, i === photoIdx && styles.dotActive]} />
+                ))}
+              </View>
+            </>
+          ) : (
+            <View style={styles.galleryPlaceholder}>
+              <Ionicons name="shirt-outline" size={64} color={C.textTer} />
+              <Text style={styles.galleryPlaceholderText}>Aucune photo</Text>
+            </View>
+          )}
+          {/* Bouton ajouter photo */}
+          <TouchableOpacity style={styles.addPhotoOverlay} onPress={handleAddPhoto}>
+            {isUploading
+              ? <ActivityIndicator color="#FFF" size="small" />
+              : <Ionicons name="camera" size={18} color="#FFF" />}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.body}>
+          {/* Statut & progression */}
+          <View style={[styles.card, { borderLeftWidth: 4, borderLeftColor: statutColor }]}>
+            <Text style={styles.cardTitle}>Progression</Text>
+            <StatutStepper current={statut} onTransition={handleTransition} />
+          </View>
+
+          {/* Informations principales */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Détails</Text>
+            {realisation.tissuLabel && (
+              <InfoRow icon="layers-outline" label="Tissu" value={realisation.tissuLabel} />
+            )}
+            {realisation.couleur && (
+              <InfoRow icon="color-palette-outline" label="Couleur" value={realisation.couleur} />
+            )}
+            {realisation.accessoires.length > 0 && (
+              <InfoRow icon="sparkles-outline" label="Accessoires"
+                value={realisation.accessoires.join(', ')} />
+            )}
+            <InfoRow icon="calendar-outline" label="Date de création"
+              value={new Date(realisation.dateCreation).toLocaleDateString('fr-FR')} />
+            {realisation.dateEssayage && (
+              <InfoRow icon="body-outline" label="Date d'essayage"
+                value={new Date(realisation.dateEssayage).toLocaleDateString('fr-FR')} />
+            )}
+            {realisation.dateLivraison && (
+              <InfoRow icon="gift-outline" label="Date de livraison"
+                value={new Date(realisation.dateLivraison).toLocaleDateString('fr-FR')} />
+            )}
+          </View>
+
+          {/* Observations */}
+          {realisation.observations ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Notes & observations</Text>
+              <Text style={styles.observations}>{realisation.observations}</Text>
+            </View>
+          ) : null}
+        </View>
+      </ScrollView>
+
+      {/* Footer */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
+        <TouchableOpacity
+          style={styles.footerBtn}
+          onPress={() => navigation.navigate('EditRealisation', { realisationId, clientId })}
+        >
+          <Ionicons name="create-outline" size={18} color={C.gold} />
+          <Text style={styles.footerBtnText}>Modifier</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+// ==========================================
+// STYLES
+// ==========================================
+const styles = StyleSheet.create({
+  root:         { flex: 1, backgroundColor: C.bg },
+  header:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: C.border },
+  backBtn:      { padding: 4, marginRight: 8 },
+  headerTitle:  { flex: 1, fontSize: 18, fontWeight: '700', color: C.text },
+  headerActions:{ flexDirection: 'row', gap: 4 },
+  iconBtn:      { padding: 6, borderRadius: 8, backgroundColor: C.surface },
+
+  gallery:      { height: 280, position: 'relative', backgroundColor: C.surface },
+  galleryImg:   { width: SCREEN_W, height: 280 },
+  galleryPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  galleryPlaceholderText: { fontSize: 14, color: C.textTer },
+  dots:         { position: 'absolute', bottom: 12, alignSelf: 'center',
+    flexDirection: 'row', gap: 6 },
+  dot:          { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
+  dotActive:    { backgroundColor: '#FFF', width: 16 },
+  addPhotoOverlay: { position: 'absolute', bottom: 12, right: 12, width: 36, height: 36,
+    borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
+
+  body:         { padding: 16, gap: 12 },
+  card:         { backgroundColor: C.surface, borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: C.border },
+  cardTitle:    { fontSize: 13, fontWeight: '700', color: C.textSec, textTransform: 'uppercase',
+    letterSpacing: 0.8, marginBottom: 8 },
+  observations: { fontSize: 14, color: C.text, lineHeight: 22 },
+
+  footer:       { borderTopWidth: 1, borderTopColor: C.border, padding: 16, backgroundColor: C.bg },
+  footerBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: C.purple900, borderRadius: 14, paddingVertical: 14 },
+  footerBtnText:{ fontSize: 16, fontWeight: '700', color: C.gold },
+});
+
+
+-------------RealisationsScreen
+
+
+// ==========================================
+// ÉCRAN LISTE DES RÉALISATIONS — TailorPro (Module 5)
+// ==========================================
+
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  Image, ActivityIndicator, RefreshControl,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useAppStore } from '@store/useAppStore';
+import {
+  STATUT_REALISATION_LABELS, STATUT_REALISATION_COLORS, STATUT_REALISATION_LIST,
+  STATUT_REALISATION_ICONS,
+} from '@constants/realisationConstants';
+import type { RootStackParamList } from '@/src/navigation/AppNavigator';
+import type { Realisation, StatutRealisation } from '../../types';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Realisations'>;
+
+// ── PALETTE ──────────────────────────────────────────────────────────
+const C = {
+  purple900: '#1A0033', purple600: '#534AB7', purple100: '#EEEDFE',
+  gold: '#D4AF37', bg: '#FFFFFF', surface: '#F7F6F4', border: '#EBEBEB',
+  text: '#0E0B14', textSec: '#7A7787', textTer: '#B0ACBA', error: '#EF4444',
+};
+
+// ── CARTE RÉALISATION ─────────────────────────────────────────────────
+const RealisationCard = ({
+  item,
+  onPress,
+}: {
+  item: Realisation;
+  onPress: () => void;
+}) => {
+  const statutColor = STATUT_REALISATION_COLORS[item.statut];
+  const statutLabel = STATUT_REALISATION_LABELS[item.statut];
+  const hasPhoto = item.photos.length > 0;
+
+  return (
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+      {/* Thumbnail */}
+      <View style={styles.thumb}>
+        {hasPhoto ? (
+          <Image source={{ uri: item.photos[0] }} style={styles.thumbImg} resizeMode="cover" />
+        ) : (
+          <View style={[styles.thumbImg, styles.thumbPlaceholder]}>
+            <Ionicons name="shirt-outline" size={28} color={C.textTer} />
+          </View>
+        )}
+        {item.photos.length > 1 && (
+          <View style={styles.photoCount}>
+            <Text style={styles.photoCountText}>+{item.photos.length - 1}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Info */}
+      <View style={styles.cardBody}>
+        <View style={styles.cardRow}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {item.tissuLabel ?? 'Réalisation'}
+          </Text>
+          <View style={[styles.statutBadge, { backgroundColor: statutColor + '22' }]}>
+            <View style={[styles.statutDot, { backgroundColor: statutColor }]} />
+            <Text style={[styles.statutText, { color: statutColor }]}>{statutLabel}</Text>
+          </View>
+        </View>
+
+        {item.couleur ? (
+          <Text style={styles.cardSub} numberOfLines={1}>🎨 {item.couleur}</Text>
+        ) : null}
+
+        <View style={styles.cardDates}>
+          <Ionicons name="calendar-outline" size={12} color={C.textSec} />
+          <Text style={styles.dateText}>
+            Livraison :{' '}
+            {item.dateLivraison
+              ? new Date(item.dateLivraison).toLocaleDateString('fr-FR')
+              : '—'}
+          </Text>
+        </View>
+
+        {item.accessoires.length > 0 && (
+          <Text style={styles.cardSub} numberOfLines={1}>
+            {item.accessoires.slice(0, 3).join(' · ')}
+            {item.accessoires.length > 3 ? ` +${item.accessoires.length - 3}` : ''}
+          </Text>
+        )}
+      </View>
+
+      <Ionicons name="chevron-forward" size={16} color={C.textTer} />
+    </TouchableOpacity>
+  );
+};
+
+// ==========================================
+// ÉCRAN PRINCIPAL
+// ==========================================
+export const RealisationsScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { clientId } = route.params;
+
+  const { realisations, loadRealisations, getClientById } = useAppStore();
+  const client = getClientById(clientId);
+  const clientReals = realisations[clientId] ?? [];
+
+  const [activeStatut, setActiveStatut] = useState<StatutRealisation | 'all'>('all');
+  const [isLoading, setIsLoading]       = useState(false);
+  const [refreshing, setRefreshing]     = useState(false);
+
+  const load = async (silent = false) => {
+    if (!silent) setIsLoading(true);
+    await loadRealisations(clientId);
+    setIsLoading(false);
+    setRefreshing(false);
+  };
+
+  useEffect(() => { load(); }, [clientId]);
+
+  const filtered = useMemo(() => {
+    const base = activeStatut === 'all'
+      ? clientReals
+      : clientReals.filter(r => r.statut === activeStatut);
+    return [...base].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [clientReals, activeStatut]);
+
+  const countByStatut = useMemo(() => {
+    const counts: Record<string, number> = { all: clientReals.length };
+    for (const s of STATUT_REALISATION_LIST) counts[s] = clientReals.filter(r => r.statut === s).length;
+    return counts;
+  }, [clientReals]);
+
+  const FILTERS: { key: StatutRealisation | 'all'; label: string }[] = [
+    { key: 'all', label: `Toutes (${countByStatut.all})` },
+    ...STATUT_REALISATION_LIST
+      .filter(s => countByStatut[s] > 0)
+      .map(s => ({ key: s, label: `${STATUT_REALISATION_LABELS[s]} (${countByStatut[s]})` })),
+  ];
+
+  return (
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color={C.text} />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Réalisations</Text>
+          {client && <Text style={styles.headerSub}>{client.nom}</Text>}
+        </View>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => navigation.navigate('AddRealisation', { clientId })}
+        >
+          <Ionicons name="add" size={22} color={C.gold} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Filtres */}
+      <FlatList
+        horizontal
+        data={FILTERS}
+        keyExtractor={i => i.key}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filtersRow}
+        renderItem={({ item: f }) => {
+          const active = activeStatut === f.key;
+          const color  = f.key === 'all' ? C.purple600 : STATUT_REALISATION_COLORS[f.key as StatutRealisation];
+          return (
+            <TouchableOpacity
+              style={[styles.filterChip, active && { backgroundColor: color + '22', borderColor: color }]}
+              onPress={() => setActiveStatut(f.key)}
+            >
+              {f.key !== 'all' && (
+                <Ionicons
+                  name={STATUT_REALISATION_ICONS[f.key as StatutRealisation] as any}
+                  size={13}
+                  color={active ? color : C.textSec}
+                />
+              )}
+              <Text style={[styles.filterText, active && { color }]}>{f.label}</Text>
+            </TouchableOpacity>
+          );
+        }}
+      />
+
+      {/* Liste */}
+      {isLoading ? (
+        <ActivityIndicator size="large" color={C.purple600} style={{ marginTop: 60 }} />
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={r => r.id}
+          contentContainerStyle={[styles.list, filtered.length === 0 && styles.listEmpty]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="shirt-outline" size={56} color={C.textTer} />
+              <Text style={styles.emptyTitle}>Aucune réalisation</Text>
+              <Text style={styles.emptySub}>
+                {activeStatut === 'all'
+                  ? 'Créez la première réalisation pour ce client.'
+                  : `Aucune réalisation au statut « ${STATUT_REALISATION_LABELS[activeStatut as StatutRealisation]} ».`}
+              </Text>
+              {activeStatut === 'all' && (
+                <TouchableOpacity
+                  style={styles.emptyBtn}
+                  onPress={() => navigation.navigate('AddRealisation', { clientId })}
+                >
+                  <Text style={styles.emptyBtnText}>+ Nouvelle réalisation</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          }
+          renderItem={({ item }) => (
+            <RealisationCard
+              item={item}
+              onPress={() => navigation.navigate('RealisationDetails', { realisationId: item.id, clientId })}
+            />
+          )}
+        />
+      )}
+
+      {/* FAB */}
+      {!isLoading && filtered.length > 0 && (
+        <TouchableOpacity
+          style={[styles.fab, { bottom: insets.bottom + 24 }]}
+          onPress={() => navigation.navigate('AddRealisation', { clientId })}
+        >
+          <Ionicons name="add" size={28} color="#FFF" />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
+
+// ==========================================
+// STYLES
+// ==========================================
+const styles = StyleSheet.create({
+  root:       { flex: 1, backgroundColor: C.bg },
+  header:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
+  backBtn:    { padding: 4, marginRight: 8 },
+  headerCenter:{ flex: 1 },
+  headerTitle:{ fontSize: 20, fontWeight: '700', color: C.text },
+  headerSub:  { fontSize: 13, color: C.textSec, marginTop: 1 },
+  addBtn:     { padding: 6, backgroundColor: C.purple900, borderRadius: 10, marginLeft: 8 },
+
+  filtersRow: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
+  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 20, borderWidth: 1, borderColor: C.border, backgroundColor: C.surface },
+  filterText: { fontSize: 13, color: C.textSec, fontWeight: '500' },
+
+  list:       { paddingHorizontal: 16, paddingBottom: 100, gap: 10 },
+  listEmpty:  { flex: 1 },
+
+  card:       { flexDirection: 'row', alignItems: 'center', backgroundColor: C.surface,
+    borderRadius: 16, padding: 12, gap: 12, borderWidth: 1, borderColor: C.border },
+  thumb:      { position: 'relative' },
+  thumbImg:   { width: 72, height: 72, borderRadius: 12, backgroundColor: C.border },
+  thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  photoCount: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 },
+  photoCountText: { fontSize: 10, color: '#FFF', fontWeight: '700' },
+
+  cardBody:   { flex: 1, gap: 4 },
+  cardRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardTitle:  { flex: 1, fontSize: 15, fontWeight: '700', color: C.text },
+  cardSub:    { fontSize: 12, color: C.textSec },
+  cardDates:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dateText:   { fontSize: 12, color: C.textSec },
+
+  statutBadge:{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8,
+    paddingVertical: 3, borderRadius: 20 },
+  statutDot:  { width: 6, height: 6, borderRadius: 3 },
+  statutText: { fontSize: 11, fontWeight: '600' },
+
+  empty:      { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 10 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: C.text },
+  emptySub:   { fontSize: 14, color: C.textSec, textAlign: 'center', paddingHorizontal: 32 },
+  emptyBtn:   { marginTop: 16, backgroundColor: C.purple900, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 24 },
+  emptyBtnText:{ fontSize: 15, fontWeight: '700', color: C.gold },
+
+  fab:        { position: 'absolute', right: 24, width: 56, height: 56, borderRadius: 28,
+    backgroundColor: C.purple900, alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
+});
