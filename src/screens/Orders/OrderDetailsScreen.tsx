@@ -131,7 +131,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const { orderId } = route.params;
     const insets = useSafeAreaInsets();
 
-    const { orders, updateOrder, loadStatistics, loadActivities, realisations, getProjectById, getParticipantsByProject, loadProjects, loadParticipants } = useAppStore();
+    const { orders, updateOrder, loadStatistics, loadActivities, realisations, loadRealisations, getProjectById, getParticipantsByProject, loadProjects, loadParticipants } = useAppStore();
     const order = orders.find(o => o.id === orderId);
     // Réalisation liée à cette commande (Module 7)
     const linkedRealisation = order
@@ -147,7 +147,11 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     useEffect(() => {
         if (order?.projectId && !project) loadProjects();
         if (order?.projectId) loadParticipants(order.projectId);
-    }, [order?.projectId]);
+        // La réalisation liée n'est pas forcément déjà en mémoire (elle n'est chargée
+        // automatiquement que juste après une création dans la même session) — on la
+        // recharge systématiquement pour que la carte "Réalisation associée" soit fiable.
+        if (order?.clientId) loadRealisations(order.clientId);
+    }, [order?.projectId, order?.clientId]);
 
     const [payments, setPayments]             = useState<LocalPayment[]>([]);
     const [loadingPayments, setLoadingPayments] = useState(true);

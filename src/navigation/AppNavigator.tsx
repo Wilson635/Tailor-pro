@@ -83,7 +83,6 @@ import { ProjectDetailsScreen } from '@screens/Projects/ProjectDetailsScreen';
 import { AddProjectScreen } from '@screens/Projects/AddProjectScreen';
 import { ParticipantDetailsScreen } from '@screens/Projects/ParticipantDetailsScreen';
 import { AddParticipantScreen } from '@screens/Projects/AddParticipantScreen';
-import { AddGarmentScreen } from '@screens/Projects/AddGarmentScreen';
 
 // ==========================================
 // PALETTE
@@ -170,7 +169,6 @@ export type RootStackParamList = {
     BiometricAuth: undefined;
     Profile: undefined;
     Settings: undefined;
-    AddParticipant: {projectId: string};
 };
 
 export type TailorTabParamList = {
@@ -600,7 +598,6 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
                     <Stack.Screen name="AddProject"         component={AddProjectScreen} />
                     <Stack.Screen name="ParticipantDetails" component={ParticipantDetailsScreen} />
                     <Stack.Screen name="AddParticipant"     component={AddParticipantScreen} />
-                    <Stack.Screen name="AddGarment"         component={AddGarmentScreen} />
 
                     {/* ── Catalogue ── */}
                     <Stack.Screen name="ModelDetails"     component={ModelDetailsScreen} />

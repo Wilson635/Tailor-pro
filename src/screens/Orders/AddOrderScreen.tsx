@@ -2,7 +2,7 @@
 // ÉCRAN AJOUTER UNE COMMANDE - TailorPro (redesign)
 // ==========================================
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,23 @@ import { supabase } from "@/src/lib/supabase";
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import {useToast} from "@/src/context/ToastContext";
+import { MeasurementPickerModal } from '@screens/Projects/MeasurementPickerModal';
+import type { MeasurementChoiceResult, TypeVetement } from '../../types';
+
+/** Les vêtements (Order.clothingType) et les fiches de mensuration (FicheMensuration.typeVetement)
+ *  utilisent deux nomenclatures différentes — celle-ci fait le pont entre les deux. */
+const CLOTHING_TYPE_TO_MEASUREMENT_TYPE: Record<ClothingType, TypeVetement> = {
+  robe_longue:   'robe',
+  robe_courte:   'robe',
+  robe_mariage:  'robe',
+  costume:       'costume',
+  chemise:       'chemise',
+  pantalon:      'pantalon',
+  boubou:        'boubou',
+  ensemble:      'autre',
+  tenue_enfant:  'autre',
+  autre:         'autre',
+};
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddOrder'>;
 
@@ -123,7 +140,7 @@ const StyledInput = ({
 export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
-  const { addOrder, getClientById, clients, participants, promoteParticipant, loadProjectRecap } = useAppStore();
+  const { addOrder, getClientById, clients, participants, promoteParticipant, loadProjectRecap, applyMeasurementChoice } = useAppStore();
 
   const preselectedClientId = route.params?.clientId ?? '';
   // ── Contexte "commande groupée" (arrivée depuis un Projet) ──
@@ -137,6 +154,11 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState(preselectedClientId || participant?.clientId || '');
   const [clothingType, setClothingType] = useState<ClothingType>('robe_longue');
+
+  // ── Mensurations (Module 13) ──
+  const [measurementModalVisible, setMeasurementModalVisible] = useState(false);
+  const [measurementChoice, setMeasurementChoice] = useState<MeasurementChoiceResult | null>(null);
+  useEffect(() => { setMeasurementChoice(null); }, [clothingType]);
   const [urgency, setUrgency] = useState<UrgencyLevel>('medium');
   const [description, setDescription] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
@@ -267,6 +289,16 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
       });
 
       if (!newOrder) throw new Error("La commande n'a pas pu être créée.");
+
+      // 1bis. Applique le choix de mensuration (fiche existante dupliquée, ou nouvelles mesures)
+      if (measurementChoice) {
+        await applyMeasurementChoice(
+            newOrder.id,
+            clientId,
+            CLOTHING_TYPE_TO_MEASUREMENT_TYPE[clothingType],
+            measurementChoice,
+        );
+      }
 
       // 2. Traitement des photos d'inspiration (inchangé — enrichit le catalogue)
       if (inspirationPhotos && inspirationPhotos.length > 0) {
@@ -491,6 +523,40 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               })}
             </ScrollView>
           </SectionCard>
+
+          {/* ── Mensurations (Module 13) ── */}
+          {(selectedClientId || participant) && (
+              <SectionCard
+                  iconName="body-outline"
+                  iconBg="#DCFCE7" iconColor="#16A34A"
+                  title="Mensurations"
+                  subtitle="Utilise une fiche existante ou prends de nouvelles mesures"
+              >
+                {measurementChoice ? (
+                    <View style={styles.measurementDoneRow}>
+                      <View style={styles.measurementDoneBadge}>
+                        <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+                        <Text style={styles.measurementDoneText}>
+                          {measurementChoice.mode === 'use_existing'
+                              ? 'Fiche existante sélectionnée'
+                              : 'Nouvelles mesures renseignées'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setMeasurementModalVisible(true)}>
+                        <Text style={styles.measurementChangeLink}>Modifier</Text>
+                      </TouchableOpacity>
+                    </View>
+                ) : (
+                    <TouchableOpacity
+                        style={styles.measurementCta}
+                        onPress={() => setMeasurementModalVisible(true)}
+                    >
+                      <Ionicons name="body-outline" size={16} color="#16A34A" />
+                      <Text style={styles.measurementCtaText}>Choisir les mensurations</Text>
+                    </TouchableOpacity>
+                )}
+              </SectionCard>
+          )}
 
           {/* ── Photos ── */}
           <SectionCard
@@ -815,6 +881,16 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         </Modal>
 
+        {(selectedClientId || participant) && (
+            <MeasurementPickerModal
+                visible={measurementModalVisible}
+                clientId={selectedClientId || participant?.clientId}
+                typeVetement={CLOTHING_TYPE_TO_MEASUREMENT_TYPE[clothingType]}
+                onClose={() => setMeasurementModalVisible(false)}
+                onChoice={setMeasurementChoice}
+            />
+        )}
+
       </View>
   );
 };
@@ -911,6 +987,16 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
   },
+  // ── Mensurations (Module 13) ──
+  measurementCta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#DCFCE7', borderRadius: BORDER_RADIUS.md, paddingVertical: 12,
+  },
+  measurementCtaText: { color: '#16A34A', fontSize: 13.5, fontFamily: 'PlusJakartaSans_700Bold' },
+  measurementDoneRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  measurementDoneBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  measurementDoneText: { color: '#16A34A', fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  measurementChangeLink: { color: '#6C3EB8', fontSize: 12.5, fontFamily: 'PlusJakartaSans_700Bold' },
   clientAvatar: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center',

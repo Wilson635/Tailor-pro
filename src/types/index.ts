@@ -449,7 +449,7 @@ export type RootStackParamList = {
   AddMeasurements: { clientId: string };
   // Commandes
   OrderDetails: { orderId: string };
-  AddOrder: { clientId?: string };
+  AddOrder: { clientId?: string; projectId?: string; participantId?: string };
   EditOrder: { orderId: string };
   // Projets / commandes groupées
   ProjectList: undefined;
@@ -457,7 +457,6 @@ export type RootStackParamList = {
   AddProject: undefined;
   ParticipantDetails: { participantId: string; projectId: string };
   AddParticipant: { projectId: string };
-  AddGarment: { projectId: string; participantId: string };
   // Paiements
   ClientPayments: { clientId: string };
   AddPayment: { clientId: string; orderId?: string };
