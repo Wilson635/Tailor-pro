@@ -1,13 +1,14 @@
 // ──────────────────────────────────────────────────────────
 // StatisticsScreen — Module 12
 // Analytique avancée : graphiques, top clients, top modèles,
-// catégories, meilleur mois, filtrage période, export CSV.
+// catégories, meilleur mois, filtrage période, export Excel.
 // ──────────────────────────────────────────────────────────
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Dimensions, Share, Alert, ActivityIndicator,
 } from 'react-native';
+import * as XLSX from 'xlsx';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { BarChart, PieChart } from 'react-native-chart-kit';
@@ -267,37 +268,93 @@ export const StatisticsScreen = () => {
     }));
   }, [categorieStats]);
 
-  // ── Export CSV ────────────────────────────────────────
-  const exportCSV = useCallback(async () => {
+  // ── Export Excel ────────────────────────────────────────
+  const exportExcel = useCallback(async () => {
     setExporting(true);
     try {
-      const lines: string[] = [
-        `TailorPro — Statistiques (${monthCount} derniers mois)`,
-        '',
-        '=== VUE D\'ENSEMBLE ===',
-        `Clients totaux,${clientsStats.total}`,
-        `Nouveaux clients (période),${clientsStats.nouveaux}`,
-        `Clients fidèles (≥2 commandes),${clientsStats.fideles}`,
-        `Commandes totales,${orders.length}`,
-        `CA total (période),${totalRevenuePeriod} FCFA`,
-        `Meilleur mois,${bestMonth.label} — ${bestMonth.revenue} FCFA`,
-        '',
-        '=== CA MENSUEL ===',
-        'Mois,CA (FCFA),Commandes',
-        ...monthlyStats.map(m => `${m.label},${m.revenue},${m.orders}`),
-        '',
-        '=== TOP CLIENTS ===',
-        'Client,CA total (FCFA),Nb commandes',
-        ...topClients.map(c => `${c.name},${c.total},${c.count}`),
-        '',
-        '=== TOP MODÈLES ===',
-        'Modèle,Réalisations',
-        ...topModeles.map(m => `${m.name},${m.count}`),
-      ];
+      const data: any[] = [];
+
+      // Vue d'ensemble
+      data.push({
+        '': 'Vue d\'ensemble',
+        '': '',
+        '': '',
+      });
+      data.push({
+        '': 'Clients totaux',
+        '': clientsStats.total,
+        '': '',
+      });
+      data.push({
+        '': 'Nouveaux clients (période)',
+        '': clientsStats.nouveaux,
+        '': '',
+      });
+      data.push({
+        '': 'Clients fidèles (≥2 commandes)',
+        '': clientsStats.fideles,
+        '': '',
+      });
+      data.push({
+        '': 'Commandes totales',
+        '': orders.length,
+        '': '',
+      });
+      data.push({
+        '': 'CA total (période)',
+        '': `${totalRevenuePeriod} FCFA`,
+        '': '',
+      });
+      data.push({
+        '': 'Meilleur mois',
+        '': `${bestMonth.label} — ${bestMonth.revenue} FCFA`,
+        '': '',
+      });
+
+      // CA mensuel
+      data.push({ '': '', '': '', '': '' });
+      data.push({ '': 'CA Mensuel', '': '', '': '' });
+      monthlyStats.forEach(m => {
+        data.push({
+          '': m.label,
+          '': `${m.revenue} FCFA`,
+          '': m.orders,
+        });
+      });
+
+      // Top clients
+      data.push({ '': '', '': '', '': '' });
+      data.push({ '': 'Top Clients', '': '', '': '' });
+      topClients.forEach(c => {
+        data.push({
+          '': c.name,
+          '': `${c.total} FCFA`,
+          '': c.count,
+        });
+      });
+
+      // Top modèles
+      data.push({ '': '', '': '', '': '' });
+      data.push({ '': 'Top Modèles', '': '', '': '' });
+      topModeles.forEach(m => {
+        data.push({
+          '': m.name,
+          '': m.count,
+          '': '',
+        });
+      });
+
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Statistiques');
+      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(excelBuffer)));
+      const uri = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${base64}`;
 
       await Share.share({
-        message: lines.join('\n'),
-        title:   `TailorPro_Statistiques_${monthCount}mois`,
+        message: uri,
+        title:   `TailorPro_Statistiques_${monthCount}mois.xlsx`,
       });
     } catch {
       Alert.alert('Erreur', 'Impossible d\'exporter.');
@@ -325,7 +382,7 @@ export const StatisticsScreen = () => {
           </View>
           <TouchableOpacity
               style={[s.exportBtn, exporting && { opacity: 0.6 }]}
-              onPress={exportCSV}
+              onPress={exportExcel}
               disabled={exporting}
           >
             {exporting
@@ -566,13 +623,13 @@ export const StatisticsScreen = () => {
           {/* ── Export ──────────────────────────────── */}
           <TouchableOpacity
               style={[s.exportFullBtn, exporting && { opacity: 0.6 }]}
-              onPress={exportCSV}
+              onPress={exportExcel}
               disabled={exporting}
               activeOpacity={0.85}
           >
             <Feather name="file-text" size={16} color="#fff" style={{ marginRight: 8 }} />
             <Text style={s.exportFullBtnText}>
-              {exporting ? 'Export en cours…' : 'Exporter le rapport CSV'}
+              {exporting ? 'Export en cours…' : 'Exporter le rapport Excel'}
             </Text>
           </TouchableOpacity>
         </ScrollView>

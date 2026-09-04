@@ -13,6 +13,8 @@ import {
     TextInput,
     Modal,
     FlatList,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -142,7 +144,11 @@ export const AddProjectScreen: React.FC<Props> = ({ navigation }) => {
     };
 
     return (
-        <View style={[styles.root, { paddingTop: insets.top }]}>
+        <KeyboardAvoidingView
+            style={[styles.root, { paddingTop: insets.top }]}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
                     <Feather name="arrow-left" size={20} color={P.text} />
@@ -345,7 +351,7 @@ export const AddProjectScreen: React.FC<Props> = ({ navigation }) => {
                     </View>
                 </View>
             </Modal>
-        </View>
+        </KeyboardAvoidingView>
     );
 };
 

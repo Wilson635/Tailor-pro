@@ -891,7 +891,6 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
             />
           </View>
         </Modal>
-
         {(selectedClientId || participant) && (
             <MeasurementPickerModal
                 visible={measurementModalVisible}
@@ -901,8 +900,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                 onChoice={setMeasurementChoice}
             />
         )}
-
-      </View>
+      </KeyboardAvoidingView>
   );
 };
 

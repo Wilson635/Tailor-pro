@@ -13,6 +13,8 @@ import {
     TextInput,
     Alert,
     ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -192,8 +194,11 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
     // ──────────────────────────────────────
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top }]}>
-
+        <KeyboardAvoidingView
+            style={[styles.container, { paddingTop: insets.top }]}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
             {/* ── Header ── */}
             <View style={styles.header}>
                 <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
@@ -323,7 +328,7 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
                     )}
                 </TouchableOpacity>
             </View>
-        </View>
+        </KeyboardAvoidingView>
     );
 };
 

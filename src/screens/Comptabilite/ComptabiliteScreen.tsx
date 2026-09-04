@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────────────────
 // ComptabiliteScreen — Module 9
 // Vue financière consolidée avec filtrage par période,
-// liste débiteurs et export CSV.
+// liste débiteurs et export Excel.
 // ──────────────────────────────────────────────────────────
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
@@ -9,6 +9,7 @@ import {
     ActivityIndicator, RefreshControl, TextInput, Share,
     Alert, Platform,
 } from 'react-native';
+import * as XLSX from 'xlsx';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -232,40 +233,44 @@ export function ComptabiliteScreen() {
         .filter(o => o.remainingAmount > 0)
         .reduce((s, o) => s + o.remainingAmount, 0);
 
-    // ── Export CSV ─────────────────────────────────────────
-    const exportCSV = async (type: 'paiements' | 'debiteurs') => {
+    // ── Export Excel ─────────────────────────────────────────
+    const exportExcel = async (type: 'paiements' | 'debiteurs') => {
         setExporting(true);
         try {
-            let csv = '';
+            let data: any[] = [];
+            let fileName = '';
+
             if (type === 'paiements') {
-                csv = 'Date,Montant (FCFA),Type,Mode,Notes\n';
-                periodPayments.forEach(p => {
+                data = periodPayments.map(p => {
                     const typeMeta = TYPE_PAIEMENT_META[p.type as TypePaiement];
-                    csv += [
-                        new Date(p.paymentDate).toLocaleDateString('fr-FR'),
-                        p.amount,
-                        typeMeta?.label ?? p.type,
-                        p.paymentMethod,
-                        (p.notes ?? '').replace(/,/g, ';'),
-                    ].join(',') + '\n';
+                    return {
+                        'Date': new Date(p.paymentDate).toLocaleDateString('fr-FR'),
+                        'Montant (FCFA)': p.amount,
+                        'Type': typeMeta?.label ?? p.type,
+                        'Mode': p.paymentMethod,
+                        'Notes': (p.notes ?? '').replace(/,/g, ';'),
+                    };
                 });
+                fileName = `TailorPro_Encaissements_${periodLabel.toLowerCase().replace(/\s/g,'_')}.xlsx`;
             } else {
-                csv = 'Client,N° Commande,Montant dû (FCFA),Statut paiement\n';
-                debtors.forEach(d => {
-                    csv += [
-                        d.clientName.replace(/,/g, ' '),
-                        d.numeroCommande ?? '—',
-                        d.remainingAmount,
-                        d.paymentStatus,
-                    ].join(',') + '\n';
-                });
+                data = debtors.map(d => ({
+                    'Client': d.clientName.replace(/,/g, ' '),
+                    'N° Commande': d.numeroCommande ?? '—',
+                    'Montant dû (FCFA)': d.remainingAmount,
+                    'Statut paiement': d.paymentStatus,
+                }));
+                fileName = 'TailorPro_Debiteurs.xlsx';
             }
 
-            const title = type === 'paiements'
-                ? `TailorPro_Encaissements_${periodLabel.toLowerCase().replace(/\s/g,'_')}`
-                : 'TailorPro_Debiteurs';
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, type === 'paiements' ? 'Encaissements' : 'Débiteurs');
+            const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
 
-            await Share.share({ message: csv, title });
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(excelBuffer)));
+            const uri = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${base64}`;
+
+            await Share.share({ message: uri, title: fileName });
         } catch (e) {
             Alert.alert('Erreur', 'Impossible d\'exporter les données.');
         } finally {
@@ -311,8 +316,8 @@ export function ComptabiliteScreen() {
                         'Exporter',
                         'Choisir le type d\'export',
                         [
-                            { text: 'Encaissements (CSV)', onPress: () => exportCSV('paiements') },
-                            { text: 'Débiteurs (CSV)',      onPress: () => exportCSV('debiteurs') },
+                            { text: 'Encaissements (Excel)', onPress: () => exportExcel('paiements') },
+                            { text: 'Débiteurs (Excel)',      onPress: () => exportExcel('debiteurs') },
                             { text: 'Annuler', style: 'cancel' },
                         ]
                     )}
@@ -546,22 +551,22 @@ export function ComptabiliteScreen() {
                     <View style={styles.exportRow}>
                         <TouchableOpacity
                             style={styles.exportQuickBtn}
-                            onPress={() => exportCSV('paiements')}
+                            onPress={() => exportExcel('paiements')}
                             disabled={periodPayments.length === 0 || exporting}
                             activeOpacity={0.8}
                         >
                             <Feather name="file-text" size={14} color={P.primary} style={{ marginRight: 6 }} />
-                            <Text style={styles.exportQuickText}>Encaissements CSV</Text>
+                            <Text style={styles.exportQuickText}>Encaissements Excel</Text>
                         </TouchableOpacity>
                         <View style={{ width: 10 }} />
                         <TouchableOpacity
                             style={styles.exportQuickBtn}
-                            onPress={() => exportCSV('debiteurs')}
+                            onPress={() => exportExcel('debiteurs')}
                             disabled={debtors.length === 0 || exporting}
                             activeOpacity={0.8}
                         >
                             <Feather name="users" size={14} color={P.error} style={{ marginRight: 6 }} />
-                            <Text style={[styles.exportQuickText, { color: P.error }]}>Débiteurs CSV</Text>
+                            <Text style={[styles.exportQuickText, { color: P.error }]}>Débiteurs Excel</Text>
                         </TouchableOpacity>
                     </View>
 
