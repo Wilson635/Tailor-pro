@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@components/ui';
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort } from '@utils/formatters';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '@constants/theme';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
 import {NativeStackScreenProps} from "@react-navigation/native-stack";
@@ -99,9 +99,9 @@ export const ClientOrdersScreen: React.FC<Props> = ({ navigation }) => {
                                     </View>
                                 </View>
                                 <View style={styles.orderFooter}>
-                                    <Text style={styles.orderPrice}>Total : {formatCurrency(order.totalPrice)}</Text>
+                                    <Text style={styles.orderPrice}>Total : {formatCurrencyShort(order.totalPrice)}</Text>
                                     {order.remainingAmount > 0 && (
-                                        <Text style={styles.orderRemaining}>Reste : {formatCurrency(order.remainingAmount)}</Text>
+                                        <Text style={styles.orderRemaining}>Reste : {formatCurrencyShort(order.remainingAmount)}</Text>
                                     )}
                                 </View>
                             </Card>
@@ -119,7 +119,7 @@ export const ClientOrdersScreen: React.FC<Props> = ({ navigation }) => {
                                     <Text style={styles.pastOrderName}>{order.clothingType || 'Livrable accompli'}</Text>
                                     <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
                                 </View>
-                                <Text style={styles.orderFooterText}>Livré avec succès • {formatCurrency(order.totalPrice)}</Text>
+                                <Text style={styles.orderFooterText}>Livré avec succès • {formatCurrencyShort(order.totalPrice)}</Text>
                             </Card>
                         ))}
                     </View>

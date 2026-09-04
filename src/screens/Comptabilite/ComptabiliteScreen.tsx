@@ -16,7 +16,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAppStore } from '@store/useAppStore';
 import { comptabiliteService } from '@services/supabaseService';
-import { formatCurrency, formatDate } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { TYPE_PAIEMENT_META, TypePaiement } from '@constants/paiementConstants';
 
 // ── Palette ──────────────────────────────────────────────
@@ -378,7 +378,7 @@ export function ComptabiliteScreen() {
                         <KpiCard
                             icon="trending-up"
                             label="Total encaissé"
-                            value={formatCurrency(totalEncaisse)}
+                            value={formatCurrencyShort(totalEncaisse)}
                             color={P.success}
                             bgColor={P.successBg}
                         />
@@ -395,7 +395,7 @@ export function ComptabiliteScreen() {
                         <KpiCard
                             icon="arrow-down-circle"
                             label="Acomptes"
-                            value={formatCurrency(totalAcomptes)}
+                            value={formatCurrencyShort(totalAcomptes)}
                             sub={`${acomptes.length} versement${acomptes.length !== 1 ? 's' : ''}`}
                             color={P.gold}
                             bgColor={P.goldBg}
@@ -404,7 +404,7 @@ export function ComptabiliteScreen() {
                         <KpiCard
                             icon="check-circle"
                             label="Soldes finaux"
-                            value={formatCurrency(totalSoldes)}
+                            value={formatCurrencyShort(totalSoldes)}
                             sub={`${soldesFinals.length} paiement${soldesFinals.length !== 1 ? 's' : ''}`}
                             color={P.success}
                             bgColor={P.successBg}
@@ -417,7 +417,7 @@ export function ComptabiliteScreen() {
                             <Feather name="alert-circle" size={16} color={P.warning} style={{ marginRight: 8 }} />
                             <View>
                                 <Text style={styles.alertTitle}>
-                                    {formatCurrency(soldesPeriode)} de solde en attente
+                                    {formatCurrencyShort(soldesPeriode)} de solde en attente
                                 </Text>
                                 <Text style={styles.alertSub}>
                                     Sur les commandes créées pendant cette période
@@ -444,7 +444,7 @@ export function ComptabiliteScreen() {
                                                 </View>
                                                 <View style={{ flex: 1, marginLeft: 10 }}>
                                                     <Text style={[styles.payAmount, { color: typeMeta.color }]}>
-                                                        +{formatCurrency(p.amount)}
+                                                        +{formatCurrencyShort(p.amount)}
                                                     </Text>
                                                     <Text style={styles.paySub}>
                                                         {typeMeta.label} · {new Date(p.paymentDate).toLocaleDateString('fr-FR')}
@@ -492,7 +492,7 @@ export function ComptabiliteScreen() {
                                 <Text style={styles.debtorsSub}>
                                     {debtors.length === 0
                                         ? 'Aucune dette en cours 🎉'
-                                        : `Total dû : ${formatCurrency(totalDette)}`
+                                        : `Total dû : ${formatCurrencyShort(totalDette)}`
                                     }
                                 </Text>
                             </View>
@@ -524,7 +524,7 @@ export function ComptabiliteScreen() {
                                             </Text>
                                         </View>
                                         <Text style={styles.debtAmount}>
-                                            {formatCurrency(d.remainingAmount)}
+                                            {formatCurrencyShort(d.remainingAmount)}
                                         </Text>
                                     </View>
                                     {i < debtors.length - 1 && <View style={styles.rowDivider} />}

@@ -57,7 +57,7 @@ const AddPaymentScreen = () => {
       return;
     }
 
-    const amountValue = parseFloat(amount);
+    const amountValue = parseFloat(amount.replace(/\s/g, ''));
     if (isNaN(amountValue) || amountValue <= 0) {
       Alert.alert('Erreur', 'Veuillez entrer un montant valide');
       return;

@@ -18,7 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { useProfile } from '@hooks/useProfile';
-import { formatCurrency, formatDate } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
 
@@ -203,7 +203,7 @@ export const ClientDashboard: React.FC = () => {
                     {totalDue > 0 && (
                         <View style={styles.heroDueCard}>
                             <Text style={styles.heroDueLabel}>À régler</Text>
-                            <Text style={styles.heroDueValue}>{formatCurrency(totalDue)}</Text>
+                            <Text style={styles.heroDueValue}>{formatCurrencyShort(totalDue)}</Text>
                         </View>
                     )}
                 </View>
@@ -215,7 +215,7 @@ export const ClientDashboard: React.FC = () => {
                     <View style={styles.alertLeft}>
                         <Feather name="alert-circle" size={16} color={P.error} />
                         <Text style={styles.alertText}>
-                            Vous avez {formatCurrency(totalDue)} à régler pour vos commandes en cours.
+                            Vous avez {formatCurrencyShort(totalDue)} à régler pour vos commandes en cours.
                         </Text>
                     </View>
                 </View>
@@ -335,7 +335,7 @@ export const ClientDashboard: React.FC = () => {
                                     <View style={styles.orderPayRow}>
                                         <Feather name="credit-card" size={12} color={P.error} />
                                         <Text style={styles.orderPayText}>
-                                            Reste à régler : <Text style={{ fontFamily: 'PlusJakartaSans_700Bold' }}>{formatCurrency(order.remainingAmount)}</Text>
+                                            Reste à régler : <Text style={{ fontFamily: 'PlusJakartaSans_700Bold' }}>{formatCurrencyShort(order.remainingAmount)}</Text>
                                         </Text>
                                     </View>
                                 )}
@@ -364,7 +364,7 @@ export const ClientDashboard: React.FC = () => {
                                                 {CLOTHING_LABELS[order.clothingType] ?? order.clothingType}
                                             </Text>
                                             <Text style={styles.historySub}>
-                                                Livrée • {formatCurrency(order.totalPrice)}
+                                                Livrée • {formatCurrencyShort(order.totalPrice)}
                                             </Text>
                                         </View>
                                         <View style={[styles.paidBadge, order.remainingAmount > 0 && styles.unpaidBadge]}>

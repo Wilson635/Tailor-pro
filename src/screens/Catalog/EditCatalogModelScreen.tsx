@@ -213,7 +213,7 @@ export const EditCatalogModelScreen: React.FC<Props> = ({ route, navigation }) =
             await updateCatalogModel(modelId, {
                 nom:                    nom.trim(),
                 categorie,
-                prixIndicatif:          prix ? parseFloat(prix) : 0,
+                prixIndicatif:          prix ? parseFloat(prix.replace(/\s/g, '')) : 0,
                 description:            description.trim() || undefined,
                 photos:                 finalPhotos,
                 difficulte,
@@ -223,8 +223,9 @@ export const EditCatalogModelScreen: React.FC<Props> = ({ route, navigation }) =
                 statut,
             });
             navigation.goBack();
-        } catch {
-            Alert.alert('Erreur', 'Impossible de modifier le modèle.');
+        } catch (error: any) {
+            console.error('Erreur lors de la modification du modèle:', error);
+            Alert.alert('Erreur', error?.message || 'Impossible de modifier le modèle.');
         } finally {
             setIsLoading(false);
         }

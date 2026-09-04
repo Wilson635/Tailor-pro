@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency, formatDate } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
 import { CLOTHING_TYPE_LABELS } from '@constants/theme';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
@@ -204,16 +204,16 @@ export const ProjectDetailsScreen: React.FC<Props> = ({ route, navigation }) => 
 
                         <View style={styles.rowBetween}>
                             <Text style={styles.hint}>Montant total</Text>
-                            <Text style={styles.amountValue}>{formatCurrency(recap.montantTotal)}</Text>
+                            <Text style={styles.amountValue}>{formatCurrencyShort(recap.montantTotal)}</Text>
                         </View>
                         <View style={styles.rowBetween}>
                             <Text style={styles.hint}>Déjà payé</Text>
-                            <Text style={[styles.amountValue, { color: P.success }]}>{formatCurrency(recap.totalPaye)}</Text>
+                            <Text style={[styles.amountValue, { color: P.success }]}>{formatCurrencyShort(recap.totalPaye)}</Text>
                         </View>
                         <View style={styles.rowBetween}>
                             <Text style={styles.hint}>Reste à payer</Text>
                             <Text style={[styles.amountValue, { color: recap.resteAPayer > 0 ? P.warning : P.success }]}>
-                                {formatCurrency(recap.resteAPayer)}
+                                {formatCurrencyShort(recap.resteAPayer)}
                             </Text>
                         </View>
 

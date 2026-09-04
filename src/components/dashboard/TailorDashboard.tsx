@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency, formatRelativeTime } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort, formatRelativeTime } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 
@@ -272,7 +272,7 @@ export const TailorDashboard: React.FC = () => {
                     <View>
                         <Text style={styles.heroLabel}>REVENUS CE MOIS</Text>
                         <Text style={styles.heroAmount}>
-                            {formatCurrency(statistics.monthlyRevenue)}
+                            {formatCurrencyShort(statistics.monthlyRevenue)}
                         </Text>
                         <View style={styles.heroTrendRow}>
                             <View style={styles.trendPill}>
@@ -286,7 +286,7 @@ export const TailorDashboard: React.FC = () => {
                     <View style={styles.heroNetCard}>
                         <Text style={styles.heroNetLabel}>Bénéfice net</Text>
                         <Text style={styles.heroNetValue}>
-                            {formatCurrency(statistics.netProfit)}
+                            {formatCurrencyShort(statistics.netProfit)}
                         </Text>
                     </View>
                 </View>
@@ -334,7 +334,7 @@ export const TailorDashboard: React.FC = () => {
                     <KpiCard
                         icon="trending-up"
                         label="Chiffre d'affaires"
-                        value={formatCurrency(caPeriode)}
+                        value={formatCurrencyShort(caPeriode)}
                         sub={periodLabel}
                         color={P.success}
                         bg={P.successBg}
@@ -342,7 +342,7 @@ export const TailorDashboard: React.FC = () => {
                     <KpiCard
                         icon="credit-card"
                         label="Encaissements"
-                        value={formatCurrency(encaissePeriode)}
+                        value={formatCurrencyShort(encaissePeriode)}
                         sub={periodLabel}
                         color={P.primary}
                         bg="rgba(108,62,184,0.10)"
@@ -352,7 +352,7 @@ export const TailorDashboard: React.FC = () => {
                     <KpiCard
                         icon="alert-circle"
                         label="Soldes à percevoir"
-                        value={formatCurrency(soldesAPercevoir)}
+                        value={formatCurrencyShort(soldesAPercevoir)}
                         sub="toutes commandes"
                         color={soldesAPercevoir > 0 ? P.warning : P.success}
                         bg={soldesAPercevoir > 0 ? P.warningBg : P.successBg}
@@ -436,7 +436,7 @@ export const TailorDashboard: React.FC = () => {
                         >
                             <Feather name="alert-circle" size={15} color={P.warning} />
                             <Text style={[styles.alertRowText, { color: P.warning }]}>
-                                {statistics.unpaidInvoices} facture{statistics.unpaidInvoices > 1 ? 's' : ''} impayée{statistics.unpaidInvoices > 1 ? 's' : ''} — {formatCurrency(statistics.unpaidAmount)}
+                                {statistics.unpaidInvoices} facture{statistics.unpaidInvoices > 1 ? 's' : ''} impayée{statistics.unpaidInvoices > 1 ? 's' : ''} — {formatCurrencyShort(statistics.unpaidAmount)}
                             </Text>
                             <Feather name="chevron-right" size={14} color={P.warning} style={{ marginLeft: 'auto' }} />
                         </TouchableOpacity>
@@ -586,7 +586,7 @@ export const TailorDashboard: React.FC = () => {
                                     <View style={styles.orderPayRow}>
                                         <Feather name="alert-circle" size={11} color={P.error} />
                                         <Text style={styles.orderPayText}>
-                                            Reste : {formatCurrency(order.remainingAmount)}
+                                            Reste : {formatCurrencyShort(order.remainingAmount)}
                                         </Text>
                                     </View>
                                 )}
@@ -663,7 +663,7 @@ export const TailorDashboard: React.FC = () => {
                                         <View style={styles.actRight}>
                                             <Text style={styles.actTime}>{formatRelativeTime(activity.timestamp)}</Text>
                                             {activity.amount ? (
-                                                <Text style={styles.actAmount}>+{formatCurrency(activity.amount)}</Text>
+                                                <Text style={styles.actAmount}>+{formatCurrencyShort(activity.amount)}</Text>
                                             ) : null}
                                         </View>
                                     </TouchableOpacity>

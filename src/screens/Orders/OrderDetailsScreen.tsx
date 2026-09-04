@@ -26,7 +26,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { paymentService, activityService, createPaiementM8 } from '@services/supabaseService';
 import { TYPE_PAIEMENT_META, TYPES_PAIEMENT, TypePaiement } from '@constants/paiementConstants';
-import { formatCurrency, formatDate } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
 
@@ -198,7 +198,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     // Calculs
     const currentStatusMeta = ORDER_STATUS_META[order.orderStatus as OrderStatus] ?? ORDER_STATUS_META.pending;
     const currentPayMeta    = PAYMENT_STATUS_META[order.paymentStatus as PaymentStatus] ?? PAYMENT_STATUS_META.unpaid;
-    const totalPaid         = payments.reduce((s, p) => s + p.amount, 0);
+    const totalPaid         = order.advancePayment + payments.reduce((s, p) => s + p.amount, 0);
     const remaining         = Math.max(0, order.totalPrice - totalPaid);
     const currentStepIndex  = ORDER_STATUS_FLOW.indexOf(order.orderStatus as OrderStatus);
     const urgencyMeta       = URGENCY_META[order.urgencyLevel] ?? URGENCY_META.medium;
@@ -210,7 +210,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         if (newStatus === 'delivered' && remaining > 0 && !confirmed) {
             Alert.alert(
                 'Solde non soldé',
-                `Il reste ${formatCurrency(remaining)} à encaisser. Confirmer quand même ?`,
+                `Il reste ${formatCurrencyShort(remaining)} à encaisser. Confirmer quand même ?`,
                 [
                     { text: 'Annuler', style: 'cancel' },
                     { text: 'Confirmer', style: 'destructive',
@@ -251,7 +251,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 
     // ── Enregistrer un paiement ──
     const handleAddPayment = async () => {
-        const amount = parseFloat(payAmount.replace(',', '.'));
+        const amount = parseFloat(payAmount.replace(/\s/g, '').replace(',', '.'));
         if (isNaN(amount) || amount <= 0) {
             Alert.alert('Montant invalide', 'Entrez un montant supérieur à 0.');
             return;
@@ -259,7 +259,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         if (amount > remaining + 0.01) {
             Alert.alert(
                 'Montant trop élevé',
-                `Le reste à payer est de ${formatCurrency(remaining)}. Continuer quand même ?`,
+                `Le reste à payer est de ${formatCurrencyShort(remaining)}. Continuer quand même ?`,
                 [
                     { text: 'Annuler', style: 'cancel' },
                     { text: 'Continuer', onPress: () => submitPayment(amount) },
@@ -312,7 +312,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             const snapPaid = totalPaid + amount;
             Alert.alert(
                 'Paiement enregistré ✓',
-                `${formatCurrency(amount)} encaissé avec succès`,
+                `${formatCurrencyShort(amount)} encaissé avec succès`,
                 [
                     { text: 'Fermer' },
                     { text: 'Voir le reçu', onPress: () => navigation.navigate('Recu', {
@@ -513,7 +513,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                     )}
 
                     {/* ══ RÉALISATION ASSOCIÉE (Module 7) ══ */}
-                    {linkedRealisation && (
+                    {linkedRealisation ? (
                         <TouchableOpacity
                             style={styles.card}
                             onPress={() => navigation.navigate('RealisationDetails', {
@@ -530,7 +530,24 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                 Statut : {String((linkedRealisation as any).statut).replace(/_/g, ' ')}
                             </Text>
                         </TouchableOpacity>
-                    )}
+                    ) : order ? (
+                        <TouchableOpacity
+                            style={styles.card}
+                            onPress={() => navigation.navigate('AddRealisation', {
+                                clientId: order.clientId,
+                                commandeId: order.id,
+                            })}
+                            activeOpacity={0.8}
+                        >
+                            <View style={styles.cardHeaderRow}>
+                                <Text style={styles.cardTitle}>Réalisation associée</Text>
+                                <Feather name="plus-circle" size={16} color={P.primary} />
+                            </View>
+                            <Text style={styles.clientSub}>
+                                Aucune réalisation pour cette commande — touchez pour en créer une.
+                            </Text>
+                        </TouchableOpacity>
+                    ) : null}
 
                     {/* ══ PAIEMENT ══ */}
                     <View style={styles.card}>
@@ -553,7 +570,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             <View style={styles.financeRemaining}>
                                 <Text style={styles.financeRemainingLabel}>Reste à payer</Text>
                                 <Text style={[styles.financeRemainingValue, remaining === 0 && { color: P.success }]}>
-                                    {formatCurrency(remaining)}
+                                    {formatCurrencyShort(remaining)}
                                 </Text>
                             </View>
                         </View>
@@ -567,7 +584,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                     activeOpacity={0.85}
                                 >
                                     <Feather name="check-circle" size={15} color="#fff" />
-                                    <Text style={styles.payFullBtnText}>Encaisser le solde — {formatCurrency(remaining)}</Text>
+                                    <Text style={styles.payFullBtnText}>Encaisser le solde — {formatCurrencyShort(remaining)}</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={styles.payPartialBtn}
@@ -602,7 +619,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                                 />
                                             </View>
                                             <View style={{ flex: 1 }}>
-                                                <Text style={styles.historyAmount}>+{formatCurrency(p.amount)}</Text>
+                                                <Text style={styles.historyAmount}>+{formatCurrencyShort(p.amount)}</Text>
                                                 {(p as any).typePaiement && (() => {
                                                     const tm = TYPE_PAIEMENT_META[(p as any).typePaiement as TypePaiement];
                                                     return tm ? (
@@ -645,7 +662,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                     <View style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}>
                         <View style={styles.sheetHandle} />
                         <Text style={styles.sheetTitle}>Enregistrer un paiement</Text>
-                        <Text style={styles.sheetSub}>Reste à payer : {formatCurrency(remaining)}</Text>
+                        <Text style={styles.sheetSub}>Reste à payer : {formatCurrencyShort(remaining)}</Text>
 
                         {/* Type de paiement */}
                         <Text style={styles.sheetLabel}>Type</Text>
@@ -778,7 +795,7 @@ const ir = StyleSheet.create({
 const FinanceLine = ({ label, value, sub }: { label: string; value: number; sub?: boolean }) => (
     <View style={fl.row}>
         <Text style={[fl.label, sub && fl.labelSub]}>{label}</Text>
-        <Text style={[fl.value, sub && fl.valueSub]}>{formatCurrency(value)}</Text>
+        <Text style={[fl.value, sub && fl.valueSub]}>{formatCurrencyShort(value)}</Text>
     </View>
 );
 

@@ -167,7 +167,7 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
             const result = await addCatalogModel({
                 name: name.trim(),
                 category,
-                price: price ? parseFloat(price) : 0,
+                price: price ? parseFloat(price.replace(/\s/g, '')) : 0,
                 description: description.trim() || undefined,
                 photos: uploadedUrls,
                 isFavorite: false,

@@ -15,6 +15,7 @@ import {
   Platform,
   Modal,
   FlatList,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -177,8 +178,8 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const selectedClient = selectedClientId ? getClientById(selectedClientId) : null;
 
-  const total = parseInt(totalPrice) || 0;
-  const advance = parseInt(advancePayment) || 0;
+  const total = parseInt(totalPrice.replace(/\s/g, '')) || 0;
+  const advance = parseInt(advancePayment.replace(/\s/g, '')) || 0;
   const remaining = Math.max(0, total - advance);
   const paymentStatus = getPaymentStatus(total, advance);
 
@@ -239,6 +240,13 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
       });
       return;
     }
+    if (!measurementChoice) {
+      showToast({
+        type: 'error',
+        message: 'Veuillez sélectionner les mensurations avant d\'ajouter la commande.',
+      });
+      return;
+    }
 
     setIsLoading(true);
 
@@ -258,8 +266,8 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
         if (!clientId) throw new Error("Impossible de créer la fiche client pour cette personne.");
       }
 
-      const parsedTotalPrice = parseFloat(totalPrice);
-      const parsedAdvancePayment = parseFloat(advancePayment) || 0;
+      const parsedTotalPrice = parseFloat(totalPrice.replace(/\s/g, ''));
+      const parsedAdvancePayment = parseFloat(advancePayment.replace(/\s/g, '')) || 0;
       const remainingAmount = parsedTotalPrice - parsedAdvancePayment;
 
       let computedPaymentStatus: 'unpaid' | 'partial' | 'paid' = 'unpaid';
@@ -405,8 +413,11 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-
+      <KeyboardAvoidingView
+          style={[styles.container, { paddingTop: insets.top }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         {/* ── Header courbé ── */}
         <View style={styles.headerWrap}>
           <View style={styles.headerRow}>

@@ -226,7 +226,7 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.headerTitle}>Détails client</Text>
           <TouchableOpacity
               style={styles.headerBtn}
-              onPress={() => navigation.navigate('AddClient')}
+              onPress={() => navigation.navigate('EditClient', {})}
           >
             <Ionicons name="create-outline" size={20} color="#fff" />
           </TouchableOpacity>

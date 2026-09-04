@@ -536,6 +536,17 @@ export const useAppStore = create<AppState>((set, get) => ({
           orderId: order.id,
         });
         get().loadActivities();
+
+        // Mettre à jour la réalisation associée au statut 'livree'
+        const clientRealisations = get().realisations[order.clientId] || [];
+        const associatedRealisation = clientRealisations.find(r => r.commandeId === orderId);
+        if (associatedRealisation) {
+          await get().updateRealisationStatut(
+            associatedRealisation.id,
+            order.clientId,
+            updates.orderStatus === 'delivered' ? 'livree' : 'terminee'
+          );
+        }
       }
     }
 
@@ -1187,7 +1198,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   updateCatalogModel: async (modelId: string, updates: Partial<CatalogModel>) => {
     const { error } = await catalogService.update(modelId, updates);
-    if (error) { set({ error: error.message }); return; }
+    if (error) {
+      set({ error: error.message });
+      throw new Error(error.message);
+    }
     set((state: any) => ({
       catalog: state.catalog.map((m: CatalogModel) =>
           m.id === modelId ? { ...m, ...updates } : m

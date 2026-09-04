@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort } from '@utils/formatters';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '@constants/theme';
 import {
   CATALOG_FILTER_CATEGORIES,
@@ -85,7 +85,7 @@ const ModelCard = ({
       <View style={styles.modelInfo}>
         <Text style={styles.modelName} numberOfLines={1}>{item.name}</Text>
         {item.price > 0 && (
-            <Text style={styles.modelPrice}>{formatCurrency(item.price)}</Text>
+            <Text style={styles.modelPrice}>{formatCurrencyShort(item.price)}</Text>
         )}
       </View>
     </TouchableOpacity>

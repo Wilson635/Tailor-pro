@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort } from '@utils/formatters';
 import {
   KANBAN_COLUMNS, STATUT_COMMANDE_LABELS, STATUT_COMMANDE_COLORS,
   STATUT_COMMANDE_ICONS, getKanbanColumn,
@@ -105,10 +105,10 @@ const CommandeCard = ({
 
         {/* Prix / solde */}
         <View style={styles.cardFooter}>
-          <Text style={styles.cardPrice}>{formatCurrency(order.totalPrice)}</Text>
+          <Text style={styles.cardPrice}>{formatCurrencyShort(order.totalPrice)}</Text>
           {order.remainingAmount > 0 && (
               <Text style={styles.cardSolde}>
-                Reste {formatCurrency(order.remainingAmount)}
+                Reste {formatCurrencyShort(order.remainingAmount)}
               </Text>
           )}
         </View>

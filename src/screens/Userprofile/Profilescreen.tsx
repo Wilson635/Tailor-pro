@@ -21,7 +21,7 @@ import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { useProfile } from '@hooks/useProfile';
 import { useAppStore } from '@store/useAppStore';
 import { supabase } from '@/src/lib/supabase';
-import { formatCurrency } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort } from '@utils/formatters';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
@@ -567,7 +567,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                         <View style={styles.statSep} />
                         <View style={styles.statItem}>
                             <Text style={[styles.statVal, unpaidAmount > 0 && { color: P.error }]}>
-                                {unpaidAmount >= 1000 ? `${Math.round(unpaidAmount / 1000)}k` : formatCurrency(unpaidAmount)}
+                                {formatCurrencyShort(unpaidAmount)}
                             </Text>
                             <Text style={styles.statLbl}>Impayés</Text>
                         </View>

@@ -15,7 +15,7 @@ import {
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency, formatPhone } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort, formatPhone } from '@utils/formatters';
 import {
     COLORS,
     SPACING,
@@ -210,7 +210,7 @@ export const ClientsListScreen: React.FC<Props> = ({ navigation }) => {
                     {item.balance > 0 ? (
                         <View style={styles.balanceWarn}>
                             <Text style={styles.balanceWarnText}>
-                                {formatCurrency(item.balance)}
+                                {formatCurrencyShort(item.balance)}
                             </Text>
                         </View>
                     ) : (
@@ -313,7 +313,7 @@ export const ClientsListScreen: React.FC<Props> = ({ navigation }) => {
                             />
                             <StatCard
                                 label="Soldes en attente"
-                                value={formatCurrency(totalUnpaid)}
+                                value={formatCurrencyShort(totalUnpaid)}
                                 sub={`${clientsWithBalance.length} clients`}
                                 subColor={COLORS.warning}
                             />

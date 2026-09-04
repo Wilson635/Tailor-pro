@@ -105,8 +105,8 @@ export const EditTissuScreen: React.FC<Props> = ({ route, navigation }) => {
       nomCommercial: nomCommercial.trim(),
       couleur: couleur.trim(),
       fournisseur: fournisseur.trim() || undefined,
-      prixUnitaire: parseFloat(prixUnitaire.replace(',', '.')) || 0,
-      quantiteUtilisee: parseFloat(quantiteUtilisee.replace(',', '.')) || 0,
+      prixUnitaire: parseFloat(prixUnitaire.replace(/\s/g, '').replace(',', '.')) || 0,
+      quantiteUtilisee: parseFloat(quantiteUtilisee.replace(/\s/g, '').replace(',', '.')) || 0,
     }, newPhotoUri);
     setIsSaving(false);
     navigation.goBack();

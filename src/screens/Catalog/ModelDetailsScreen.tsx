@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Badge } from '../../components/ui';
 import { useAppStore } from '../../store/useAppStore';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatCurrencyShort } from '../../utils/formatters';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '../../constants/theme';
 import { CATEGORY_LABELS } from '../../constants/theme';
 
@@ -50,7 +50,7 @@ export const ModelDetailsScreen: React.FC<ModelDetailsScreenProps> = ({
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Découvrez ce modèle: ${model.name} - ${formatCurrency(model.price)}`,
+        message: `Découvrez ce modèle: ${model.name} - ${formatCurrencyShort(model.price)}`,
         title: model.name,
       });
     } catch (error) {
@@ -124,7 +124,7 @@ export const ModelDetailsScreen: React.FC<ModelDetailsScreenProps> = ({
 
         <View style={styles.priceRow}>
           <Text style={styles.priceLabel}>Prix</Text>
-          <Text style={styles.priceValue}>{formatCurrency(model.price)}</Text>
+          <Text style={styles.priceValue}>{formatCurrencyShort(model.price)}</Text>
         </View>
 
         {model.description && (

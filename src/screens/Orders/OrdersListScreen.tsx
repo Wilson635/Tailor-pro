@@ -16,7 +16,7 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency, formatDate } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import {
   COLORS,
   SPACING,
@@ -191,7 +191,7 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
             </View>
             <View style={styles.ocMetaItem}>
               <Ionicons name="cash-outline" size={13} color={COLORS.gray400} />
-              <Text style={styles.ocMetaText}>{formatCurrency(item.totalPrice)}</Text>
+              <Text style={styles.ocMetaText}>{formatCurrencyShort(item.totalPrice)}</Text>
             </View>
           </View>
 
@@ -205,7 +205,7 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
                     item.remainingAmount === 0 && styles.ocRemainPaid,
                   ]}
               >
-                {formatCurrency(item.remainingAmount)}
+                {formatCurrencyShort(item.remainingAmount)}
               </Text>
             </View>
             <View style={[styles.payPill, { backgroundColor: payStyle.bg }]}>
@@ -297,9 +297,7 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
                   <View style={styles.statCard}>
                     <Text style={styles.statLabel}>Impayés</Text>
                     <Text style={styles.statVal}>
-                      {unpaidTotal >= 1000
-                          ? `${Math.round(unpaidTotal / 1000)}k`
-                          : formatCurrency(unpaidTotal)}
+                      {formatCurrencyShort(unpaidTotal)}
                     </Text>
                     <Text style={[styles.statSub, { color: '#92400E' }]}>
                       {unpaidCount} commande{unpaidCount !== 1 ? 's' : ''}
