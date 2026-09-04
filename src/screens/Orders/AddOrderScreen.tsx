@@ -2,7 +2,7 @@
 // ÉCRAN AJOUTER UNE COMMANDE - TailorPro (redesign)
 // ==========================================
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
   Platform,
   Modal,
   FlatList,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,7 +23,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrency } from '@utils/formatters';
 import {
-  COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS,
+  COLORS, SPACING, FONT_SIZES,
   BORDER_RADIUS, CLOTHING_TYPE_LABELS,
 } from '@constants/theme';
 import type { ClothingType, RootStackParamList, UrgencyLevel } from '../../types';
@@ -31,6 +32,24 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from "@/src/lib/supabase";
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
+import {useToast} from "@/src/context/ToastContext";
+import { MeasurementPickerModal } from '@screens/Projects/MeasurementPickerModal';
+import type { MeasurementChoiceResult, TypeVetement } from '../../types';
+
+/** Les vêtements (Order.clothingType) et les fiches de mensuration (FicheMensuration.typeVetement)
+ *  utilisent deux nomenclatures différentes — celle-ci fait le pont entre les deux. */
+const CLOTHING_TYPE_TO_MEASUREMENT_TYPE: Record<ClothingType, TypeVetement> = {
+  robe_longue:   'robe',
+  robe_courte:   'robe',
+  robe_mariage:  'robe',
+  costume:       'costume',
+  chemise:       'chemise',
+  pantalon:      'pantalon',
+  boubou:        'boubou',
+  ensemble:      'autre',
+  tenue_enfant:  'autre',
+  autre:         'autre',
+};
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddOrder'>;
 
@@ -121,13 +140,26 @@ const StyledInput = ({
 
 export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
-  const { addOrder, getClientById, clients } = useAppStore();
+  const { showToast } = useToast();
+  const { addOrder, getClientById, clients, participants, promoteParticipant, loadProjectRecap, applyMeasurementChoice } = useAppStore();
 
   const preselectedClientId = route.params?.clientId ?? '';
+  // ── Contexte "commande groupée" (arrivée depuis un Projet) ──
+  const projectId = (route.params as any)?.projectId as string | undefined;
+  const participantId = (route.params as any)?.participantId as string | undefined;
+  const participant = useMemo(
+      () => (projectId && participantId ? (participants[projectId] ?? []).find(p => p.id === participantId) : undefined),
+      [participants, projectId, participantId]
+  );
 
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedClientId, setSelectedClientId] = useState(preselectedClientId);
+  const [selectedClientId, setSelectedClientId] = useState(preselectedClientId || participant?.clientId || '');
   const [clothingType, setClothingType] = useState<ClothingType>('robe_longue');
+
+  // ── Mensurations (Module 13) ──
+  const [measurementModalVisible, setMeasurementModalVisible] = useState(false);
+  const [measurementChoice, setMeasurementChoice] = useState<MeasurementChoiceResult | null>(null);
+  useEffect(() => { setMeasurementChoice(null); }, [clothingType]);
   const [urgency, setUrgency] = useState<UrgencyLevel>('medium');
   const [description, setDescription] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
@@ -146,16 +178,16 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const selectedClient = selectedClientId ? getClientById(selectedClientId) : null;
 
-  const total = parseInt(totalPrice) || 0;
-  const advance = parseInt(advancePayment) || 0;
+  const total = parseInt(totalPrice.replace(/\s/g, '')) || 0;
+  const advance = parseInt(advancePayment.replace(/\s/g, '')) || 0;
   const remaining = Math.max(0, total - advance);
   const paymentStatus = getPaymentStatus(total, advance);
 
   // ── Liste filtrée pour le modal ──
   const filteredClients = useMemo(() =>
           clients.filter(c =>
-              c.fullName.toLowerCase().includes(clientSearch.toLowerCase()) ||
-              c.phone.includes(clientSearch)
+              c.nom.toLowerCase().includes(clientSearch.toLowerCase()) ||
+              c.telephone.includes(clientSearch)
           ),
       [clients, clientSearch]
   );
@@ -194,8 +226,25 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const handleSubmit = async () => {
-    if (!selectedClientId || !clothingType || !totalPrice) {
-      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires (Client, Type de vêtement, Prix total).');
+    // En contexte "projet", le client peut être résolu automatiquement depuis le participant.
+    const effectiveClientId = selectedClientId || participant?.clientId;
+
+    if (!effectiveClientId && !participant) {
+      showToast({ type: 'error', message: 'Veuillez remplir les champs obligatoires.' });
+      return;
+    }
+    if (!clothingType || !totalPrice) {
+      showToast({
+        type: 'error',
+        message: 'Veuillez remplir les champs obligatoires.',
+      });
+      return;
+    }
+    if (!measurementChoice) {
+      showToast({
+        type: 'error',
+        message: 'Veuillez sélectionner les mensurations avant d\'ajouter la commande.',
+      });
       return;
     }
 
@@ -205,48 +254,72 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Utilisateur non connecté");
 
-      const parsedTotalPrice = parseFloat(totalPrice);
-      const parsedAdvancePayment = parseFloat(advancePayment) || 0;
+      // Une commande (vêtement) doit toujours être rattachée à un client réel.
+      // Si la personne du projet est encore temporaire (pas de fiche client), on la
+      // promeut d'abord silencieusement — l'historique/mensurations restent attachés
+      // à elle, seule sa fiche `clients` est créée à la volée.
+      let clientId = effectiveClientId;
+      if (!clientId && participant) {
+        await promoteParticipant(participant.id, projectId!, { telephone: participant.telephone || '' });
+        const updated = (useAppStore.getState().participants[projectId!] ?? []).find(p => p.id === participant.id);
+        clientId = updated?.clientId ?? undefined;
+        if (!clientId) throw new Error("Impossible de créer la fiche client pour cette personne.");
+      }
+
+      const parsedTotalPrice = parseFloat(totalPrice.replace(/\s/g, ''));
+      const parsedAdvancePayment = parseFloat(advancePayment.replace(/\s/g, '')) || 0;
       const remainingAmount = parsedTotalPrice - parsedAdvancePayment;
 
-      let paymentStatus: 'unpaid' | 'partial' | 'paid' = 'unpaid';
-      if (parsedAdvancePayment >= parsedTotalPrice) paymentStatus = 'paid';
-      else if (parsedAdvancePayment > 0) paymentStatus = 'partial';
+      let computedPaymentStatus: 'unpaid' | 'partial' | 'paid' = 'unpaid';
+      if (parsedAdvancePayment >= parsedTotalPrice) computedPaymentStatus = 'paid';
+      else if (parsedAdvancePayment > 0) computedPaymentStatus = 'partial';
 
-      // 1. Création de la commande sur Supabase
-      const { data: newOrder, error: orderError } = await supabase
-          .from('orders')
-          .insert({
-            user_id: user.id,
-            client_id: selectedClientId,
-            client_name: selectedClient?.fullName ?? '',
-            clothing_type: clothingType,
-            description: description || null,
-            delivery_date: toSupabaseDate(deliveryDate),
-            urgency_level: urgency,
-            total_price: parsedTotalPrice,
-            advance_payment: parsedAdvancePayment,
-            remaining_amount: remainingAmount,
-            payment_status: paymentStatus,
-            order_status: 'pending',
-          })
-          .select()
-          .single();
+      const resolvedClient = getClientById(clientId!);
 
-      if (orderError) throw orderError;
+      // 1. Création de la commande — un seul insert, via l'action du store
+      //    (couvre aussi : mise à jour de la balance client, activité, réalisation auto-créée).
+      const newOrder = await addOrder({
+        clientId: clientId!,
+        clientName: resolvedClient?.nom ?? participant?.nom ?? '',
+        clothingType,
+        description: description || undefined,
+        fabricPhotos: [],
+        inspirationPhotos: [],
+        deliveryDate: selectedDate,
+        urgencyLevel: urgency,
+        totalPrice: parsedTotalPrice,
+        advancePayment: parsedAdvancePayment,
+        remainingAmount,
+        paymentStatus: computedPaymentStatus,
+        orderStatus: 'pending',
+        projectId,
+        participantId,
+      });
 
-      // 2. Traitement des photos d'inspiration
+      if (!newOrder) throw new Error("La commande n'a pas pu être créée.");
+
+      // 1bis. Applique le choix de mensuration (fiche existante dupliquée, ou nouvelles mesures)
+      if (measurementChoice) {
+        await applyMeasurementChoice(
+            newOrder.id,
+            clientId,
+            CLOTHING_TYPE_TO_MEASUREMENT_TYPE[clothingType],
+            measurementChoice,
+        );
+      }
+
+      // 2. Traitement des photos d'inspiration (inchangé — enrichit le catalogue)
       if (inspirationPhotos && inspirationPhotos.length > 0) {
         for (const photoUri of inspirationPhotos) {
 
           const { data: newCatalogModel, error: catalogError } = await supabase
               .from('catalog')
               .insert({
-                user_id: user.id,
-                name: `Modèle ${CLOTHING_TYPE_LABELS[clothingType] || clothingType} - ${selectedClient?.fullName ?? ''}`,
+                couturier_id: user.id,
+                name: `Modèle ${CLOTHING_TYPE_LABELS[clothingType] || clothingType} - ${resolvedClient?.nom ?? ''}`,
                 category: clothingType,
                 price: parsedTotalPrice,
-                description: `Ajouté automatiquement depuis la commande de ${selectedClient?.fullName ?? ''}`,
+                description: `Ajouté automatiquement depuis la commande de ${resolvedClient?.nom ?? ''}`,
                 is_favorite: false
               })
               .select()
@@ -288,7 +361,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               .from('catalog_photos')
               .insert({
                 catalog_id: newCatalogModel.id,
-                user_id: user.id,
+                couturier_id: user.id,
                 photo_url: publicUrl
               })
               .select()
@@ -296,20 +369,6 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
 
           if (photoError) {
             console.error("Erreur insertion catalog_photos:", photoError);
-          }
-
-          const { error: orderItemError } = await supabase
-              .from('order_items')
-              .insert({
-                order_id: newOrder.id,
-                user_id: user.id,
-                item_type: 'inspiration',
-                photo_url: publicUrl,
-                catalog_id: newCatalogModel.id
-              });
-
-          if (orderItemError) {
-            console.error("Erreur insertion order_items:", orderItemError);
           }
 
           const modelWithPhoto = {
@@ -320,16 +379,22 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
         }
       }
 
-      // 3. Mise à jour du store Zustand
-      useAppStore.getState().addOrder(newOrder);
+      // 3. Rafraîchit le récap du projet, si applicable
+      if (projectId) loadProjectRecap(projectId);
 
-      Alert.alert('Succès', 'La commande a bien été enregistrée et votre catalogue enrichi.', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      showToast({
+        type: 'success',
+        message: 'La commande a bien été enregistrée ! et votre catalogue enrichi',
+      });
+
+      if (projectId) navigation.goBack();
 
     } catch (error: any) {
       console.error(error);
-      Alert.alert('Erreur', error.message || "Une erreur est survenue lors de l'enregistrement.");
+      showToast({
+        type: 'error',
+        message: 'Une erreur est survenue lors de l\'enregistrement.',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -348,8 +413,11 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-
+      <KeyboardAvoidingView
+          style={[styles.container, { paddingTop: insets.top }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         {/* ── Header courbé ── */}
         <View style={styles.headerWrap}>
           <View style={styles.headerRow}>
@@ -372,46 +440,68 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
         >
 
           {/* ── Client ── */}
-          <SectionCard
-              iconName="person-outline"
-              iconBg="#EDE9FE" iconColor="#6B21A8"
-              title="Client"
-              subtitle="Sélectionnez la personne concernée"
-          >
-            <TouchableOpacity
-                style={styles.clientRow}
-                onPress={() => setClientModalVisible(true)}
-                activeOpacity={0.7}
-            >
-              {selectedClient ? (
-                  <>
-                    <View style={styles.clientAvatar}>
-                      <Text style={styles.clientAvatarText}>{getInitials(selectedClient.fullName)}</Text>
+          {participant ? (
+              <SectionCard
+                  iconName="people-outline"
+                  iconBg="#EDE9FE" iconColor="#6B21A8"
+                  title="Vêtement pour"
+                  subtitle="Commande groupée / Projet"
+              >
+                <View style={styles.clientRow}>
+                  <View style={styles.clientAvatar}>
+                    <Text style={styles.clientAvatarText}>{getInitials(participant.nom)}</Text>
+                  </View>
+                  <View style={styles.clientInfo}>
+                    <Text style={styles.clientName}>{participant.nom}</Text>
+                    <View style={styles.clientSubRow}>
+                      <Ionicons name="ribbon-outline" size={12} color={COLORS.textSecondary} />
+                      <Text style={styles.clientSub}>{participant.role ?? 'Participant'}</Text>
                     </View>
-                    <View style={styles.clientInfo}>
-                      <Text style={styles.clientName}>{selectedClient.fullName}</Text>
-                      <View style={styles.clientSubRow}>
-                        <Ionicons name="location-outline" size={12} color={COLORS.textSecondary} />
-                        <Text style={styles.clientSub}>{selectedClient.neighborhood}</Text>
-                      </View>
-                    </View>
-                  </>
-              ) : (
-                  <>
-                    <View style={[styles.clientAvatar, { backgroundColor: COLORS.gray100 }]}>
-                      <Ionicons name="person-add-outline" size={20} color={COLORS.gray400} />
-                    </View>
-                    <View style={styles.clientInfo}>
-                      <Text style={styles.clientPlaceholder}>Sélectionner un client</Text>
-                      <Text style={styles.clientSub}>Touchez pour parcourir la liste</Text>
-                    </View>
-                  </>
-              )}
-              <View style={styles.chevWrap}>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.gray400} />
-              </View>
-            </TouchableOpacity>
-          </SectionCard>
+                  </View>
+                </View>
+              </SectionCard>
+          ) : (
+              <SectionCard
+                  iconName="person-outline"
+                  iconBg="#EDE9FE" iconColor="#6B21A8"
+                  title="Client"
+                  subtitle="Sélectionnez la personne concernée"
+              >
+                <TouchableOpacity
+                    style={styles.clientRow}
+                    onPress={() => setClientModalVisible(true)}
+                    activeOpacity={0.7}
+                >
+                  {selectedClient ? (
+                      <>
+                        <View style={styles.clientAvatar}>
+                          <Text style={styles.clientAvatarText}>{getInitials(selectedClient.nom)}</Text>
+                        </View>
+                        <View style={styles.clientInfo}>
+                          <Text style={styles.clientName}>{selectedClient.nom}</Text>
+                          <View style={styles.clientSubRow}>
+                            <Ionicons name="location-outline" size={12} color={COLORS.textSecondary} />
+                            <Text style={styles.clientSub}>{selectedClient.adresse ?? '—'}</Text>
+                          </View>
+                        </View>
+                      </>
+                  ) : (
+                      <>
+                        <View style={[styles.clientAvatar, { backgroundColor: COLORS.gray100 }]}>
+                          <Ionicons name="person-add-outline" size={20} color={COLORS.gray400} />
+                        </View>
+                        <View style={styles.clientInfo}>
+                          <Text style={styles.clientPlaceholder}>Sélectionner un client</Text>
+                          <Text style={styles.clientSub}>Touchez pour parcourir la liste</Text>
+                        </View>
+                      </>
+                  )}
+                  <View style={styles.chevWrap}>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.gray400} />
+                  </View>
+                </TouchableOpacity>
+              </SectionCard>
+          )}
 
           {/* ── Type de vêtement ── */}
           <SectionCard
@@ -444,6 +534,40 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               })}
             </ScrollView>
           </SectionCard>
+
+          {/* ── Mensurations (Module 13) ── */}
+          {(selectedClientId || participant) && (
+              <SectionCard
+                  iconName="body-outline"
+                  iconBg="#DCFCE7" iconColor="#16A34A"
+                  title="Mensurations"
+                  subtitle="Utilise une fiche existante ou prends de nouvelles mesures"
+              >
+                {measurementChoice ? (
+                    <View style={styles.measurementDoneRow}>
+                      <View style={styles.measurementDoneBadge}>
+                        <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+                        <Text style={styles.measurementDoneText}>
+                          {measurementChoice.mode === 'use_existing'
+                              ? 'Fiche existante sélectionnée'
+                              : 'Nouvelles mesures renseignées'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setMeasurementModalVisible(true)}>
+                        <Text style={styles.measurementChangeLink}>Modifier</Text>
+                      </TouchableOpacity>
+                    </View>
+                ) : (
+                    <TouchableOpacity
+                        style={styles.measurementCta}
+                        onPress={() => setMeasurementModalVisible(true)}
+                    >
+                      <Ionicons name="body-outline" size={16} color="#16A34A" />
+                      <Text style={styles.measurementCtaText}>Choisir les mensurations</Text>
+                    </TouchableOpacity>
+                )}
+              </SectionCard>
+          )}
 
           {/* ── Photos ── */}
           <SectionCard
@@ -561,7 +685,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                         <View style={[styles.urgencyDot, { backgroundColor: opt.dot }]} />
                         <Text style={[
                           styles.urgencyLabel,
-                          active && { color: opt.color, fontWeight: FONT_WEIGHTS.semibold },
+                          active && { color: opt.color, fontFamily: 'PlusJakartaSans_600SemiBold' },
                         ]}>
                           {opt.label}
                         </Text>
@@ -725,23 +849,23 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                         {/* Avatar */}
                         <View style={[styles.modalAvatar, isSelected && styles.modalAvatarActive]}>
                           <Text style={[styles.modalAvatarText, isSelected && styles.modalAvatarTextActive]}>
-                            {getInitials(item.fullName)}
+                            {getInitials(item.nom)}
                           </Text>
                         </View>
 
                         {/* Infos */}
                         <View style={styles.modalClientInfo}>
                           <Text style={[styles.modalClientName, isSelected && { color: COLORS.primary }]}>
-                            {item.fullName}
+                            {item.nom}
                           </Text>
                           <View style={styles.modalClientMeta}>
                             <Ionicons name="call-outline" size={11} color={COLORS.gray400} />
-                            <Text style={styles.modalClientSub}>{item.phone}</Text>
-                            {item.neighborhood ? (
+                            <Text style={styles.modalClientSub}>{item.telephone}</Text>
+                            {item.adresse ? (
                                 <>
                                   <Text style={styles.modalClientDot}>·</Text>
                                   <Ionicons name="location-outline" size={11} color={COLORS.gray400} />
-                                  <Text style={styles.modalClientSub}>{item.neighborhood}</Text>
+                                  <Text style={styles.modalClientSub}>{item.adresse}</Text>
                                 </>
                             ) : null}
                           </View>
@@ -767,8 +891,16 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
             />
           </View>
         </Modal>
-
-      </View>
+        {(selectedClientId || participant) && (
+            <MeasurementPickerModal
+                visible={measurementModalVisible}
+                clientId={selectedClientId || participant?.clientId}
+                typeVetement={CLOTHING_TYPE_TO_MEASUREMENT_TYPE[clothingType]}
+                onClose={() => setMeasurementModalVisible(false)}
+                onChoice={setMeasurementChoice}
+            />
+        )}
+      </KeyboardAvoidingView>
   );
 };
 
@@ -802,7 +934,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.semibold, color: '#fff',
+    fontSize: FONT_SIZES.lg, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#fff',
   },
   headerSubtitle: {
     fontSize: FONT_SIZES.xs, color: 'rgba(255,255,255,0.75)', marginTop: 2,
@@ -842,7 +974,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   cardSubtitle: {
@@ -864,18 +996,28 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
   },
+  // ── Mensurations (Module 13) ──
+  measurementCta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#DCFCE7', borderRadius: BORDER_RADIUS.md, paddingVertical: 12,
+  },
+  measurementCtaText: { color: '#16A34A', fontSize: 13.5, fontFamily: 'PlusJakartaSans_700Bold' },
+  measurementDoneRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  measurementDoneBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  measurementDoneText: { color: '#16A34A', fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  measurementChangeLink: { color: '#6C3EB8', fontSize: 12.5, fontFamily: 'PlusJakartaSans_700Bold' },
   clientAvatar: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center',
   },
   clientAvatarText: {
-    fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.primary,
+    fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.primary,
   },
   clientInfo: { flex: 1 },
-  clientName: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  clientName: { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
   clientSubRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   clientSub: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
-  clientPlaceholder: { fontSize: FONT_SIZES.md, color: COLORS.text, fontWeight: FONT_WEIGHTS.medium },
+  clientPlaceholder: { fontSize: FONT_SIZES.md, color: COLORS.text, fontFamily: 'PlusJakartaSans_500Medium' },
   chevWrap: {
     width: 28, height: 28, borderRadius: 14,
     backgroundColor: COLORS.white,
@@ -893,7 +1035,7 @@ const styles = StyleSheet.create({
   },
   typeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   typeChipText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
-  typeChipTextActive: { color: '#fff', fontWeight: FONT_WEIGHTS.semibold },
+  typeChipTextActive: { color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold' },
 
   // ── Photos ──
   photosContainer: { gap: SPACING.md },
@@ -901,7 +1043,7 @@ const styles = StyleSheet.create({
   photoSectionHead: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  photoTitle: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  photoTitle: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
   photoCount: { fontSize: 11, color: COLORS.textSecondary },
   photoDivider: { height: 0.5, backgroundColor: COLORS.border },
   photoAdd: {
@@ -917,7 +1059,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     alignItems: 'center', justifyContent: 'center',
   },
-  photoAddLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: FONT_WEIGHTS.medium },
+  photoAddLabel: { fontSize: 11, color: COLORS.textSecondary, fontFamily: 'PlusJakartaSans_500Medium' },
   photoPreviewWrap: { position: 'relative' },
   photoPreview: { width: 90, height: 90, borderRadius: BORDER_RADIUS.md },
   removePhotoBtn: {
@@ -933,7 +1075,7 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
@@ -951,7 +1093,7 @@ const styles = StyleSheet.create({
     position: 'absolute', right: SPACING.md, top: '50%', marginTop: -8,
     fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
   inputIconRight: { position: 'absolute', right: SPACING.md, top: '50%', marginTop: -9 },
 
@@ -983,12 +1125,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   psLabel: { fontSize: 11, color: COLORS.textSecondary, marginBottom: 2 },
-  psValue: { fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
+  psValue: { fontSize: FONT_SIZES.lg, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
   statusPill: {
     borderRadius: BORDER_RADIUS.full,
     paddingHorizontal: SPACING.md, paddingVertical: 6,
   },
-  statusPillText: { fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.semibold },
+  statusPillText: { fontSize: FONT_SIZES.xs, fontFamily: 'PlusJakartaSans_600SemiBold' },
 
   // ── Footer flottant ──
   footer: {
@@ -1014,7 +1156,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
-  submitText: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: '#fff' },
+  submitText: { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#fff' },
 
   // ══════════════════════════════════════
   // STYLES MODAL CLIENT
@@ -1040,7 +1182,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: FONT_SIZES.lg,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   modalSubtitle: {
@@ -1115,7 +1257,7 @@ const styles = StyleSheet.create({
   },
   modalAvatarText: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.primary,
   },
   modalAvatarTextActive: {
@@ -1127,7 +1269,7 @@ const styles = StyleSheet.create({
   },
   modalClientName: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   modalClientMeta: {
@@ -1158,7 +1300,7 @@ const styles = StyleSheet.create({
   modalFavText: {
     fontSize: 10,
     color: '#92400E',
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
   modalCheckWrap: {
     flexShrink: 0,
@@ -1178,7 +1320,7 @@ const styles = StyleSheet.create({
   },
   modalEmptyTitle: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   modalEmptyText: {

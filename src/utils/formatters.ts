@@ -54,6 +54,7 @@ export const formatDateShort = (date: Date | string): string => {
  */
 export const formatPhone = (phone: string): string => {
   // Garder le format original s'il est déjà formaté
+  if (!phone) return '';
   if (phone.includes(' ')) return phone;
   
   // Sinon formater comme +XXX XX XX XX XX XX

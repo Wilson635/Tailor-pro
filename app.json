@@ -60,7 +60,8 @@
           "locationWhenInUsePermission": "Allow TailorPro to access your location."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

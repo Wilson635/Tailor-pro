@@ -21,7 +21,6 @@ import {
   COLORS,
   SPACING,
   FONT_SIZES,
-  FONT_WEIGHTS,
   BORDER_RADIUS,
   PAYMENT_STATUS_LABELS,
 } from '@constants/theme';
@@ -189,16 +188,16 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   ];
 
   const handleCall = () =>
-      Linking.openURL(`tel:${client.phone.replace(/\s/g, '')}`);
+      Linking.openURL(`tel:${client.telephone.replace(/\s/g, '')}`);
   const handleWhatsApp = () => {
-    const phone = client.phone.replace(/\s/g, '').replace('+', '');
+    const phone = client.telephone.replace(/\s/g, '').replace('+', '');
     Linking.openURL(`whatsapp://send?phone=${phone}`);
   };
   const handleSMS = () =>
-      Linking.openURL(`sms:${client.phone.replace(/\s/g, '')}`);
+      Linking.openURL(`sms:${client.telephone.replace(/\s/g, '')}`);
   const handleDirections = () =>
       Linking.openURL(
-          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.neighborhood)}`
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.adresse)}`
       );
 
   const orderStatusColor: Record<string, string> = {
@@ -227,7 +226,7 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.headerTitle}>Détails client</Text>
           <TouchableOpacity
               style={styles.headerBtn}
-              onPress={() => navigation.navigate('AddClient')}
+              onPress={() => navigation.navigate('EditClient', {})}
           >
             <Ionicons name="create-outline" size={20} color="#fff" />
           </TouchableOpacity>
@@ -241,9 +240,9 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           {/* ── Hero ── */}
           <View style={styles.hero}>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>{getInitials(client.fullName)}</Text>
+              <Text style={styles.avatarText}>{getInitials(client.nom)}</Text>
             </View>
-            <Text style={styles.heroName}>{client.fullName}</Text>
+            <Text style={styles.heroName}>{client.nom}</Text>
             {client.isFavorite && (
                 <View style={styles.heroBadge}>
                   <Ionicons name="star" size={11} color="#fff" style={{ marginRight: 4 }} />
@@ -253,11 +252,11 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             <View style={styles.heroMeta}>
               <View style={styles.heroMetaItem}>
                 <Ionicons name="call-outline" size={12} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.heroMetaText}>{formatPhone(client.phone)}</Text>
+                <Text style={styles.heroMetaText}>{formatPhone(client.telephone)}</Text>
               </View>
               <View style={styles.heroMetaItem}>
                 <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.heroMetaText}>{client.neighborhood}</Text>
+                <Text style={styles.heroMetaText}>{client.adresse}</Text>
               </View>
             </View>
           </View>
@@ -405,7 +404,7 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               <InfoRow
                   icon="location-outline"
                   label="Quartier"
-                  value={client.neighborhood}
+                  value={client.adresse}
               />
               <InfoRow
                   icon="wallet-outline"
@@ -509,7 +508,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: FONT_SIZES.lg,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: '#fff',
   },
 
@@ -538,12 +537,12 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontSize: FONT_SIZES.xxl,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.primary,
   },
   heroName: {
     fontSize: FONT_SIZES.xxl,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: '#fff',
   },
   heroBadge: {
@@ -625,7 +624,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   sectionLink: {
@@ -652,7 +651,7 @@ const styles = StyleSheet.create({
   },
   statVal: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
 
@@ -707,12 +706,12 @@ const styles = StyleSheet.create({
   },
   measureSummaryValue: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
   },
   measureSummaryUnit: {
     fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.regular,
+    fontFamily: 'PlusJakartaSans_400Regular',
     color: COLORS.gray400,
   },
   measureSummaryLabel: {
@@ -740,7 +739,7 @@ const styles = StyleSheet.create({
   },
   measureEmptyTitle: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: COLORS.text,
   },
   measureEmptySubtitle: {
@@ -778,7 +777,7 @@ const styles = StyleSheet.create({
   },
   orderName: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: COLORS.text,
   },
   orderMeta: {
@@ -788,7 +787,7 @@ const styles = StyleSheet.create({
   },
   orderAmt: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: COLORS.text,
     flexShrink: 0,
   },
@@ -813,7 +812,7 @@ const styles = StyleSheet.create({
   },
   infoVal: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: COLORS.text,
   },
 
@@ -825,7 +824,7 @@ const styles = StyleSheet.create({
   },
   pillText: {
     fontSize: 11,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
 
   // ── CTA ──
@@ -843,7 +842,7 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: '#fff',
   },
 
@@ -892,6 +891,6 @@ const styles = StyleSheet.create({
   errorBack: {
     fontSize: FONT_SIZES.md,
     color: COLORS.primary,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
 });

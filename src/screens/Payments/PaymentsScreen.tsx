@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Header, Card, Badge, Button } from '@components/ui';
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency, formatDate } from '@utils/formatters';
+import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '@constants/theme';
 import { PAYMENT_STATUS_LABELS } from '@constants/theme';
 
@@ -59,17 +59,17 @@ export const PaymentsScreen: React.FC<PaymentsScreenProps> = ({
         {/* Summary Card */}
         <Card style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Montant total</Text>
-          <Text style={styles.summaryValue}>{formatCurrency(totalAmount)}</Text>
+          <Text style={styles.summaryValue}>{formatCurrencyShort(totalAmount)}</Text>
           
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryItemLabel}>Payé</Text>
-              <Text style={styles.summaryItemValue}>{formatCurrency(totalPaid)}</Text>
+              <Text style={styles.summaryItemValue}>{formatCurrencyShort(totalPaid)}</Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryItemLabel}>Reste à payer</Text>
               <Text style={[styles.summaryItemValue, styles.remainingAmount]}>
-                {formatCurrency(remainingAmount)}
+                {formatCurrencyShort(remainingAmount)}
               </Text>
             </View>
           </View>
@@ -104,7 +104,7 @@ export const PaymentsScreen: React.FC<PaymentsScreenProps> = ({
                     <View style={styles.paymentInfo}>
                       <Text style={styles.paymentLabel}>Avance</Text>
                       <Text style={styles.paymentAmount}>
-                        {formatCurrency(payment.amount)}
+                        {formatCurrencyShort(payment.amount)}
                       </Text>
                     </View>
                   </TouchableOpacity>
