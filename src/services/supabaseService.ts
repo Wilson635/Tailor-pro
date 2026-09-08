@@ -7,6 +7,8 @@
 // Chaque fonction retourne { data, error }.
 
 import { supabase } from '@/src/lib/supabase';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import type { Client, Order, Measurements, Payment, Statistics, CatalogModel, FicheMensuration, TypeVetement } from '../types';
 
 // ==========================================
@@ -650,7 +652,7 @@ export const activityService = {
         const { data, error } = await supabase
             .from('activities')
             .select('*')
-            .eq('user_id', userId)
+            .eq('couturier_id', userId)
             .order('created_at', { ascending: false })
             .limit(limit);
         return { data, error };
@@ -669,7 +671,7 @@ export const activityService = {
         const { error } = await supabase
             .from('activities')
             .insert({
-                user_id: userId,
+                couturier_id: userId,
                 activity_type: activity.type,
                 title: activity.title,
                 subtitle: activity.subtitle ?? null,
@@ -747,19 +749,19 @@ export const statisticsService = {
 
 export const catalogService = {
 
-    /** Récupère tous les modèles non archivés du couturier */
+    /** Récupère tous les modèles non archivés du couturier (avec leurs photos) */
     getAll: async () => {
         const userId = await getUserId();
         const { data, error } = await supabase
             .from('catalog')
-            .select('*')
-            .or(`couturier_id.eq.${userId},user_id.eq.${userId}`)
+            .select('*, catalog_photos(photo_url)')
+            .eq('couturier_id', userId)
             .is('deleted_at', null)
             .order('created_at', { ascending: false });
         return { data, error };
     },
 
-    /** Crée un nouveau modèle */
+    /** Crée un nouveau modèle (les photos sont stockées séparément dans catalog_photos) */
     create: async (model: Omit<CatalogModel, 'id' | 'createdAt' | 'couturierId' | 'deletedAt'>) => {
         const userId = await getUserId();
         const { data, error } = await supabase
@@ -770,7 +772,6 @@ export const catalogService = {
                 category:                 model.categorie,
                 price:                    model.prixIndicatif,
                 description:              model.description ?? null,
-                photos:                   model.photos,
                 is_favorite:              model.isFavorite ?? false,
                 difficulte:               model.difficulte ?? 'moyen',
                 temps_moyen_realisation:  model.tempsMoyenRealisation ?? null,
@@ -780,17 +781,43 @@ export const catalogService = {
             })
             .select()
             .single();
-        return { data, error };
+
+        if (error || !data) return { data, error };
+
+        let catalogPhotos: { photo_url: string }[] = [];
+        if (model.photos && model.photos.length > 0) {
+            const { data: insertedPhotos, error: photosError } = await supabase
+                .from('catalog_photos')
+                .insert(
+                    model.photos.map((url) => ({
+                        catalog_id:   data.id,
+                        couturier_id: userId,
+                        photo_url:    url,
+                    }))
+                )
+                .select('photo_url');
+
+            if (photosError) {
+                console.error('Erreur insertion catalog_photos:', photosError);
+            } else {
+                catalogPhotos = insertedPhotos ?? [];
+            }
+        }
+
+        return { data: { ...data, catalog_photos: catalogPhotos }, error: null };
     },
 
-    /** Met à jour un modèle */
+    /** Met à jour un modèle (les photos sont synchronisées dans catalog_photos, pas dans une colonne) */
     update: async (modelId: string, updates: Partial<CatalogModel>) => {
+        const userId = await getUserId();
+        // `updated_at` existe maintenant sur `catalog` (colonne + trigger côté DB) — on l'envoie
+        // aussi ici par cohérence avec clientService/orderService/tissuService, même si le
+        // trigger `before update` écrasera de toute façon avec l'heure serveur.
         const payload: Record<string, any> = { updated_at: new Date().toISOString() };
         if (updates.nom               !== undefined) payload.name                    = updates.nom;
         if (updates.categorie         !== undefined) payload.category                = updates.categorie;
         if (updates.prixIndicatif     !== undefined) payload.price                   = updates.prixIndicatif;
         if (updates.description       !== undefined) payload.description             = updates.description;
-        if (updates.photos            !== undefined) payload.photos                  = updates.photos;
         if (updates.isFavorite        !== undefined) payload.is_favorite             = updates.isFavorite;
         if (updates.difficulte        !== undefined) payload.difficulte              = updates.difficulte;
         if (updates.tempsMoyenRealisation !== undefined) payload.temps_moyen_realisation = updates.tempsMoyenRealisation;
@@ -805,7 +832,41 @@ export const catalogService = {
             .eq('id', modelId)
             .select()
             .single();
-        return { data, error };
+
+        if (error || !data) {
+            if (error) console.error('Erreur update catalog:', JSON.stringify(error, null, 2));
+            return { data, error };
+        }
+
+        // Les photos vivent dans catalog_photos — si le formulaire d'édition a fourni une
+        // nouvelle liste, on remplace entièrement l'ensemble existant par celle-ci.
+        if (updates.photos !== undefined) {
+            const { error: deleteError } = await supabase
+                .from('catalog_photos')
+                .delete()
+                .eq('catalog_id', modelId);
+
+            if (deleteError) {
+                console.error('Erreur suppression catalog_photos:', deleteError);
+            }
+
+            if (updates.photos.length > 0) {
+                const { error: photosError } = await supabase
+                    .from('catalog_photos')
+                    .insert(
+                        updates.photos.map((url) => ({
+                            catalog_id:   modelId,
+                            couturier_id: userId,
+                            photo_url:    url,
+                        }))
+                    );
+                if (photosError) {
+                    console.error('Erreur insertion catalog_photos (update):', photosError);
+                }
+            }
+        }
+
+        return { data, error: null };
     },
 
     /** Soft delete : archive le modèle (ne pas le supprimer physiquement si des commandes y font référence) */
@@ -837,7 +898,6 @@ export const catalogService = {
                 category:                 model.categorie,
                 price:                    model.prixIndicatif,
                 description:              model.description ?? null,
-                photos:                   [...model.photos],
                 is_favorite:              false,
                 difficulte:               model.difficulte,
                 temps_moyen_realisation:  model.tempsMoyenRealisation ?? null,
@@ -847,29 +907,60 @@ export const catalogService = {
             })
             .select()
             .single();
-        return { data, error };
+
+        if (error || !data) return { data, error };
+
+        let catalogPhotos: { photo_url: string }[] = [];
+        if (model.photos.length > 0) {
+            const { data: insertedPhotos, error: photosError } = await supabase
+                .from('catalog_photos')
+                .insert(
+                    model.photos.map((url) => ({
+                        catalog_id:   data.id,
+                        couturier_id: userId,
+                        photo_url:    url,
+                    }))
+                )
+                .select('photo_url');
+
+            if (photosError) {
+                console.error('Erreur duplication catalog_photos:', photosError);
+            } else {
+                catalogPhotos = insertedPhotos ?? [];
+            }
+        }
+
+        return { data: { ...data, catalog_photos: catalogPhotos }, error: null };
     },
 
     /** Upload une image vers Supabase Storage et retourne l'URL publique */
     uploadPhoto: async (localUri: string, fileName: string): Promise<string | null> => {
         const userId = await getUserId();
         try {
-            const response = await fetch(localUri);
-            const blob = await response.blob();
+            // fetch(uri).blob() est peu fiable en React Native (blob vide/erreur silencieuse
+            // sur Android+Hermes) — lire en base64 puis convertir en ArrayBuffer est la méthode fiable.
+            const base64 = await FileSystem.readAsStringAsync(localUri, {
+                encoding: FileSystem.EncodingType.Base64,
+            });
+            const arrayBuffer = decode(base64);
             const path = `${userId}/catalog/${Date.now()}_${fileName}`;
 
             const { error } = await supabase.storage
                 .from('catalog-photos')
-                .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+                .upload(path, arrayBuffer, { contentType: 'image/jpeg', upsert: false });
 
-            if (error) return null;
+            if (error) {
+                console.error('Erreur upload photo catalogue:', JSON.stringify(error, null, 2));
+                return null;
+            }
 
             const { data } = supabase.storage
                 .from('catalog-photos')
                 .getPublicUrl(path);
 
             return data.publicUrl;
-        } catch {
+        } catch (err) {
+            console.error('Exception upload photo catalogue:', err);
             return null;
         }
     },
@@ -880,14 +971,16 @@ export const catalogService = {
 // (avec mapClient, mapOrder, mapActivity)
 // ==========================================
 
-/** Convertit une ligne DB catalog → type CatalogModel de l'app */
+/** Convertit une ligne DB catalog (+ catalog_photos joint) → type CatalogModel de l'app */
 export const mapCatalogModel = (row: any): CatalogModel => ({
     id:                      row.id,
     couturierId:             row.couturier_id ?? row.user_id ?? '',
     nom:                     row.name ?? '',
     categorie:               row.category ?? 'casual',
     description:             row.description ?? undefined,
-    photos:                  Array.isArray(row.photos) ? row.photos : [],
+    photos:                  Array.isArray(row.catalog_photos)
+        ? row.catalog_photos.map((p: any) => p.photo_url)
+        : (Array.isArray(row.photos) ? row.photos : []),
     prixIndicatif:           Number(row.price ?? 0),
     difficulte:              row.difficulte ?? 'moyen',
     tempsMoyenRealisation:   row.temps_moyen_realisation ?? null,

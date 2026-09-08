@@ -36,14 +36,29 @@ import { RootStackParamList } from '@/src/navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddCatalogModel'>;
 
-// CATALOG_MODEL_CATEGORIES importé depuis @constants/catalogConstants
+type Difficulte = 'facile' | 'moyen' | 'difficile';
+type Statut = 'public' | 'prive';
+
+const DIFFICULTE_OPTIONS: { value: Difficulte; label: string }[] = [
+    { value: 'facile', label: 'Facile' },
+    { value: 'moyen', label: 'Moyen' },
+    { value: 'difficile', label: 'Difficile' },
+];
+
+const STATUT_OPTIONS: { value: Statut; label: string; description: string }[] = [
+    { value: 'prive', label: 'Privé', description: 'Visible seulement par vous' },
+    { value: 'public', label: 'Public', description: 'Visible sur votre catalogue en ligne' },
+];
 
 // ==========================================
 // SOUS-COMPOSANTS
 // ==========================================
 
-const SectionLabel = ({ text }: { text: string }) => (
-    <Text style={styles.sectionLabel}>{text}</Text>
+const SectionLabel = ({ text, sub }: { text: string; sub?: string }) => (
+    <View style={styles.sectionLabelWrap}>
+        <Text style={styles.sectionLabel}>{text}</Text>
+        {sub && <Text style={styles.sectionSub}>{sub}</Text>}
+    </View>
 );
 
 const StyledInput = ({
@@ -53,6 +68,8 @@ const StyledInput = ({
                          keyboardType,
                          multiline,
                          numberOfLines,
+                         onSubmitEditing,
+                         returnKeyType,
                      }: {
     placeholder: string;
     value: string;
@@ -60,6 +77,8 @@ const StyledInput = ({
     keyboardType?: 'default' | 'numeric';
     multiline?: boolean;
     numberOfLines?: number;
+    onSubmitEditing?: () => void;
+    returnKeyType?: 'done' | 'next';
 }) => (
     <TextInput
         style={[styles.input, multiline && styles.inputMultiline]}
@@ -71,8 +90,67 @@ const StyledInput = ({
         multiline={multiline}
         numberOfLines={numberOfLines}
         textAlignVertical={multiline ? 'top' : 'center'}
+        onSubmitEditing={onSubmitEditing}
+        returnKeyType={returnKeyType}
     />
 );
+
+/** Champ "tags" réutilisable pour tissus recommandés / accessoires nécessaires */
+const TagListInput = ({
+                          placeholder,
+                          items,
+                          onAdd,
+                          onRemove,
+                      }: {
+    placeholder: string;
+    items: string[];
+    onAdd: (value: string) => void;
+    onRemove: (index: number) => void;
+}) => {
+    const [draft, setDraft] = useState('');
+
+    const handleAdd = () => {
+        const trimmed = draft.trim();
+        if (!trimmed) return;
+        onAdd(trimmed);
+        setDraft('');
+    };
+
+    return (
+        <View style={{ gap: SPACING.sm }}>
+            <View style={styles.tagInputRow}>
+                <TextInput
+                    style={[styles.input, styles.tagInput]}
+                    placeholder={placeholder}
+                    placeholderTextColor={COLORS.gray400}
+                    value={draft}
+                    onChangeText={setDraft}
+                    onSubmitEditing={handleAdd}
+                    returnKeyType="done"
+                />
+                <TouchableOpacity style={styles.tagAddBtn} onPress={handleAdd} activeOpacity={0.7}>
+                    <Ionicons name="add" size={20} color="#fff" />
+                </TouchableOpacity>
+            </View>
+
+            {items.length > 0 && (
+                <View style={styles.tagsWrap}>
+                    {items.map((item, index) => (
+                        <View key={`${item}-${index}`} style={styles.tagChip}>
+                            <Text style={styles.tagChipText}>{item}</Text>
+                            <TouchableOpacity
+                                onPress={() => onRemove(index)}
+                                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            >
+                                <Ionicons name="close" size={14} color={COLORS.primary} />
+                            </TouchableOpacity>
+                        </View>
+                    ))}
+                </View>
+            )}
+        </View>
+    );
+};
 
 // ==========================================
 // ÉCRAN PRINCIPAL
@@ -82,12 +160,20 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
     const { addCatalogModel } = useAppStore();
 
-    // ── Formulaire ──
+    // ── Formulaire — Informations de base ──
     const [name, setName] = useState('');
-    const [category, setCategory] = useState<CatalogCategory>('robes');
+    const [category, setCategory] = useState<CatalogCategory>('robe');
     const [price, setPrice] = useState('');
     const [description, setDescription] = useState('');
     const [photos, setPhotos] = useState<string[]>([]); // URI locales sélectionnées
+
+    // ── Formulaire — Détails de fabrication ──
+    const [difficulte, setDifficulte] = useState<Difficulte>('moyen');
+    const [tempsMoyenRealisation, setTempsMoyenRealisation] = useState(''); // en jours
+    const [tissusRecommandes, setTissusRecommandes] = useState<string[]>([]);
+    const [accessoiresNecessaires, setAccessoiresNecessaires] = useState<string[]>([]);
+    const [statut, setStatut] = useState<Statut>('prive');
+
     const [isLoading, setIsLoading] = useState(false);
 
     // ──────────────────────────────────────
@@ -146,6 +232,18 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
     };
 
     // ──────────────────────────────────────
+    // Tags : tissus recommandés / accessoires
+    // ──────────────────────────────────────
+
+    const addTissu = (value: string) => setTissusRecommandes((prev) => [...prev, value]);
+    const removeTissu = (index: number) =>
+        setTissusRecommandes((prev) => prev.filter((_, i) => i !== index));
+
+    const addAccessoire = (value: string) => setAccessoiresNecessaires((prev) => [...prev, value]);
+    const removeAccessoire = (index: number) =>
+        setAccessoiresNecessaires((prev) => prev.filter((_, i) => i !== index));
+
+    // ──────────────────────────────────────
     // Soumission
     // ──────────────────────────────────────
 
@@ -166,17 +264,25 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
             }
 
             // 2. Créer le modèle dans le catalogue
+            // Les clés correspondent au type CatalogModel (types/index.ts) :
+            // nom, categorie, prixIndicatif, difficulte, tempsMoyenRealisation,
+            // tissusRecommandes, accessoiresNecessaires, statut.
             const result = await addCatalogModel({
-                name: name.trim(),
-                category,
-                price: price ? parseFloat(price.replace(/\s/g, '')) : 0,
-                description: description.trim() || undefined,
-                photos: uploadedUrls,
-                isFavorite: false,
+                nom:                     name.trim(),
+                categorie:               category,
+                prixIndicatif:           price ? parseFloat(price.replace(/\s/g, '')) : 0,
+                description:             description.trim() || undefined,
+                photos:                  uploadedUrls,
+                isFavorite:              false,
+                difficulte:              difficulte,
+                tempsMoyenRealisation:   tempsMoyenRealisation ? parseInt(tempsMoyenRealisation, 10) : null,
+                tissusRecommandes:       tissusRecommandes,
+                accessoiresNecessaires:  accessoiresNecessaires,
+                statut:                  statut,
             });
 
             if (result) {
-                Alert.alert('Modèle ajouté', `"${result.name}" a été ajouté à votre catalogue.`, [
+                Alert.alert('Modèle ajouté', `"${result.nom}" a été ajouté à votre catalogue.`, [
                     { text: 'OK', onPress: () => navigation.goBack() },
                 ]);
             } else {
@@ -217,15 +323,13 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
 
                 {/* ── Photos ── */}
                 <View style={styles.card}>
-                    <SectionLabel text="Photos du modèle" />
-                    <Text style={styles.sectionSub}>Ajoutez jusqu'à 5 photos (galerie ou caméra)</Text>
+                    <SectionLabel text="Photos du modèle" sub="Ajoutez jusqu'à 5 photos (galerie ou caméra)" />
 
                     <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
                         contentContainerStyle={styles.photosRow}
                     >
-                        {/* Bouton ajouter */}
                         {photos.length < 5 && (
                             <TouchableOpacity style={styles.addPhotoBtn} onPress={handlePickSource} activeOpacity={0.7}>
                                 <Ionicons name="camera-outline" size={26} color={COLORS.primary} />
@@ -233,7 +337,6 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
                             </TouchableOpacity>
                         )}
 
-                        {/* Aperçus */}
                         {photos.map((uri, index) => (
                             <View key={index} style={styles.photoPreview}>
                                 <Image source={{ uri }} style={styles.photoImg} />
@@ -292,7 +395,7 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
                 {/* ── Catégorie ── */}
                 <View style={styles.card}>
                     <SectionLabel text="Catégorie" />
-                    <View style={styles.categoriesGrid}>
+                    <View style={styles.chipsGrid}>
                         {CATALOG_MODEL_CATEGORIES.map((cat) => (
                             <TouchableOpacity
                                 key={cat}
@@ -303,6 +406,82 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
                                 <Text style={[styles.catChipText, category === cat && styles.catChipTextActive]}>
                                     {CATALOG_CATEGORY_LABELS[cat]}
                                 </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
+
+                {/* ── Détails de fabrication ── */}
+                <View style={styles.card}>
+                    <SectionLabel text="Détails de fabrication" sub="Aide à estimer les délais et le matériel nécessaire" />
+
+                    <View style={styles.field}>
+                        <Text style={styles.fieldLabel}>Difficulté</Text>
+                        <View style={styles.chipsGrid}>
+                            {DIFFICULTE_OPTIONS.map((opt) => (
+                                <TouchableOpacity
+                                    key={opt.value}
+                                    style={[styles.catChip, difficulte === opt.value && styles.catChipActive]}
+                                    onPress={() => setDifficulte(opt.value)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={[styles.catChipText, difficulte === opt.value && styles.catChipTextActive]}>
+                                        {opt.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+
+                    <View style={styles.field}>
+                        <Text style={styles.fieldLabel}>Temps de réalisation moyen (en jours, optionnel)</Text>
+                        <StyledInput
+                            placeholder="ex: 3"
+                            value={tempsMoyenRealisation}
+                            onChangeText={(v) => setTempsMoyenRealisation(v.replace(/[^0-9]/g, ''))}
+                            keyboardType="numeric"
+                        />
+                    </View>
+
+                    <View style={styles.field}>
+                        <Text style={styles.fieldLabel}>Tissus recommandés (optionnel)</Text>
+                        <TagListInput
+                            placeholder="ex: Bazin, Soie…"
+                            items={tissusRecommandes}
+                            onAdd={addTissu}
+                            onRemove={removeTissu}
+                        />
+                    </View>
+
+                    <View style={styles.field}>
+                        <Text style={styles.fieldLabel}>Accessoires nécessaires (optionnel)</Text>
+                        <TagListInput
+                            placeholder="ex: Fermeture éclair, Boutons…"
+                            items={accessoiresNecessaires}
+                            onAdd={addAccessoire}
+                            onRemove={removeAccessoire}
+                        />
+                    </View>
+                </View>
+
+                {/* ── Visibilité ── */}
+                <View style={styles.card}>
+                    <SectionLabel text="Visibilité" />
+                    <View style={{ gap: SPACING.sm }}>
+                        {STATUT_OPTIONS.map((opt) => (
+                            <TouchableOpacity
+                                key={opt.value}
+                                style={[styles.statutOption, statut === opt.value && styles.statutOptionActive]}
+                                onPress={() => setStatut(opt.value)}
+                                activeOpacity={0.7}
+                            >
+                                <View style={styles.statutRadio}>
+                                    {statut === opt.value && <View style={styles.statutRadioDot} />}
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.statutLabel}>{opt.label}</Text>
+                                    <Text style={styles.statutDescription}>{opt.description}</Text>
+                                </View>
                             </TouchableOpacity>
                         ))}
                     </View>
@@ -381,6 +560,9 @@ const styles = StyleSheet.create({
         padding: SPACING.lg,
         gap: SPACING.md,
     },
+    sectionLabelWrap: {
+        gap: 2,
+    },
     sectionLabel: {
         fontSize: FONT_SIZES.sm,
         fontWeight: FONT_WEIGHTS.semibold,
@@ -389,7 +571,6 @@ const styles = StyleSheet.create({
     sectionSub: {
         fontSize: FONT_SIZES.xs,
         color: COLORS.textSecondary,
-        marginTop: -SPACING.sm,
     },
 
     // ── Photos ──
@@ -478,8 +659,8 @@ const styles = StyleSheet.create({
         paddingTop: SPACING.md,
     },
 
-    // ── Catégories ──
-    categoriesGrid: {
+    // ── Chips (catégorie / difficulté) ──
+    chipsGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: SPACING.sm,
@@ -503,6 +684,83 @@ const styles = StyleSheet.create({
     catChipTextActive: {
         color: '#fff',
         fontWeight: FONT_WEIGHTS.semibold,
+    },
+
+    // ── Tags (tissus / accessoires) ──
+    tagInputRow: {
+        flexDirection: 'row',
+        gap: SPACING.sm,
+        alignItems: 'center',
+    },
+    tagInput: {
+        flex: 1,
+    },
+    tagAddBtn: {
+        width: 46,
+        height: 46,
+        borderRadius: BORDER_RADIUS.md,
+        backgroundColor: COLORS.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    tagsWrap: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: SPACING.xs,
+    },
+    tagChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: '#F5F0FF',
+        borderRadius: BORDER_RADIUS.full,
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 6,
+    },
+    tagChipText: {
+        fontSize: FONT_SIZES.xs,
+        color: COLORS.primary,
+        fontWeight: FONT_WEIGHTS.medium,
+    },
+
+    // ── Statut (visibilité) ──
+    statutOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.md,
+        borderWidth: 0.5,
+        borderColor: COLORS.border,
+        borderRadius: BORDER_RADIUS.md,
+        padding: SPACING.md,
+    },
+    statutOptionActive: {
+        borderColor: COLORS.primary,
+        backgroundColor: '#F5F0FF',
+    },
+    statutRadio: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: COLORS.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    statutRadioDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: COLORS.primary,
+    },
+    statutLabel: {
+        fontSize: FONT_SIZES.sm,
+        fontWeight: FONT_WEIGHTS.semibold,
+        color: COLORS.text,
+    },
+    statutDescription: {
+        fontSize: FONT_SIZES.xs,
+        color: COLORS.textSecondary,
+        marginTop: 1,
     },
 
     // ── Footer ──

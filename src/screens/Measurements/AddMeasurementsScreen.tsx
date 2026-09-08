@@ -1,210 +1,220 @@
 // ==========================================
-// ÉCRAN AJOUTER DES MESURES - TailorPro
-// ==========================================
-// ==========================================
-// ÉCRAN AJOUTER / MODIFIER DES MESURES - TailorPro
+// ÉCRAN PRISE DE MESURES — TailorPro (Module 3)
+// Migré vers le système FicheMensuration : réutilise DynamicMeasurementForm
+// (déjà utilisé par MeasurementPickerModal) qui accepte les champs du template
+// du type de vêtement ET des champs personnalisés ajoutés à la volée.
 // ==========================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Header, Input, Button, Card } from '@components/ui';
-import { useAppStore } from '@store/useAppStore';
-import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '@constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { MeasurementsFormData } from '../../types';
-import { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { useAppStore } from '@store/useAppStore';
+import { DynamicMeasurementForm } from '@screens/Projects/DynamicMeasurementForm';
+import {
+  TYPE_VETEMENT_LABELS, TYPE_VETEMENT_ICONS,
+} from '@constants/mensurationConstants';
+import type { TypeVetement } from '../../types';
+import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddMeasurements'>;
 
-// ==========================================
-// SOUS-COMPOSANT : champ de saisie
-// ==========================================
+// ── PALETTE (cohérente avec les autres écrans du module 3) ──
+const C = {
+  purple900: '#1A0033',
+  purple600: '#534AB7',
+  bg:        '#FFFFFF',
+  surface:   '#F7F6F4',
+  border:    '#EBEBEB',
+  text:      '#0E0B14',
+  textSec:   '#7A7787',
+};
 
-interface MeasurementInputProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-}
-
-const MeasurementInput: React.FC<MeasurementInputProps> = ({
-                                                             icon,
-                                                             label,
-                                                             value,
-                                                             onChangeText,
-                                                           }) => (
-    <View style={styles.measurementInput}>
-      <View style={styles.measurementLeft}>
-        <View style={styles.measurementIcon}>
-          <Ionicons name={icon} size={18} color={COLORS.primary} />
-        </View>
-        <Text style={styles.measurementLabel}>{label}</Text>
-      </View>
-      <View style={styles.inputContainer}>
-        <Input
-            value={value}
-            onChangeText={onChangeText}
-            keyboardType="numeric"
-            placeholder="0"
-            suffix="cm"
-            style={styles.input}
-        />
-      </View>
-    </View>
-);
-
-// ==========================================
-// ÉCRAN PRINCIPAL
-// ==========================================
+// Types de vêtements connus (le champ reste libre — ce ne sont que des raccourcis)
+// "global" n'est pas un vêtement : c'est la fiche de mesures générales du corps,
+// indépendante d'un vêtement précis (cf. fiche papier), à prendre une bonne fois
+// et réutilisable ensuite pour n'importe quel type de vêtement.
+const KNOWN_TYPES: TypeVetement[] = ['global', 'robe', 'costume', 'chemise', 'pantalon', 'boubou', 'autre'];
 
 export const AddMeasurementsScreen: React.FC<Props> = ({ route, navigation }) => {
-  const { clientId } = route.params;
-  const { saveMeasurements, getMeasurementsByClient, loadMeasurements } = useAppStore();
+  const insets = useSafeAreaInsets();
+  const { clientId, typeVetement: initialType } = route.params;
 
-  const [isLoading, setIsLoading] = useState(false);
+  const { addFiche, getClientById } = useAppStore();
+  const client = getClientById(clientId);
 
-  // Pré-remplit le formulaire si des mesures existent déjà
-  const existing = getMeasurementsByClient(clientId);
+  const [typeVetement, setTypeVetement] = useState<TypeVetement | null>(
+      (initialType as TypeVetement) ?? null
+  );
+  const [customType, setCustomType] = useState('');
+  const [notes, setNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const [formData, setFormData] = useState<MeasurementsFormData>({
-    chestCircumference:  existing?.chestCircumference  ? String(existing.chestCircumference)  : '',
-    waistCircumference:  existing?.waistCircumference  ? String(existing.waistCircumference)  : '',
-    hipCircumference:    existing?.hipCircumference    ? String(existing.hipCircumference)    : '',
-    backWidth:           existing?.backWidth           ? String(existing.backWidth)           : '',
-    shoulderWidth:       existing?.shoulderWidth       ? String(existing.shoulderWidth)       : '',
-    sleeveLength:        existing?.sleeveLength        ? String(existing.sleeveLength)        : '',
-    armCircumference:    existing?.armCircumference    ? String(existing.armCircumference)    : '',
-    neckCircumference:   existing?.neckCircumference   ? String(existing.neckCircumference)   : '',
-    dressLength:         existing?.dressLength         ? String(existing.dressLength)         : '',
-    bustHeight:          existing?.bustHeight          ? String(existing.bustHeight)          : '',
-    thighCircumference:  existing?.thighCircumference  ? String(existing.thighCircumference)  : '',
-  });
+  // ──────────────────────────────────────
+  // Étape 1 : choix du type de vêtement
+  // ──────────────────────────────────────
 
-  // Charge depuis Supabase si pas encore en store, puis pré-remplit
-  useEffect(() => {
-    if (!existing) {
-      loadMeasurements(clientId).then(() => {
-        const loaded = getMeasurementsByClient(clientId);
-        if (loaded) {
-          setFormData({
-            chestCircumference:  loaded.chestCircumference  ? String(loaded.chestCircumference)  : '',
-            waistCircumference:  loaded.waistCircumference  ? String(loaded.waistCircumference)  : '',
-            hipCircumference:    loaded.hipCircumference    ? String(loaded.hipCircumference)    : '',
-            backWidth:           loaded.backWidth           ? String(loaded.backWidth)           : '',
-            shoulderWidth:       loaded.shoulderWidth       ? String(loaded.shoulderWidth)       : '',
-            sleeveLength:        loaded.sleeveLength        ? String(loaded.sleeveLength)        : '',
-            armCircumference:    loaded.armCircumference    ? String(loaded.armCircumference)    : '',
-            neckCircumference:   loaded.neckCircumference   ? String(loaded.neckCircumference)   : '',
-            dressLength:         loaded.dressLength         ? String(loaded.dressLength)         : '',
-            bustHeight:          loaded.bustHeight          ? String(loaded.bustHeight)          : '',
-            thighCircumference:  loaded.thighCircumference  ? String(loaded.thighCircumference)  : '',
-          });
-        }
-      });
+  const handleConfirmCustomType = () => {
+    const trimmed = customType.trim();
+    if (!trimmed) {
+      Alert.alert('Champ requis', 'Précise le type de vêtement.');
+      return;
     }
-  }, [clientId]);
-
-  const measurementFields: Array<{
-    key: keyof MeasurementsFormData;
-    icon: keyof typeof Ionicons.glyphMap;
-    label: string;
-  }> = [
-    { key: 'chestCircumference',  icon: 'body-outline',             label: 'Tour de poitrine' },
-    { key: 'waistCircumference',  icon: 'resize-outline',           label: 'Tour de taille'   },
-    { key: 'hipCircumference',    icon: 'ellipse-outline',          label: 'Tour de hanches'  },
-    { key: 'backWidth',           icon: 'swap-horizontal-outline',  label: 'Largeur dos'      },
-    { key: 'shoulderWidth',       icon: 'remove-outline',           label: 'Longueur épaule'  },
-    { key: 'sleeveLength',        icon: 'arrow-forward-outline',    label: 'Longueur manche'  },
-    { key: 'armCircumference',    icon: 'radio-button-off-outline', label: 'Tour de bras'     },
-    { key: 'neckCircumference',   icon: 'ellipse-outline',          label: 'Tour de cou'      },
-    { key: 'dressLength',         icon: 'resize-outline',           label: 'Longueur robe'    },
-    { key: 'bustHeight',          icon: 'arrow-up-outline',         label: 'Hauteur buste'    },
-    { key: 'thighCircumference',  icon: 'ellipse-outline',          label: 'Tour de cuisse'   },
-  ];
-
-  const updateField = (key: keyof MeasurementsFormData, value: string) => {
-    const numericValue = value.replace(/[^0-9]/g, '');
-    setFormData(prev => ({ ...prev, [key]: numericValue }));
+    setTypeVetement(trimmed);
   };
 
-  const handleSubmit = async () => {
-    setIsLoading(true);
+  // ──────────────────────────────────────
+  // Étape 2 : soumission du formulaire dynamique
+  // ──────────────────────────────────────
+
+  const handleSubmit = async (mesures: Record<string, number>, unite: 'cm' | 'pouces') => {
+    if (!typeVetement) return;
+    setIsSaving(true);
     try {
-      const result = await saveMeasurements(clientId, {
-        recordedAt: new Date(),
-        chestCircumference: formData.chestCircumference ? parseInt(formData.chestCircumference) : undefined,
-        waistCircumference: formData.waistCircumference ? parseInt(formData.waistCircumference) : undefined,
-        hipCircumference:   formData.hipCircumference   ? parseInt(formData.hipCircumference)   : undefined,
-        backWidth:          formData.backWidth          ? parseInt(formData.backWidth)          : undefined,
-        shoulderWidth:      formData.shoulderWidth      ? parseInt(formData.shoulderWidth)      : undefined,
-        sleeveLength:       formData.sleeveLength       ? parseInt(formData.sleeveLength)       : undefined,
-        armCircumference:   formData.armCircumference   ? parseInt(formData.armCircumference)   : undefined,
-        neckCircumference:  formData.neckCircumference  ? parseInt(formData.neckCircumference)  : undefined,
-        dressLength:        formData.dressLength        ? parseInt(formData.dressLength)        : undefined,
-        bustHeight:         formData.bustHeight         ? parseInt(formData.bustHeight)         : undefined,
-        thighCircumference: formData.thighCircumference ? parseInt(formData.thighCircumference) : undefined,
+      const fiche = await addFiche(clientId, {
+        typeVetement,
+        datePrise: new Date(),
+        mesures,
+        unite,
+        notes: notes.trim() || undefined,
+        isActive: true, // devient la fiche de référence pour ce type de vêtement
       });
 
-      if (result) {
-        Alert.alert(
-            'Mesures enregistrées',
-            'Les mesures ont bien été sauvegardées.',
-            [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
+      if (fiche) {
+        Alert.alert('Mesures enregistrées', 'La fiche a bien été créée.', [
+          { text: 'OK', onPress: () => navigation.replace('FicheDetails', { ficheId: fiche.id, clientId }) },
+        ]);
+      } else {
+        Alert.alert('Erreur', 'Impossible d\'enregistrer les mesures. Réessayez.');
       }
     } catch {
-      Alert.alert('Erreur', 'Impossible d\'enregistrer les mesures. Veuillez réessayer.');
+      Alert.alert('Erreur', 'Une erreur inattendue s\'est produite.');
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelForm = () => {
+    if (initialType) {
+      navigation.goBack();
+    } else {
+      setTypeVetement(null);
     }
   };
 
   return (
       <View style={styles.container}>
-        <Header
-            title={existing ? 'Modifier les mesures' : 'Ajouter des mesures'}
-            variant="primary"
-            showBack
-            onBackPress={() => navigation.goBack()}
-        />
+        {/* ── Header ── */}
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <TouchableOpacity
+              style={styles.headerBtn}
+              onPress={() => (typeVetement && !initialType ? setTypeVetement(null) : navigation.goBack())}
+              activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={18} color={C.text} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.headerTitle}>Nouvelle prise de mesure</Text>
+            <Text style={styles.headerSub}>{client?.nom ?? 'Client'}</Text>
+          </View>
+        </View>
+        <View style={styles.divider} />
 
         <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
         >
-          <Card style={styles.card}>
-            {measurementFields.map((field, index) => (
-                <View key={field.key}>
-                  <MeasurementInput
-                      icon={field.icon}
-                      label={field.label}
-                      value={formData[field.key] || ''}
-                      onChangeText={(value) => updateField(field.key, value)}
-                  />
-                  {index < measurementFields.length - 1 && (
-                      <View style={styles.divider} />
-                  )}
-                </View>
-            ))}
-          </Card>
-        </ScrollView>
+          {!typeVetement ? (
+              // ── Étape 1 : choix du type de vêtement ──
+              <View style={{ gap: 16 }}>
+                <TouchableOpacity
+                    style={styles.globalOption}
+                    onPress={() => setTypeVetement('global')}
+                    activeOpacity={0.85}
+                >
+                  <Text style={styles.globalEmoji}>{TYPE_VETEMENT_ICONS['global'] ?? '📋'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.globalTitle}>{TYPE_VETEMENT_LABELS['global'] ?? 'Mesures générales'}</Text>
+                    <Text style={styles.globalSub}>La fiche complète du corps, indépendante d'un vêtement</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={C.textSec} />
+                </TouchableOpacity>
 
-        <View style={styles.footer}>
-          <Button
-              title={isLoading ? 'Enregistrement...' : 'Enregistrer les mesures'}
-              onPress={handleSubmit}
-              fullWidth
-              loading={isLoading}
-          />
-        </View>
+                <Text style={styles.sectionTitle}>Ou pour un type de vêtement précis</Text>
+                <View style={styles.typesGrid}>
+                  {KNOWN_TYPES.filter(t => t !== 'global').map((type) => (
+                      <TouchableOpacity
+                          key={type}
+                          style={styles.typeChip}
+                          onPress={() => setTypeVetement(type)}
+                          activeOpacity={0.8}
+                      >
+                        <Text style={styles.typeEmoji}>{TYPE_VETEMENT_ICONS[type] ?? '📐'}</Text>
+                        <Text style={styles.typeLabel}>{TYPE_VETEMENT_LABELS[type] ?? type}</Text>
+                      </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.customSection}>
+                  <Text style={styles.fieldLabel}>Autre type (personnalisé)</Text>
+                  <View style={styles.customRow}>
+                    <TextInput
+                        style={styles.customInput}
+                        placeholder="ex: Kimono, Gilet…"
+                        placeholderTextColor={C.textSec}
+                        value={customType}
+                        onChangeText={setCustomType}
+                        onSubmitEditing={handleConfirmCustomType}
+                        returnKeyType="done"
+                    />
+                    <TouchableOpacity style={styles.customBtn} onPress={handleConfirmCustomType} activeOpacity={0.8}>
+                      <Ionicons name="arrow-forward" size={18} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+          ) : (
+              // ── Étape 2 : formulaire de mesures dynamique ──
+              <View style={{ gap: 16 }}>
+                <View style={styles.typeSummary}>
+                  <Text style={styles.typeSummaryEmoji}>{TYPE_VETEMENT_ICONS[typeVetement] ?? '📐'}</Text>
+                  <Text style={styles.typeSummaryLabel}>
+                    {TYPE_VETEMENT_LABELS[typeVetement] ?? typeVetement}
+                  </Text>
+                </View>
+
+                <DynamicMeasurementForm
+                    typeVetement={typeVetement}
+                    onSubmit={handleSubmit}
+                    onCancel={handleCancelForm}
+                />
+
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Notes (optionnel)</Text>
+                  <TextInput
+                      style={styles.notesInput}
+                      placeholder="Remarques particulières…"
+                      placeholderTextColor={C.textSec}
+                      value={notes}
+                      onChangeText={setNotes}
+                      multiline
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                  />
+                </View>
+
+                {isSaving && (
+                    <Text style={{ textAlign: 'center', color: C.textSec, fontSize: 13 }}>
+                      Enregistrement en cours…
+                    </Text>
+                )}
+              </View>
+          )}
+        </ScrollView>
       </View>
   );
 };
@@ -214,299 +224,61 @@ export const AddMeasurementsScreen: React.FC<Props> = ({ route, navigation }) =>
 // ==========================================
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
+  container:   { flex: 1, backgroundColor: C.surface },
+  header:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, backgroundColor: C.bg },
+  headerBtn:   { width: 36, height: 36, borderRadius: 12, borderWidth: 0.5, borderColor: C.border,
+    alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: C.text, letterSpacing: -0.2 },
+  headerSub:   { fontSize: 12, color: C.textSec, marginTop: 1 },
+  divider:     { height: 0.5, backgroundColor: C.border },
+  content:     { padding: 16 },
+
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: C.text },
+
+  // ── Option "Mesures globales" ──
+  globalOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#EEEDFE', borderRadius: 16, padding: 14,
+    borderWidth: 1, borderColor: C.purple600,
   },
-  scrollView: {
-    flex: 1,
+  globalEmoji: { fontSize: 26 },
+  globalTitle: { fontSize: 15, fontWeight: '700', color: C.text },
+  globalSub: { fontSize: 12, color: C.textSec, marginTop: 2 },
+
+  // ── Étape 1 : types ──
+  typesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  typeChip: {
+    width: '31%', backgroundColor: C.bg, borderRadius: 16, paddingVertical: 16,
+    alignItems: 'center', gap: 6, borderWidth: 0.5, borderColor: C.border,
   },
-  scrollContent: {
-    padding: SPACING.lg,
-    paddingBottom: SPACING.xxxl,
+  typeEmoji: { fontSize: 26 },
+  typeLabel: { fontSize: 12, fontWeight: '600', color: C.text, textAlign: 'center' },
+
+  customSection: { gap: 8 },
+  customRow: { flexDirection: 'row', gap: 8 },
+  customInput: {
+    flex: 1, height: 46, borderRadius: 12, borderWidth: 0.5, borderColor: C.border,
+    paddingHorizontal: 14, fontSize: 14, color: C.text, backgroundColor: C.bg,
   },
-  card: {
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    overflow: 'hidden',
+  customBtn: {
+    width: 46, height: 46, borderRadius: 12, backgroundColor: C.purple600,
+    alignItems: 'center', justifyContent: 'center',
   },
-  measurementInput: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    paddingLeft: SPACING.lg,
-    paddingRight: SPACING.md,
+
+  // ── Étape 2 ──
+  typeSummary: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: C.bg, borderRadius: 14, padding: 12,
+    borderWidth: 0.5, borderColor: C.border,
   },
-  measurementLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    flex: 1,
-  },
-  measurementIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: BORDER_RADIUS.sm,
-    backgroundColor: COLORS.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  measurementLabel: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    flex: 1,
-  },
-  inputContainer: {
-    width: 100,
-  },
-  input: {
-    textAlign: 'right',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.gray100,
-    marginLeft: 64,
-  },
-  footer: {
-    padding: SPACING.lg,
-    backgroundColor: COLORS.white,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.gray100,
+  typeSummaryEmoji: { fontSize: 22 },
+  typeSummaryLabel: { fontSize: 15, fontWeight: '700', color: C.text },
+
+  field: { gap: 6 },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: C.text },
+  notesInput: {
+    minHeight: 80, borderRadius: 12, borderWidth: 0.5, borderColor: C.border,
+    paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: C.text,
+    backgroundColor: C.bg,
   },
 });
-
-
-
-/********
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Alert,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Header, Input, Button, Card } from '../../components/ui';
-import { useAppStore } from '../../store/useAppStore';
-import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '../../constants/theme';
-import type { MeasurementsFormData } from '../../types';
-
-interface AddMeasurementsScreenProps {
-  clientId: string;
-  onBack?: () => void;
-  onSuccess?: () => void;
-}
-
-interface MeasurementInputProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-}
-
-const MeasurementInput: React.FC<MeasurementInputProps> = ({
-  icon,
-  label,
-  value,
-  onChangeText,
-}) => (
-  <View style={styles.measurementInput}>
-    <View style={styles.measurementLeft}>
-      <View style={styles.measurementIcon}>
-        <Ionicons name={icon} size={18} color={COLORS.primary} />
-      </View>
-      <Text style={styles.measurementLabel}>{label}</Text>
-    </View>
-    <View style={styles.inputContainer}>
-      <Input
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType="numeric"
-        placeholder="0"
-        suffix="cm"
-        style={styles.input}
-      />
-    </View>
-  </View>
-);
-
-export const AddMeasurementsScreen: React.FC<AddMeasurementsScreenProps> = ({
-  clientId,
-  onBack,
-  onSuccess,
-}) => {
-  const { setMeasurements } = useAppStore();
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState<MeasurementsFormData>({
-    chestCircumference: '',
-    waistCircumference: '',
-    hipCircumference: '',
-    backWidth: '',
-    shoulderWidth: '',
-    sleeveLength: '',
-    armCircumference: '',
-    neckCircumference: '',
-    dressLength: '',
-    bustHeight: '',
-    thighCircumference: '',
-  });
-
-  const measurementFields: Array<{
-    key: keyof MeasurementsFormData;
-    icon: keyof typeof Ionicons.glyphMap;
-    label: string;
-  }> = [
-    { key: 'chestCircumference', icon: 'body-outline', label: 'Tour de poitrine' },
-    { key: 'waistCircumference', icon: 'resize-outline', label: 'Tour de taille' },
-    { key: 'hipCircumference', icon: 'ellipse-outline', label: 'Tour de hanches' },
-    { key: 'backWidth', icon: 'swap-horizontal-outline', label: 'Largeur dos' },
-    { key: 'shoulderWidth', icon: 'remove-outline', label: 'Longueur épaule' },
-    { key: 'sleeveLength', icon: 'arrow-forward-outline', label: 'Longueur manche' },
-    { key: 'armCircumference', icon: 'radio-button-off-outline', label: 'Tour de bras' },
-    { key: 'neckCircumference', icon: 'ellipse-outline', label: 'Tour de cou' },
-  ];
-
-  const updateField = (key: keyof MeasurementsFormData, value: string) => {
-    // Only allow numbers
-    const numericValue = value.replace(/[^0-9]/g, '');
-    setFormData(prev => ({ ...prev, [key]: numericValue }));
-  };
-
-  const handleSubmit = async () => {
-    setIsLoading(true);
-    
-    try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const measurements = {
-        id: Date.now().toString(),
-        clientId,
-        recordedAt: new Date(),
-        chestCircumference: formData.chestCircumference ? parseInt(formData.chestCircumference) : undefined,
-        waistCircumference: formData.waistCircumference ? parseInt(formData.waistCircumference) : undefined,
-        hipCircumference: formData.hipCircumference ? parseInt(formData.hipCircumference) : undefined,
-        backWidth: formData.backWidth ? parseInt(formData.backWidth) : undefined,
-        shoulderWidth: formData.shoulderWidth ? parseInt(formData.shoulderWidth) : undefined,
-        sleeveLength: formData.sleeveLength ? parseInt(formData.sleeveLength) : undefined,
-        armCircumference: formData.armCircumference ? parseInt(formData.armCircumference) : undefined,
-        neckCircumference: formData.neckCircumference ? parseInt(formData.neckCircumference) : undefined,
-        dressLength: formData.dressLength ? parseInt(formData.dressLength) : undefined,
-        bustHeight: formData.bustHeight ? parseInt(formData.bustHeight) : undefined,
-        thighCircumference: formData.thighCircumference ? parseInt(formData.thighCircumference) : undefined,
-      };
-      
-      setMeasurements(clientId, measurements);
-      onSuccess?.();
-    } catch (error) {
-      Alert.alert('Erreur', 'Impossible d\'enregistrer les mesures');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <View style={styles.container}>
-      <Header
-        title="Ajouter des mesures"
-        variant="primary"
-        showBack
-        onBackPress={onBack}
-      />
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Card style={styles.card}>
-          {measurementFields.map((field, index) => (
-            <View key={field.key}>
-              <MeasurementInput
-                icon={field.icon}
-                label={field.label}
-                value={formData[field.key] || ''}
-                onChangeText={(value) => updateField(field.key, value)}
-              />
-              {index < measurementFields.length - 1 && <View style={styles.divider} />}
-            </View>
-          ))}
-        </Card>
-      </ScrollView>
-
-      {/* Submit Button
-      <View style={styles.footer}>
-        <Button
-          title="Enregistrer les mesures"
-          onPress={handleSubmit}
-          fullWidth
-          loading={isLoading}
-        />
-      </View>
-    </View>
-  );
-};
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: SPACING.lg,
-    paddingBottom: SPACING.xxxl,
-  },
-  card: {
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    overflow: 'hidden',
-  },
-  measurementInput: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    paddingLeft: SPACING.lg,
-    paddingRight: SPACING.md,
-  },
-  measurementLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    flex: 1,
-  },
-  measurementIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: BORDER_RADIUS.sm,
-    backgroundColor: COLORS.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  measurementLabel: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    flex: 1,
-  },
-  inputContainer: {
-    width: 100,
-  },
-  input: {
-    textAlign: 'right',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.gray100,
-    marginLeft: 64,
-  },
-  footer: {
-    padding: SPACING.lg,
-    backgroundColor: COLORS.white,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.gray100,
-  },
-});*/

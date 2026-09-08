@@ -1188,9 +1188,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ catalog: (data ?? []).map(mapCatalogModel) });
   },
 
-  addCatalogModel: async (modelData) => {
+  /*addCatalogModel: async (modelData) => {
     const { data, error } = await catalogService.create(modelData);
     if (error || !data) { set({ error: error?.message }); return null; }
+    const newModel = mapCatalogModel(data);
+    set((state: any) => ({ catalog: [newModel, ...state.catalog] }));
+    return newModel;
+  },*/
+
+  addCatalogModel: async (modelData) => {
+    const { data, error } = await catalogService.create(modelData);
+    if (error || !data) {
+      console.error('❌ Erreur création catalogue:', JSON.stringify(error, null, 2)); // ← ajoute cette ligne
+      set({ error: error?.message });
+      return null;
+    }
     const newModel = mapCatalogModel(data);
     set((state: any) => ({ catalog: [newModel, ...state.catalog] }));
     return newModel;
