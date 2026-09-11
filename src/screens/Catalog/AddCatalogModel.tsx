@@ -3,12 +3,12 @@
 // ==========================================
 
 import React, { useState } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -59,7 +59,7 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
   const pickPhotos = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission refusée', 'Autorisez l’accès à la galerie pour ajouter des photos.');
+      showAlert('Permission refusée', 'Autorisez l’accès à la galerie pour ajouter des photos.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -76,7 +76,7 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission refusée', 'Autorisez l’accès à la caméra.');
+      showAlert('Permission refusée', 'Autorisez l’accès à la caméra.');
       return;
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
@@ -86,7 +86,7 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const handlePickSource = () => {
-    Alert.alert('Photos du modèle', 'Choisissez une source', [
+    showAlert('Photos du modèle', 'Choisissez une source', [
       { text: 'Galerie', onPress: pickPhotos },
       { text: 'Caméra', onPress: takePhoto },
       { text: 'Annuler', style: 'cancel' },
@@ -95,7 +95,7 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      Alert.alert('Champ requis', 'Donnez un nom à ce modèle.');
+      showAlert('Champ requis', 'Donnez un nom à ce modèle.');
       return;
     }
     setIsLoading(true);
@@ -120,14 +120,12 @@ export const AddCatalogModelScreen: React.FC<Props> = ({ navigation }) => {
         statut,
       });
       if (result) {
-        Alert.alert('Ajouté au catalogue', `"${result.nom}" est prêt.`, [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        showSuccess('Ajouté au catalogue', `"${result.nom}" est prêt.`, () => navigation.goBack());
       } else {
-        Alert.alert('Erreur', 'Impossible d’ajouter le modèle.');
+        showAlert('Erreur', 'Impossible d’ajouter le modèle.');
       }
     } catch {
-      Alert.alert('Erreur', 'Une erreur inattendue s’est produite.');
+      showAlert('Erreur', 'Une erreur inattendue s’est produite.');
     } finally {
       setIsLoading(false);
     }

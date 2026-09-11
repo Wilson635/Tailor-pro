@@ -283,5 +283,5 @@ const styles = StyleSheet.create({
 
   fab:         { position: 'absolute', right: 24, width: 56, height: 56, borderRadius: 28,
     backgroundColor: C.purple900, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
+    borderWidth: 1, borderColor: C.gold },
 });

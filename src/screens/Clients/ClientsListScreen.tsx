@@ -34,9 +34,17 @@ const isNewClient = (createdAt: Date): boolean =>
 export const ClientsListScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
     const { colors: P, styles } = useThemedStyles(makeStyles);
-    const { clients, searchQuery, setSearchQuery } = useAppStore();
+    const { clients, searchQuery, setSearchQuery, orders } = useAppStore();
     const [activeFilter, setActiveFilter] = useState<FilterType>('all');
     const [searchFocused, setSearchFocused] = useState(false);
+
+    const orderCountByClient = useMemo(() => {
+        const map: Record<string, number> = {};
+        for (const o of orders) map[o.clientId] = (map[o.clientId] ?? 0) + 1;
+        return map;
+    }, [orders]);
+
+    const isFidele = (clientId: string) => (orderCountByClient[clientId] ?? 0) > 2;
 
     const totalClients = clients.length;
     const clientsWithBalance = clients.filter((c) => c.balance > 0);
@@ -60,11 +68,11 @@ export const ClientsListScreen: React.FC<Props> = ({ navigation }) => {
                 );
                 break;
             case 'favorite':
-                result = result.filter((c) => c.isFavorite);
+                result = result.filter((c) => isFidele(c.id));
                 break;
         }
         return result;
-    }, [clients, searchQuery, activeFilter]);
+    }, [clients, searchQuery, activeFilter, orderCountByClient]);
 
     const renderClient = ({ item }: { item: Client }) => {
         const isNew = isNewClient(item.createdAt);
@@ -78,12 +86,12 @@ export const ClientsListScreen: React.FC<Props> = ({ navigation }) => {
                 <View style={styles.info}>
                     <View style={styles.nameRow}>
                         <Text style={styles.name} numberOfLines={1}>{item.nom}</Text>
-                        {item.isFavorite && (
+                        {isFidele(item.id) && (
                             <View style={styles.badgeGold}>
                                 <Text style={styles.badgeGoldText}>Fidèle</Text>
                             </View>
                         )}
-                        {isNew && !item.isFavorite && (
+                        {isNew && !isFidele(item.id) && (
                             <View style={styles.badgeNew}>
                                 <Text style={styles.badgeNewText}>Nouveau</Text>
                             </View>

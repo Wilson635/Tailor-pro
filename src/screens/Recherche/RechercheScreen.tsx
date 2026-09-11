@@ -1,16 +1,15 @@
 // ──────────────────────────────────────────────────────────
 // RechercheScreen — Module 10
 // Recherche globale transversale sur les Réalisations.
-// Full-text search via fonction PostgreSQL (pas de LIKE).
 // ──────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, TextInput, FlatList,
+    View, Text, TextInput, FlatList,
     TouchableOpacity, ActivityIndicator, Keyboard,
     Animated, Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
@@ -22,156 +21,27 @@ import {
     STATUT_REALISATION_LIST,
 } from '@constants/realisationConstants';
 import { StatutRealisation } from '../../types';
-
-// ── Palette ──────────────────────────────────────────────
-const P = {
-    bg:      '#16123A',
-    primary: '#6C3EB8',
-    pageBg:  '#F5F4FB',
-    surface: '#FFFFFF',
-    text:    '#1A1033',
-    sub:     '#7C6FA8',
-    border:  'rgba(108,62,184,0.10)',
-    gold:    '#D4AF37',
-};
+import { DateField } from '@components/ui';
+import { useThemedStyles, type Palette } from '@/src/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-// ── Composant carte résultat ──────────────────────────────
-const ResultCard = ({
-    item, onPress,
-}: {
-    item: ResultatRecherche;
-    onPress: () => void;
-}) => {
-    const statut        = item.statut as StatutRealisation;
-    const statutLabel   = STATUT_REALISATION_LABELS[statut] ?? item.statut;
-    const statutColor   = STATUT_REALISATION_COLORS[statut] ?? P.primary;
-    const initials      = (item.clientNom ?? '?')
-        .split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-
-    return (
-        <TouchableOpacity style={cardStyles.card} onPress={onPress} activeOpacity={0.82}>
-            {/* Avatar initiales */}
-            <View style={[cardStyles.avatar, { backgroundColor: P.primary + '18' }]}>
-                <Text style={cardStyles.avatarText}>{initials}</Text>
-            </View>
-
-            {/* Infos */}
-            <View style={{ flex: 1, marginLeft: 12 }}>
-                <View style={cardStyles.topRow}>
-                    <Text style={cardStyles.name} numberOfLines={1}>{item.clientNom}</Text>
-                    <View style={[cardStyles.statutBadge, { backgroundColor: statutColor + '1A' }]}>
-                        <Text style={[cardStyles.statutText, { color: statutColor }]}>
-                            {statutLabel}
-                        </Text>
-                    </View>
-                </View>
-
-                {/* Tissu & couleur */}
-                {(item.tissuLabel || item.couleur) && (
-                    <View style={cardStyles.metaRow}>
-                        <Feather name="layers" size={11} color={P.sub} style={{ marginRight: 4 }} />
-                        <Text style={cardStyles.meta} numberOfLines={1}>
-                            {[item.tissuLabel, item.couleur].filter(Boolean).join(' · ')}
-                        </Text>
-                    </View>
-                )}
-
-                {/* Date & N° commande */}
-                <View style={cardStyles.metaRow}>
-                    <Feather name="calendar" size={11} color={P.sub} style={{ marginRight: 4 }} />
-                    <Text style={cardStyles.meta}>
-                        {item.dateCreation
-                            ? formatDate(new Date(item.dateCreation))
-                            : '—'}
-                    </Text>
-                    {item.numeroCommande && (
-                        <Text style={[cardStyles.meta, { marginLeft: 8, color: P.primary }]}>
-                            {item.numeroCommande}
-                        </Text>
-                    )}
-                </View>
-            </View>
-
-            <Feather name="chevron-right" size={16} color="rgba(108,62,184,0.25)" />
-        </TouchableOpacity>
-    );
-};
-
-const cardStyles = StyleSheet.create({
-    card: {
-        backgroundColor: P.surface, borderRadius: 12,
-        flexDirection: 'row', alignItems: 'center',
-        padding: 14,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
-    },
-    avatar: {
-        width: 42, height: 42, borderRadius: 21,
-        justifyContent: 'center', alignItems: 'center',
-    },
-    avatarText: { fontSize: 14, fontWeight: '800', color: P.primary },
-    topRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-    name:       { fontSize: 14, fontWeight: '700', color: P.text, flex: 1, marginRight: 8 },
-    statutBadge:{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
-    statutText: { fontSize: 10, fontWeight: '700' },
-    metaRow:    { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
-    meta:       { fontSize: 11, color: P.sub },
-});
-
-// ── Chip filtre statut ────────────────────────────────────
-const StatutChip = ({
-    statut, active, onPress,
-}: {
-    statut: StatutRealisation | null;
-    active: boolean;
-    onPress: () => void;
-}) => {
-    const label = statut ? (STATUT_REALISATION_LABELS[statut] ?? statut) : 'Tous';
-    const color = statut ? STATUT_REALISATION_COLORS[statut] : P.primary;
-    return (
-        <TouchableOpacity
-            style={[chipStyles.chip, active && { backgroundColor: color, borderColor: color }]}
-            onPress={onPress}
-            activeOpacity={0.75}
-        >
-            <Text style={[chipStyles.text, active && { color: '#fff' }]}>{label}</Text>
-        </TouchableOpacity>
-    );
-};
-
-const chipStyles = StyleSheet.create({
-    chip: {
-        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-        borderWidth: 1, borderColor: P.border,
-        backgroundColor: P.surface, marginRight: 6,
-    },
-    text: { fontSize: 12, fontWeight: '600', color: P.sub },
-});
-
-// ──────────────────────────────────────────────────────────
-// SCREEN
-// ──────────────────────────────────────────────────────────
 export function RechercheScreen() {
     const navigation = useNavigation<Nav>();
+    const insets = useSafeAreaInsets();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
 
-    // Champs de recherche
     const [query,     setQuery]     = useState('');
     const [statut,    setStatut]    = useState<StatutRealisation | null>(null);
     const [dateFrom,  setDateFrom]  = useState('');
     const [dateTo,    setDateTo]    = useState('');
-
-    // États
     const [results,   setResults]   = useState<ResultatRecherche[]>([]);
     const [loading,   setLoading]   = useState(false);
-    const [searched,  setSearched]  = useState(false);   // a-t-on déjà lancé une recherche ?
+    const [searched,  setSearched]  = useState(false);
     const [showAdv,   setShowAdv]   = useState(false);
+    const [searchOn,  setSearchOn]  = useState(false);
 
-    // Debounce
     const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-    // Animation avancée
     const advHeight = useRef(new Animated.Value(0)).current;
 
     const toggleAdv = () => {
@@ -184,7 +54,6 @@ export function RechercheScreen() {
         }).start();
     };
 
-    // ── Lancement de la recherche ───────────────────────
     const doSearch = useCallback(async (
         q: string,
         s: StatutRealisation | null,
@@ -203,7 +72,6 @@ export function RechercheScreen() {
         setLoading(false);
     }, []);
 
-    // ── Debounce sur le texte ───────────────────────────
     useEffect(() => {
         clearTimeout(debounce.current);
         debounce.current = setTimeout(() => {
@@ -212,7 +80,6 @@ export function RechercheScreen() {
         return () => clearTimeout(debounce.current);
     }, [query, statut, dateFrom, dateTo, doSearch]);
 
-    // ── Navigation vers fiche réalisation ───────────────
     const openRealisation = (item: ResultatRecherche) => {
         navigation.navigate('RealisationDetails', {
             realisationId: item.realisationId,
@@ -220,249 +87,242 @@ export function RechercheScreen() {
         });
     };
 
-    // ── Helpers texte ───────────────────────────────────
     const hasFilters   = !!statut || !!dateFrom || !!dateTo;
     const activeCount  = results.length;
     const hasQuery     = query.trim().length > 0 || hasFilters;
 
     const summaryText = !searched
-        ? 'Tapez pour chercher ou choisissez un filtre'
+        ? 'Tapez un nom, un tissu ou un N° de commande'
         : loading
           ? 'Recherche en cours…'
           : activeCount === 0
             ? 'Aucun résultat'
-            : `${activeCount} résultat${activeCount > 1 ? 's' : ''}${query.trim() ? ` pour "${query.trim()}"` : ''}`;
+            : `${activeCount} résultat${activeCount > 1 ? 's' : ''}${query.trim() ? ` · « ${query.trim()} »` : ''}`;
 
-    // ──────────────────────────────────────────────────
+    const renderCard = ({ item }: { item: ResultatRecherche }) => {
+        const st = item.statut as StatutRealisation;
+        const statutLabel = STATUT_REALISATION_LABELS[st] ?? item.statut;
+        const statutColor = STATUT_REALISATION_COLORS[st] ?? P.primary;
+        const initials = (item.clientNom ?? '?')
+            .split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+        return (
+            <TouchableOpacity style={styles.card} onPress={() => openRealisation(item)} activeOpacity={0.82}>
+                <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{initials}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                    <View style={styles.topRow}>
+                        <Text style={styles.name} numberOfLines={1}>{item.clientNom}</Text>
+                        <View style={[styles.statutPill, { backgroundColor: `${statutColor}18`, borderColor: `${statutColor}44` }]}>
+                            <Text style={[styles.statutText, { color: statutColor }]}>{statutLabel}</Text>
+                        </View>
+                    </View>
+                    {(item.tissuLabel || item.couleur) ? (
+                        <Text style={styles.meta} numberOfLines={1}>
+                            {[item.tissuLabel, item.couleur].filter(Boolean).join(' · ')}
+                        </Text>
+                    ) : null}
+                    <Text style={styles.meta}>
+                        {item.dateCreation ? formatDate(new Date(item.dateCreation)) : '—'}
+                        {item.numeroCommande ? `  ·  ${item.numeroCommande}` : ''}
+                    </Text>
+                </View>
+            </TouchableOpacity>
+        );
+    };
+
     return (
-        <SafeAreaView style={styles.safe} edges={['top']}>
-            {/* ── Header ─────────────────────────────── */}
+        <View style={[styles.root, { paddingTop: insets.top }]}>
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-                    <Feather name="arrow-left" size={20} color="#fff" />
+                    <Ionicons name="arrow-back" size={18} color={P.text} />
                 </TouchableOpacity>
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.headerTitle}>Recherche globale</Text>
-                    <Text style={styles.headerSub}>Réalisations, clients, tissus, commandes</Text>
+                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.headerTitle}>Recherche</Text>
                 </View>
             </View>
 
-            {/* ── Barre de recherche ─────────────────── */}
-            <View style={styles.searchWrap}>
-                <View style={styles.searchBar}>
-                    <Feather name="search" size={16} color={P.sub} style={{ marginRight: 8 }} />
-                    <TextInput
-                        style={styles.searchInput}
-                        placeholder='Ex : "bazin robe 2025", "CMD-2024-0001"…'
-                        placeholderTextColor={P.sub}
-                        value={query}
-                        onChangeText={setQuery}
-                        returnKeyType="search"
-                        onSubmitEditing={() => { Keyboard.dismiss(); }}
-                        autoCorrect={false}
-                        autoCapitalize="none"
-                    />
-                    {query.length > 0 && (
-                        <TouchableOpacity onPress={() => setQuery('')}>
-                            <Feather name="x" size={15} color={P.sub} />
-                        </TouchableOpacity>
-                    )}
-                </View>
-
-                {/* Bouton filtres avancés */}
+            <View style={[styles.search, searchOn && styles.searchOn]}>
+                <Ionicons name="search-outline" size={16} color={P.sub} />
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder='Client, tissu, CMD-…'
+                    placeholderTextColor={P.muted}
+                    value={query}
+                    onChangeText={setQuery}
+                    returnKeyType="search"
+                    onSubmitEditing={() => Keyboard.dismiss()}
+                    onFocus={() => setSearchOn(true)}
+                    onBlur={() => setSearchOn(false)}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                />
+                {query.length > 0 && (
+                    <TouchableOpacity onPress={() => setQuery('')}>
+                        <Ionicons name="close-circle" size={16} color={P.sub} />
+                    </TouchableOpacity>
+                )}
                 <TouchableOpacity
-                    style={[styles.advBtn, (hasFilters || showAdv) && styles.advBtnActive]}
+                    style={[styles.advBtn, (hasFilters || showAdv) && styles.advBtnOn]}
                     onPress={toggleAdv}
-                    activeOpacity={0.8}
                 >
-                    <Feather
-                        name="sliders"
-                        size={15}
-                        color={(hasFilters || showAdv) ? P.primary : P.sub}
-                    />
-                    {hasFilters && <View style={styles.filterDot} />}
+                    <Ionicons name="options-outline" size={16} color={(hasFilters || showAdv) ? P.gold : P.sub} />
                 </TouchableOpacity>
             </View>
 
-            {/* ── Chips statut ───────────────────────── */}
-            <View style={styles.chipsWrap}>
-                <FlatList
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    data={[null, ...STATUT_REALISATION_LIST]}
-                    keyExtractor={(s, i) => s ?? `all_${i}`}
-                    renderItem={({ item: s }) => (
-                        <StatutChip
-                            statut={s}
-                            active={statut === s}
+            <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={[null, ...STATUT_REALISATION_LIST] as (StatutRealisation | null)[]}
+                keyExtractor={(s, i) => s ?? `all_${i}`}
+                contentContainerStyle={styles.chips}
+                style={{ flexGrow: 0 }}
+                renderItem={({ item: s }) => {
+                    const on = statut === s;
+                    const label = s ? (STATUT_REALISATION_LABELS[s] ?? s) : 'Tous';
+                    return (
+                        <TouchableOpacity
+                            style={[styles.chip, on && styles.chipOn]}
                             onPress={() => setStatut(prev => prev === s ? null : s)}
-                        />
-                    )}
-                    contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }}
-                />
-            </View>
+                        >
+                            <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
+                        </TouchableOpacity>
+                    );
+                }}
+            />
 
-            {/* ── Filtres avancés ────────────────────── */}
             <Animated.View style={[
                 styles.advPanel,
                 {
-                    maxHeight: advHeight.interpolate({ inputRange: [0,1], outputRange: [0, 140] }),
-                    opacity:   advHeight,
-                    overflow:  'hidden',
+                    maxHeight: advHeight.interpolate({ inputRange: [0, 1], outputRange: [0, 220] }),
+                    opacity: advHeight,
+                    overflow: 'hidden',
                 },
             ]}>
                 <View style={styles.advInner}>
-                    <View style={styles.advRow}>
-                        <Text style={styles.advLabel}>De</Text>
-                        <TextInput
-                            style={styles.advInput}
-                            placeholder="AAAA-MM-JJ"
-                            placeholderTextColor={P.sub}
-                            value={dateFrom}
-                            onChangeText={setDateFrom}
-                        />
-                        <Text style={[styles.advLabel, { marginLeft: 8 }]}>à</Text>
-                        <TextInput
-                            style={styles.advInput}
-                            placeholder="AAAA-MM-JJ"
-                            placeholderTextColor={P.sub}
-                            value={dateTo}
-                            onChangeText={setDateTo}
-                        />
-                    </View>
+                    <DateField label="Du" value={dateFrom} onChange={setDateFrom} output="iso" placeholder="Date de début" />
+                    <DateField label="Au" value={dateTo} onChange={setDateTo} output="iso" placeholder="Date de fin" />
                     {hasFilters && (
                         <TouchableOpacity
-                            style={styles.clearFiltersBtn}
+                            style={styles.clearBtn}
                             onPress={() => { setStatut(null); setDateFrom(''); setDateTo(''); }}
                         >
-                            <Feather name="x-circle" size={13} color={P.primary} style={{ marginRight: 4 }} />
-                            <Text style={styles.clearFiltersText}>Effacer les filtres</Text>
+                            <Text style={styles.clearText}>Effacer les filtres</Text>
                         </TouchableOpacity>
                     )}
                 </View>
             </Animated.View>
 
-            {/* ── Résumé résultats ───────────────────── */}
             <View style={styles.summaryRow}>
                 <Text style={styles.summaryText}>{summaryText}</Text>
-                {loading && <ActivityIndicator size="small" color={P.primary} style={{ marginLeft: 8 }} />}
+                {loading && <ActivityIndicator size="small" color={P.primary} />}
             </View>
 
-            {/* ── Liste résultats ────────────────────── */}
             <FlatList
                 data={results}
                 keyExtractor={r => r.realisationId}
-                renderItem={({ item }) => (
-                    <ResultCard item={item} onPress={() => openRealisation(item)} />
-                )}
-                contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 10 }}
+                renderItem={renderCard}
+                contentContainerStyle={styles.list}
                 keyboardShouldPersistTaps="handled"
+                ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
                 ListEmptyComponent={
                     !loading && searched ? (
                         <View style={styles.empty}>
-                            <Feather name="search" size={36} color={P.sub} style={{ marginBottom: 10 }} />
+                            <View style={styles.emptyIcon}>
+                                <Ionicons name="search-outline" size={26} color={P.gold} />
+                            </View>
                             <Text style={styles.emptyTitle}>
                                 {hasQuery ? 'Aucun résultat' : 'Lancez une recherche'}
                             </Text>
                             <Text style={styles.emptySub}>
                                 {hasQuery
-                                    ? 'Essayez d\'autres mots-clés ou modifiez les filtres'
-                                    : 'Recherche par client, tissu, couleur, N° commande…'
-                                }
+                                    ? 'Essayez un autre mot-clé ou retirez un filtre.'
+                                    : 'Cherchez par client, tissu, couleur ou numéro de commande.'}
                             </Text>
-                            {hasQuery && (
-                                <View style={styles.tipsBox}>
-                                    <Text style={styles.tipsTitle}>Conseils de recherche</Text>
-                                    <Text style={styles.tipItem}>• Essayez des termes plus courts</Text>
-                                    <Text style={styles.tipItem}>• Recherche en français uniquement</Text>
-                                    <Text style={styles.tipItem}>• Le N° commande fonctionne exactement (ex : CMD-2024-0001)</Text>
-                                </View>
-                            )}
                         </View>
                     ) : null
                 }
             />
-        </SafeAreaView>
+        </View>
     );
 }
 
-// ── Styles ────────────────────────────────────────────────
-const styles = StyleSheet.create({
-    safe: { flex: 1, backgroundColor: P.pageBg },
-
+const makeStyles = (P: Palette) => ({
+    root: { flex: 1, backgroundColor: P.pageBg },
     header: {
-        backgroundColor: P.bg,
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingVertical: 14, gap: 12,
+        flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 12,
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
     },
     backBtn: {
-        width: 36, height: 36, borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.10)',
-        justifyContent: 'center', alignItems: 'center',
+        width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+        alignItems: 'center' as const, justifyContent: 'center' as const,
+        borderWidth: 0.5, borderColor: P.borderHard, marginTop: 4,
     },
-    headerTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-    headerSub:   { color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 1 },
-
-    searchWrap: {
-        flexDirection: 'row', alignItems: 'center',
-        backgroundColor: P.surface,
-        paddingHorizontal: 16, paddingVertical: 10,
-        borderBottomWidth: 1, borderBottomColor: P.border,
-        gap: 8,
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
     },
-    searchBar: {
-        flex: 1, flexDirection: 'row', alignItems: 'center',
-        backgroundColor: P.pageBg, borderRadius: 10,
-        paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 7,
-        borderWidth: 1, borderColor: P.border,
+    headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
+    search: {
+        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8,
+        marginHorizontal: 20, marginBottom: 12, paddingHorizontal: 14, height: 46,
+        backgroundColor: P.surface, borderRadius: 16, borderWidth: 0.5, borderColor: P.borderHard,
     },
-    searchInput: { flex: 1, fontSize: 14, color: P.text, padding: 0 },
+    searchOn: { borderColor: P.goldRim },
+    searchInput: {
+        flex: 1, fontSize: 14, fontFamily: 'PlusJakartaSans_500Medium', color: P.text,
+        paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+    },
     advBtn: {
-        width: 38, height: 38, borderRadius: 10,
-        justifyContent: 'center', alignItems: 'center',
-        borderWidth: 1, borderColor: P.border,
-        backgroundColor: P.pageBg,
+        width: 32, height: 32, borderRadius: 10, alignItems: 'center' as const, justifyContent: 'center' as const,
     },
-    advBtnActive: { borderColor: P.primary, backgroundColor: 'rgba(108,62,184,0.08)' },
-    filterDot: {
-        position: 'absolute', top: 7, right: 7,
-        width: 6, height: 6, borderRadius: 3,
-        backgroundColor: P.primary,
+    advBtnOn: { backgroundColor: P.bg },
+    chips: { paddingHorizontal: 20, paddingBottom: 10, gap: 8 },
+    chip: {
+        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+        backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
     },
-
-    chipsWrap: {
-        backgroundColor: P.surface,
-        borderBottomWidth: 1, borderBottomColor: P.border,
-    },
-
-    advPanel: { backgroundColor: P.surface, borderBottomWidth: 1, borderBottomColor: P.border },
-    advInner: { paddingHorizontal: 16, paddingBottom: 12 },
-    advRow:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-    advLabel: { fontSize: 12, color: P.sub, minWidth: 16 },
+    chipOn: { backgroundColor: P.bg, borderColor: P.goldRim },
+    chipText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub },
+    chipTextOn: { color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold' },
+    advPanel: { marginHorizontal: 20, marginBottom: 4 },
+    advInner: { backgroundColor: P.surface, borderRadius: 16, padding: 14, borderWidth: 0.5, borderColor: P.borderHard },
+    advRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
+    advLabel: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
     advInput: {
-        flex: 1, borderWidth: 1, borderColor: P.border, borderRadius: 8,
-        paddingHorizontal: 10, paddingVertical: 7,
-        fontSize: 13, color: P.text, backgroundColor: P.pageBg,
+        flex: 1, borderWidth: 0.5, borderColor: P.borderHard, borderRadius: 12,
+        paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: P.text, backgroundColor: P.pageBg,
     },
-    clearFiltersBtn: {
-        flexDirection: 'row', alignItems: 'center',
-        alignSelf: 'flex-start', marginTop: 10,
-    },
-    clearFiltersText: { fontSize: 12, color: P.primary, fontWeight: '600' },
-
+    clearBtn: { marginTop: 10, alignSelf: 'flex-start' as const },
+    clearText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
     summaryRow: {
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingVertical: 8,
+        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8,
+        paddingHorizontal: 20, paddingVertical: 8,
     },
-    summaryText: { fontSize: 12, color: P.sub },
-
-    empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 24 },
-    emptyTitle: { fontSize: 16, fontWeight: '700', color: P.text, textAlign: 'center' },
-    emptySub:   { fontSize: 13, color: P.sub, textAlign: 'center', marginTop: 6, lineHeight: 19 },
-    tipsBox: {
-        backgroundColor: 'rgba(108,62,184,0.06)', borderRadius: 10,
-        padding: 14, marginTop: 20, alignSelf: 'stretch',
+    summaryText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, flex: 1 },
+    list: { paddingHorizontal: 20, paddingBottom: 40 },
+    card: {
+        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12,
+        backgroundColor: P.surface, borderRadius: 18, padding: 12,
+        borderWidth: 0.5, borderColor: P.borderHard,
     },
-    tipsTitle: { fontSize: 12, fontWeight: '700', color: P.primary, marginBottom: 6 },
-    tipItem:   { fontSize: 12, color: P.sub, lineHeight: 20 },
+    avatar: {
+        width: 44, height: 44, borderRadius: 14, backgroundColor: P.bg,
+        alignItems: 'center' as const, justifyContent: 'center' as const,
+        borderWidth: 1, borderColor: P.goldRim,
+    },
+    avatarText: { fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
+    topRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 4 },
+    name: { flex: 1, fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+    statutPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 0.5 },
+    statutText: { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold' },
+    meta: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, marginTop: 2 },
+    empty: { alignItems: 'center' as const, paddingTop: 48, paddingHorizontal: 28 },
+    emptyIcon: {
+        width: 60, height: 60, borderRadius: 18, backgroundColor: P.bg, marginBottom: 14,
+        alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1, borderColor: P.goldRim,
+    },
+    emptyTitle: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
+    emptySub: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, textAlign: 'center' as const, marginTop: 6 },
 });

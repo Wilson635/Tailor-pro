@@ -11,9 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
-import {
-  STATUT_REALISATION_LABELS, STATUT_REALISATION_COLORS, STATUT_REALISATION_LIST,
-} from '@constants/realisationConstants';
+import { STATUT_REALISATION_LABELS, STATUT_REALISATION_COLORS, STATUT_REALISATION_LIST, STATUT_STEP } from '@constants/realisationConstants';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 import type { Realisation, StatutRealisation } from '../../types';
 import { useThemedStyles, type Palette } from '@/src/theme';
@@ -40,36 +38,40 @@ const RealisationCard = ({
   const hasPhoto = item.photos.length > 0;
   const title = realisationTitle(item, catalog);
   const sub = [item.tissuLabel, item.couleur].filter(Boolean).filter((s) => s !== title).join(' · ');
+  const step = STATUT_STEP[item.statut] ?? 0;
+  const total = Math.max(STATUT_REALISATION_LIST.length - 1, 1);
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.82}>
-      <View style={styles.thumb}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.88}>
+      <View style={styles.photoStage}>
         {hasPhoto ? (
-          <Image source={{ uri: item.photos[0] }} style={styles.thumbImg} resizeMode="cover" />
+          <Image source={{ uri: item.photos[0] }} style={styles.heroImg} resizeMode="cover" />
         ) : (
-          <View style={[styles.thumbImg, styles.thumbPlaceholder]}>
-            <Ionicons name="shirt-outline" size={22} color={statutColor} />
+          <View style={styles.heroPlaceholder}>
+            <Ionicons name="shirt-outline" size={28} color="#D4AF37" />
           </View>
         )}
+        <View style={[styles.heroPill, { backgroundColor: statutColor }]}>
+          <Text style={styles.heroPillText}>{statutLabel}</Text>
+        </View>
         {item.photos.length > 1 && (
           <View style={styles.photoCount}>
-            <Text style={styles.photoCountText}>+{item.photos.length - 1}</Text>
+            <Text style={styles.photoCountText}>{item.photos.length} photos</Text>
           </View>
         )}
       </View>
-
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
         {sub ? <Text style={styles.cardSub} numberOfLines={1}>{sub}</Text> : null}
+        <View style={styles.track}>
+          <View style={[styles.trackFill, { width: `${(step / total) * 100}%` }]} />
+        </View>
         <View style={styles.cardFootRow}>
-          <View style={[styles.statutPill, { backgroundColor: `${statutColor}18`, borderColor: `${statutColor}44` }]}>
-            <View style={[styles.statutDot, { backgroundColor: statutColor }]} />
-            <Text style={[styles.statutText, { color: statutColor }]}>{statutLabel}</Text>
-          </View>
+          <Text style={styles.dateText}>
+            {item.dateCreation ? new Date(item.dateCreation).toLocaleDateString('fr-FR') : ''}
+          </Text>
           {item.dateLivraison ? (
-            <Text style={styles.dateText}>
-              {new Date(item.dateLivraison).toLocaleDateString('fr-FR')}
-            </Text>
+            <Text style={styles.dateText}>Livr. {new Date(item.dateLivraison).toLocaleDateString('fr-FR')}</Text>
           ) : null}
         </View>
       </View>
@@ -270,34 +272,34 @@ const makeStyles = (P: Palette) => ({
   statVal: { fontSize: 20, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
   statSub: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, marginTop: 2 },
   card: {
-    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12,
-    backgroundColor: P.surface, borderRadius: 18, padding: 12,
+    backgroundColor: P.surface, borderRadius: 20, overflow: 'hidden' as const,
     borderWidth: 0.5, borderColor: P.borderHard,
   },
-  thumb: { position: 'relative' as const },
-  thumbImg: { width: 64, height: 64, borderRadius: 14, backgroundColor: P.pageBg },
-  thumbPlaceholder: {
-    alignItems: 'center' as const, justifyContent: 'center' as const,
-    backgroundColor: P.bg, borderWidth: 1, borderColor: P.goldRim,
+  photoStage: { height: 168, backgroundColor: P.bg, position: 'relative' as const },
+  heroImg: { width: '100%' as const, height: '100%' as const },
+  heroPlaceholder: {
+    height: 168, alignItems: 'center' as const, justifyContent: 'center' as const,
+    backgroundColor: P.bg, borderBottomWidth: 1, borderBottomColor: P.goldRim,
   },
+  heroPill: {
+    position: 'absolute' as const, left: 12, top: 12,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
+  },
+  heroPillText: { fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
   photoCount: {
-    position: 'absolute' as const, bottom: 4, right: 4, backgroundColor: 'rgba(22,18,58,0.78)',
-    borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1,
+    position: 'absolute' as const, bottom: 10, right: 10, backgroundColor: 'rgba(22,18,58,0.78)',
+    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
   },
   photoCountText: { fontSize: 10, color: '#fff', fontFamily: 'PlusJakartaSans_700Bold' },
-  cardBody: { flex: 1, gap: 4 },
-  cardTitle: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+  cardBody: { padding: 14, gap: 6 },
+  cardTitle: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
   cardSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
+  track: { height: 3, backgroundColor: P.borderHard, borderRadius: 2, marginTop: 4 },
+  trackFill: { height: 3, backgroundColor: P.gold, borderRadius: 2 },
   cardFootRow: {
     flexDirection: 'row' as const, alignItems: 'center' as const,
     justifyContent: 'space-between' as const, marginTop: 2,
   },
-  statutPill: {
-    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 5,
-    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, borderWidth: 0.5,
-  },
-  statutDot: { width: 6, height: 6, borderRadius: 3 },
-  statutText: { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold' },
   dateText: { fontSize: 11, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
   empty: { alignItems: 'center' as const, paddingTop: 48, paddingHorizontal: 28 },
   emptyIcon: {

@@ -3,6 +3,7 @@
 // ==========================================
 
 import React, { useState } from "react";
+import { showAlert } from '@/src/context/DialogContext';
 import {
     View,
     Text,
@@ -12,7 +13,6 @@ import {
     KeyboardAvoidingView,
     Platform,
     ScrollView,
-    Alert,
     ActivityIndicator,
     StatusBar,
 } from "react-native";
@@ -159,13 +159,13 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
             password,
         });
 
-        if (error) Alert.alert("Erreur de connexion", error.message);
+        if (error) showAlert("Erreur de connexion", error.message);
         setLoading(false);
     };*/
 
     const handleLogin = async () => {
         if (!email || !password) {
-            Alert.alert("Erreur", "Veuillez remplir tous les champs.");
+            showAlert("Erreur", "Veuillez remplir tous les champs.");
             return;
         }
 
@@ -190,7 +190,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                     const isEnrolled = await LocalAuthentication.isEnrolledAsync();
 
                     if (hasHardware && isEnrolled) {
-                        Alert.alert(
+                        showAlert(
                             "🔒 Connexion Biométrique",
                             "Souhaitez-vous activer votre empreinte digitale ou Face ID pour vos prochaines connexions ?",
                             [
@@ -214,7 +214,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                                             await AsyncStorage.setItem(`@biometrics_enabled_${userId}`, 'true');
                                             // On sauvegarde l'email pour pouvoir appeler la reconnexion rapide
                                             await AsyncStorage.setItem(`@last_logged_email`, email.trim());
-                                            Alert.alert("Activé !", "Vous pourrez utiliser la biométrie au prochain démarrage.");
+                                            showAlert("Activé !", "Vous pourrez utiliser la biométrie au prochain démarrage.");
                                         }
                                     }
                                 }
@@ -228,7 +228,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
             }
 
         } catch (err: any) {
-            Alert.alert("Erreur de connexion", err.message || "Identifiants incorrects.");
+            showAlert("Erreur de connexion", err.message || "Identifiants incorrects.");
         } finally {
             setLoading(false);
         }
@@ -241,9 +241,9 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
         }
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
         if (error) {
-            Alert.alert("Erreur", error.message);
+            showAlert("Erreur", error.message);
         } else {
-            Alert.alert("Email envoyé", "Vérifiez votre boîte mail pour réinitialiser votre mot de passe.");
+            showAlert("Email envoyé", "Vérifiez votre boîte mail pour réinitialiser votre mot de passe.");
         }
     };
 

@@ -54,6 +54,7 @@ import {
     CatalogScreen,
     ModelDetailsScreen,
     StatisticsScreen,
+    NotificationsScreen,
 } from '../screens';
 
 // ── Nouveaux écrans catalogue ──
@@ -76,8 +77,9 @@ import { EditClientScreen } from '@screens/Clients/EditClientScreen';
 import { SettingsScreen } from '@screens/Settings/SettingsScreen';
 import {OrderDetailsScreen} from "@screens/Orders/OrderDetailsScreen";
 import { nativeDriver } from '@utils/animation';
-import { useThemedStyles, type Palette } from '@/src/theme';
+import { NotificationBinder } from '@/src/notifications/NotificationBinder';
 import { usePreferences } from '@/src/context/PreferencesContext';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import { t } from '@/src/i18n';
 
 // ── Écrans Projets / Commandes groupées (Module 13) ──
@@ -151,15 +153,6 @@ const makeNavStyles = (P: Palette) => ({
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
         marginTop: -20,
-        ...Platform.select({
-            ios: {
-                shadowColor: P.bg,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 12,
-            },
-            android: { elevation: 8 },
-        }),
         borderWidth: 1,
         borderColor: P.goldRim,
     },
@@ -207,15 +200,6 @@ const makeNavStyles = (P: Palette) => ({
         borderColor: P.goldRim,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
-        ...Platform.select({
-            ios: {
-                shadowColor: P.bg,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.2,
-                shadowRadius: 10,
-            },
-            android: { elevation: 6 },
-        }),
     },
     menuLabel: {
         fontSize: 10,
@@ -240,7 +224,7 @@ export type RootStackParamList = {
     AddMeasurements: { clientId: string; typeVetement?: string };
     FicheDetails: { ficheId: string; clientId: string };
     CompareFiches: { ficheId1: string; ficheId2: string; clientId: string };
-    Payments: { clientId: string };
+    Payments: { clientId?: string };
     AddPayment: { clientId: string; orderId?: string };
     AddOrder: { clientId?: string };
     OrderDetails: { orderId: string };
@@ -289,6 +273,7 @@ export type RootStackParamList = {
     BiometricAuth: undefined;
     Profile: undefined;
     Settings: undefined;
+    Notifications: undefined;
 };
 
 export type TailorTabParamList = {
@@ -529,6 +514,7 @@ const TailorTabNavigator = ({ navigation }: any) => {
 
     return (
         <>
+            <NotificationBinder />
             <TailorTab.Navigator
                 screenOptions={{
                     headerShown: false,
@@ -612,7 +598,9 @@ const ClientTabNavigator = ({ navigation }: any) => {
     usePreferences();
 
     return (
-        <ClientTab.Navigator
+        <>
+            <NotificationBinder />
+            <ClientTab.Navigator
             screenOptions={{
                 headerShown: false,
                 tabBarStyle: [
@@ -656,7 +644,8 @@ const ClientTabNavigator = ({ navigation }: any) => {
                     tabBarLabel: ({ focused }) => <TabLabel label={t('nav.measurements')} focused={focused} />,
                 }}
             />
-        </ClientTab.Navigator>
+            </ClientTab.Navigator>
+        </>
     );
 };
 
@@ -740,6 +729,7 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
 
                     {/* ── Divers ── */}
                     <Stack.Screen name="Statistics"      component={StatisticsScreen} />
+                    <Stack.Screen name="Notifications"   component={NotificationsScreen} />
                     <Stack.Screen name="Profile"         component={ProfileScreen} />
                     <Stack.Screen name="Settings"        component={SettingsScreen} />
                 </>

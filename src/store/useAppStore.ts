@@ -941,6 +941,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       amount,
       method,
       notes,
+      typePaiement,
     });
 
     if (error || !data) {
@@ -1340,7 +1341,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().measurements[clientId],
 
   getPaymentsByClient: (clientId) =>
-      get().payments[clientId] ?? [],
+      Object.values(get().payments).flat().filter(p => p.clientId === clientId),
   getModelById: (modelId) =>
       get().catalog.find(m => m.id === modelId),
 }));

@@ -4,6 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { showSuccess } from '@/src/context/DialogContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -78,7 +79,7 @@ export const EditRealisationScreen: React.FC<Props> = ({ route, navigation }) =>
       photos: finalPhotos,
     });
     setIsSaving(false);
-    navigation.goBack();
+    showSuccess('Modifications enregistrées', 'La réalisation a été mise à jour.', () => navigation.goBack());
   };
 
   return (

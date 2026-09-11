@@ -3,9 +3,10 @@
 // ==========================================
 
 import React, { useEffect, useState } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Alert, FlatList, Dimensions, ActivityIndicator,
+  Image, FlatList, Dimensions, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -144,7 +145,7 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
   const handleAddPhoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission requise', "L'accès à la galerie est nécessaire.");
+      showAlert('Permission requise', "L'accès à la galerie est nécessaire.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -156,32 +157,43 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
         await addRealisationPhoto(realisationId, clientId, asset.uri);
       }
       setIsUploading(false);
+      const n = result.assets.length;
+      showSuccess(n > 1 ? 'Photos ajoutées' : 'Photo ajoutée', 'La galerie a été mise à jour.');
     }
   };
 
   const handleRemovePhoto = (url: string) => {
-    Alert.alert('Retirer cette photo ?', undefined, [
+    showAlert('Retirer cette photo ?', undefined, [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Retirer', style: 'destructive',
-        onPress: () => updateRealisation(realisationId, clientId, { photos: photos.filter(p => p !== url) }),
+        onPress: async () => {
+          await updateRealisation(realisationId, clientId, { photos: photos.filter(p => p !== url) });
+          showSuccess('Photo retirée', 'La galerie a été mise à jour.');
+        },
       },
     ]);
   };
 
   const handleTransition = (newStatut: StatutRealisation) => {
-    Alert.alert('Changer le statut', `Passer à « ${STATUT_REALISATION_LABELS[newStatut]} » ?`, [
+    showAlert('Changer le statut', `Passer à « ${STATUT_REALISATION_LABELS[newStatut]} » ?`, [
       { text: 'Annuler', style: 'cancel' },
-      { text: 'Confirmer', onPress: () => updateRealisationStatut(realisationId, clientId, newStatut) },
+      { text: 'Confirmer', onPress: async () => {
+        await updateRealisationStatut(realisationId, clientId, newStatut);
+        showSuccess('Statut modifié', `La réalisation est maintenant « ${STATUT_REALISATION_LABELS[newStatut]} ».`);
+      } },
     ]);
   };
 
   const handleDelete = () => {
-    Alert.alert('Supprimer la réalisation', 'Cette action est irréversible. Continuer ?', [
+    showAlert('Supprimer la réalisation', 'Cette action est irréversible. Continuer ?', [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer', style: 'destructive',
-        onPress: async () => { await deleteRealisation(realisationId, clientId); navigation.goBack(); },
+        onPress: async () => {
+          await deleteRealisation(realisationId, clientId);
+          showSuccess('Réalisation supprimée', 'La pièce a été retirée de l’atelier.', () => navigation.goBack());
+        },
       },
     ]);
   };

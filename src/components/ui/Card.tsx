@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import { BORDER_RADIUS, SHADOWS, SPACING } from '../../constants/theme';
+import { SPACING } from '../../constants/theme';
 import { usePalette } from '@/src/theme';
 
 interface CardProps {
@@ -18,7 +18,6 @@ export const Card: React.FC<CardProps> = ({
   children,
   style,
   padding = 'md',
-  shadow = 'sm',
 }) => {
   const colors = usePalette();
   const paddingValue = {
@@ -28,14 +27,15 @@ export const Card: React.FC<CardProps> = ({
     lg: SPACING.xl,
   }[padding];
 
-  const shadowStyle = shadow !== 'none' ? SHADOWS[shadow] : {};
-
   return (
     <View
       style={[
         styles.card,
-        shadowStyle,
-        { padding: paddingValue, backgroundColor: colors.surface },
+        {
+          padding: paddingValue,
+          backgroundColor: colors.surface,
+          borderColor: colors.borderHard,
+        },
         style,
       ]}
     >
@@ -46,6 +46,7 @@ export const Card: React.FC<CardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: 18,
+    borderWidth: 0.5,
   },
 });

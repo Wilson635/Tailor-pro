@@ -4,16 +4,15 @@
 // ==========================================
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
     View,
     Text,
-    StyleSheet,
     ScrollView,
     TouchableOpacity,
     TextInput,
     Modal,
     ActivityIndicator,
-    Alert,
     Image,
     Platform,
     KeyboardAvoidingView,
@@ -31,35 +30,10 @@ import { SPACING } from '@constants/theme';
 import { getDeviseMeta } from '@constants/currencies';
 import { getRuntimePrefs } from '@/src/preferences/runtime';
 import { Avatar } from '@components/ui';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderDetails'>;
-
-// ──────────────────────────────────────────
-// PALETTE
-// ──────────────────────────────────────────
-
-const P = {
-    bg:        '#16123A',
-    primary:   '#6C3EB8',
-    pageBg:    '#F5F4FB',
-    surface:   '#FFFFFF',
-    text:      '#1A1033',
-    sub:       '#7C6FA8',
-    border:    'rgba(108,62,184,0.10)',
-    borderHard:'rgba(108,62,184,0.15)',
-    gold:      '#D4AF37',
-    goldBg:    'rgba(212,175,55,0.10)',
-    goldRim:   'rgba(212,175,55,0.28)',
-    success:   '#16A34A',
-    successBg: 'rgba(22,163,74,0.10)',
-    error:     '#EF4444',
-    errorBg:   'rgba(239,68,68,0.10)',
-    warning:   '#D97706',
-    warningBg: 'rgba(217,119,6,0.10)',
-    info:      '#2563EB',
-    infoBg:    'rgba(37,99,235,0.10)',
-};
 
 // ──────────────────────────────────────────
 // TYPES & CONSTANTES
@@ -71,21 +45,21 @@ type PaymentMethod = 'cash' | 'mobile_money' | 'bank_transfer' | 'other';
 
 const ORDER_STATUS_FLOW: OrderStatus[] = ['pending', 'in_progress', 'completed', 'delivered'];
 
-const ORDER_STATUS_META: Record<OrderStatus, {
+const orderStatusMeta = (P: Palette): Record<OrderStatus, {
     label: string; color: string; bg: string; icon: keyof typeof Feather.glyphMap;
-}> = {
+}> => ({
     pending:     { label: 'En attente',    color: P.warning, bg: P.warningBg, icon: 'clock'        },
     in_progress: { label: 'En cours',      color: P.info,    bg: P.infoBg,    icon: 'scissors'     },
     completed:   { label: 'Prêt à livrer', color: P.success, bg: P.successBg, icon: 'check-circle' },
     delivered:   { label: 'Livré',         color: P.gold,    bg: P.goldBg,    icon: 'package'      },
     cancelled:   { label: 'Annulée',       color: P.error,   bg: P.errorBg,   icon: 'x-circle'     },
-};
+});
 
-const PAYMENT_STATUS_META: Record<PaymentStatus, { label: string; color: string; bg: string }> = {
+const paymentStatusMeta = (P: Palette): Record<PaymentStatus, { label: string; color: string; bg: string }> => ({
     unpaid:  { label: 'Impayée', color: P.error,   bg: P.errorBg   },
     partial: { label: 'Partiel', color: P.warning, bg: P.warningBg },
     paid:    { label: 'Soldée',  color: P.success, bg: P.successBg },
-};
+});
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: keyof typeof Feather.glyphMap }[] = [
     { value: 'cash',          label: 'Espèces',      icon: 'dollar-sign'    },
@@ -102,11 +76,11 @@ const CLOTHING_LABELS: Record<string, string> = {
     tenue_enfant: 'Tenue enfant',    autre:       'Autre',
 };
 
-const URGENCY_META: Record<string, { label: string; color: string }> = {
+const urgencyMetaMap = (P: Palette): Record<string, { label: string; color: string }> => ({
     low:    { label: 'Normal',  color: P.success },
     medium: { label: 'Moyen',  color: P.warning },
     high:   { label: 'Urgent', color: P.error   },
-};
+});
 
 // ──────────────────────────────────────────
 // HELPERS
@@ -133,6 +107,10 @@ interface LocalPayment {
 export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const { orderId } = route.params;
     const insets = useSafeAreaInsets();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
+    const ORDER_STATUS_META = orderStatusMeta(P);
+    const PAYMENT_STATUS_META = paymentStatusMeta(P);
+    const URGENCY_META = urgencyMetaMap(P);
 
     const { orders, updateOrder, loadStatistics, loadActivities, realisations, loadRealisations, getProjectById, getParticipantsByProject, loadProjects, loadParticipants, getClientById } = useAppStore();
     const order = orders.find(o => o.id === orderId);
@@ -211,7 +189,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         if (savingStatus) return;
         // Alerte livraison avec solde restant (Module 7)
         if (newStatus === 'delivered' && remaining > 0 && !confirmed) {
-            Alert.alert(
+            showAlert(
                 'Solde non soldé',
                 `Il reste ${formatCurrencyShort(remaining)} à encaisser. Confirmer quand même ?`,
                 [
@@ -236,13 +214,17 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 loadActivities();
             }
             loadStatistics();
+            showSuccess(
+                newStatus === 'cancelled' ? 'Commande annulée' : 'Statut modifié',
+                `La commande est maintenant « ${ORDER_STATUS_META[newStatus].label} ».`,
+            );
         } finally {
             setSavingStatus(false);
         }
     };
 
     const handleCancelOrder = () => {
-        Alert.alert(
+        showAlert(
             'Annuler la commande ?',
             'Cette action ne peut pas être annulée.',
             [
@@ -256,11 +238,11 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const handleAddPayment = async () => {
         const amount = parseFloat(payAmount.replace(/\s/g, '').replace(',', '.'));
         if (isNaN(amount) || amount <= 0) {
-            Alert.alert('Montant invalide', 'Entrez un montant supérieur à 0.');
+            showAlert('Montant invalide', 'Entrez un montant supérieur à 0.');
             return;
         }
         if (amount > remaining + 0.01) {
-            Alert.alert(
+            showAlert(
                 'Montant trop élevé',
                 `Le reste à payer est de ${formatCurrencyShort(remaining)}. Continuer quand même ?`,
                 [
@@ -286,7 +268,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             });
 
             if (error || !data) {
-                Alert.alert('Erreur', 'Impossible d\'enregistrer le paiement.');
+                showAlert('Erreur', 'Impossible d\'enregistrer le paiement.');
                 return;
             }
 
@@ -313,7 +295,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             fetchPayments();
             // Proposer le reçu
             const snapPaid = totalPaid + amount;
-            Alert.alert(
+            showAlert(
                 'Paiement enregistré ✓',
                 `${formatCurrencyShort(amount)} encaissé avec succès`,
                 [
@@ -396,7 +378,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             <Text style={styles.clientName}>{order.clientName}</Text>
                             <Text style={styles.clientSub}>Voir la fiche client</Text>
                         </View>
-                        <Feather name="chevron-right" size={16} color="rgba(108,62,184,0.3)" />
+                        <Feather name="chevron-right" size={16} color={P.muted} />
                     </TouchableOpacity>
 
                     {/* ══ STATUT COMMANDE ══ */}
@@ -526,7 +508,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         >
                             <View style={styles.cardHeaderRow}>
                                 <Text style={styles.cardTitle}>Réalisation associée</Text>
-                                <Feather name="chevron-right" size={14} color="rgba(108,62,184,0.3)" />
+                                <Feather name="chevron-right" size={14} color={P.muted} />
                             </View>
                             <Text style={styles.clientSub}>
                                 Statut : {String((linkedRealisation as any).statut).replace(/_/g, ' ')}
@@ -696,7 +678,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                 onChangeText={setPayAmount}
                                 keyboardType="decimal-pad"
                                 placeholder="0"
-                                placeholderTextColor="rgba(26,16,51,0.2)"
+                                placeholderTextColor={P.muted}
                                 autoFocus
                             />
                             <View style={styles.amountRight}>
@@ -737,7 +719,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             value={payNotes}
                             onChangeText={setPayNotes}
                             placeholder="Ex : 2ème versement, solde..."
-                            placeholderTextColor="rgba(26,16,51,0.2)"
+                            placeholderTextColor={P.muted}
                             multiline
                         />
 
@@ -775,45 +757,36 @@ const InfoRow = ({
     value: string;
     valueColor?: string;
     multiline?: boolean;
-}) => (
-    <View style={[ir.row, multiline && { alignItems: 'flex-start' }]}>
-        <View style={ir.icon}>
+}) => {
+    const { colors: P, styles } = useThemedStyles(makeStyles);
+    return (
+    <View style={[styles.infoRow, multiline && { alignItems: 'flex-start' }]}>
+        <View style={styles.infoIcon}>
             <Feather name={icon} size={13} color={P.primary} />
         </View>
         <View style={{ flex: 1 }}>
-            <Text style={ir.label}>{label}</Text>
-            <Text style={[ir.value, valueColor ? { color: valueColor } : null]}>{value}</Text>
+            <Text style={styles.infoLabel}>{label}</Text>
+            <Text style={[styles.infoValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
         </View>
     </View>
-);
+    );
+};
 
-const ir = StyleSheet.create({
-    row:  { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-    icon: { width: 30, height: 30, borderRadius: 8, backgroundColor: 'rgba(108,62,184,0.07)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-    label:{ fontSize: 10, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium', marginBottom: 1 },
-    value:{ fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
-});
-
-const FinanceLine = ({ label, value, sub }: { label: string; value: number; sub?: boolean }) => (
-    <View style={fl.row}>
-        <Text style={[fl.label, sub && fl.labelSub]}>{label}</Text>
-        <Text style={[fl.value, sub && fl.valueSub]}>{formatCurrencyShort(value)}</Text>
+const FinanceLine = ({ label, value, sub }: { label: string; value: number; sub?: boolean }) => {
+    const { styles } = useThemedStyles(makeStyles);
+    return (
+    <View style={styles.financeLine}>
+        <Text style={[styles.financeLineLabel, sub && styles.financeLineLabelSub]}>{label}</Text>
+        <Text style={[styles.financeLineValue, sub && styles.financeLineValueSub]}>{formatCurrencyShort(value)}</Text>
     </View>
-);
-
-const fl = StyleSheet.create({
-    row:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
-    label:    { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
-    labelSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_400Regular' },
-    value:    { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
-    valueSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
-});
+    );
+};
 
 // ──────────────────────────────────────────
 // STYLES — Aucune ombre
 // ──────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     root:    { flex: 1, backgroundColor: P.pageBg },
     notFound:{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
     notFoundText:   { fontSize: 15, color: P.text, fontFamily: 'PlusJakartaSans_600SemiBold' },
@@ -823,21 +796,21 @@ const styles = StyleSheet.create({
     // ── Header ──
     header: {
         backgroundColor: P.pageBg,
-        flexDirection: 'row', alignItems: 'center',
+        flexDirection: 'row' as const, alignItems: 'flex-start' as const,
         paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
         gap: 12,
     },
     backBtn: {
-        width: 38, height: 38, borderRadius: 12,
+        width: 40, height: 40, borderRadius: 12,
         backgroundColor: P.surface,
         borderWidth: 0.5, borderColor: P.borderHard,
-        alignItems: 'center', justifyContent: 'center',
+        alignItems: 'center' as const, justifyContent: 'center' as const, marginTop: 4,
     },
     kicker: {
-        fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: P.gold,
-        letterSpacing: 1.2, textTransform: 'uppercase',
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
     },
-    headerTitle: { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
+    headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
 
     // ── Fil d'Ariane projet ──
     projectBreadcrumb: {
@@ -854,7 +827,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', gap: 4,
         paddingHorizontal: 10, paddingVertical: 7,
         borderRadius: 10,
-        backgroundColor: 'rgba(108,62,184,0.07)',
+        backgroundColor: P.primaryBg,
         borderWidth: 0.5, borderColor: P.border,
     },
     clientBtnText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
@@ -903,12 +876,12 @@ const styles = StyleSheet.create({
     progressStep: { alignItems: 'center', flex: 1 },
     progressDot: {
         width: 16, height: 16, borderRadius: 8,
-        backgroundColor: 'rgba(0,0,0,0.08)',
+        backgroundColor: P.gray200,
         alignItems: 'center', justifyContent: 'center',
         marginBottom: 4,
     },
-    progressStepLabel: { fontSize: 9, color: 'rgba(0,0,0,0.3)', fontFamily: 'PlusJakartaSans_600SemiBold', textAlign: 'center' },
-    progressConnector: { flex: 1, height: 1.5, backgroundColor: 'rgba(0,0,0,0.08)', marginTop: 7, marginHorizontal: -4 },
+    progressStepLabel: { fontSize: 9, color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold', textAlign: 'center' as const },
+    progressConnector: { flex: 1, height: 1.5, backgroundColor: P.gray200, marginTop: 7, marginHorizontal: -4 },
 
     // Actions statut
     statusActions: { gap: 8 },
@@ -922,13 +895,22 @@ const styles = StyleSheet.create({
     cancelBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16, justifyContent: 'center',
-        borderWidth: 0.5, borderColor: 'rgba(239,68,68,0.25)',
+        borderWidth: 0.5, borderColor: P.errorBg,
         backgroundColor: P.errorBg,
     },
     cancelBtnText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.error },
 
     // ── Infos ──
     infoList: { gap: 0 },
+    infoRow:  { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingVertical: 8 },
+    infoIcon: { width: 30, height: 30, borderRadius: 8, backgroundColor: P.primaryBg, alignItems: 'center' as const, justifyContent: 'center' as const, flexShrink: 0 },
+    infoLabel:{ fontSize: 10, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium', marginBottom: 1 },
+    infoValue:{ fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+    financeLine: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, paddingVertical: 4 },
+    financeLineLabel: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+    financeLineLabelSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_400Regular' },
+    financeLineValue: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+    financeLineValueSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
 
     // ── Photos ──
     photoLabel: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub, marginBottom: 8 },
@@ -961,7 +943,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', gap: 6,
         borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16, justifyContent: 'center',
         borderWidth: 0.5, borderColor: P.border,
-        backgroundColor: 'rgba(108,62,184,0.05)',
+        backgroundColor: P.primaryBg,
         marginBottom: 4,
     },
     payPartialBtnText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
@@ -979,7 +961,7 @@ const styles = StyleSheet.create({
     emptyPayText: { fontSize: 12, color: P.sub },
 
     // ── Modal ──
-    overlay:   { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(22,18,58,0.4)' },
+    overlay:   { position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: P.overlay },
     sheetWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
     sheet: {
         backgroundColor: P.surface,
@@ -989,7 +971,7 @@ const styles = StyleSheet.create({
     },
     sheetHandle: {
         width: 36, height: 3.5, borderRadius: 2,
-        backgroundColor: 'rgba(0,0,0,0.1)',
+        backgroundColor: P.borderHard,
         alignSelf: 'center', marginBottom: 16,
     },
     sheetTitle: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, marginBottom: 2 },
@@ -1015,9 +997,9 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', gap: 5,
         paddingHorizontal: 10, paddingVertical: 7,
         borderRadius: 8, borderWidth: 0.5, borderColor: P.borderHard,
-        backgroundColor: P.pageBg,
+        backgroundColor: P.surface,
     },
-    methodChipActive:    { backgroundColor: P.primary, borderColor: P.primary },
+    methodChipActive:    { backgroundColor: P.bg, borderColor: P.goldRim },
     methodChipText:      { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
 
     notesInput: {

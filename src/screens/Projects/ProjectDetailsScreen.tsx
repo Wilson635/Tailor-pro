@@ -4,17 +4,16 @@
 // ==========================================
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
     View,
     Text,
-    StyleSheet,
     ScrollView,
     TouchableOpacity,
     ActivityIndicator,
     Modal,
     TextInput,
-    Alert,
-} from 'react-native';
+    } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -23,28 +22,18 @@ import { useAppStore } from '@store/useAppStore';
 import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
 import { CLOTHING_TYPE_LABELS } from '@constants/theme';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import type { ProjectStatut } from '../../types';
-import { useToast } from '@/src/context/ToastContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProjectDetails'>;
-
-const P = {
-    primary: '#6C3EB8', pageBg: '#F5F4FB', surface: '#FFFFFF',
-    text: '#1A1033', sub: '#7C6FA8',
-    border: 'rgba(108,62,184,0.10)', borderHard: 'rgba(108,62,184,0.15)',
-    gold: '#D4AF37', goldBg: 'rgba(212,175,55,0.10)',
-    success: '#16A34A', successBg: 'rgba(22,163,74,0.10)',
-    error: '#EF4444', errorBg: 'rgba(239,68,68,0.10)',
-    warning: '#D97706', warningBg: 'rgba(217,119,6,0.10)',
-};
 
 const PROJECT_STATUS_FLOW: ProjectStatut[] = [
     'brouillon', 'confirme', 'en_preparation', 'en_confection',
     'essayage', 'retouches', 'partiellement_termine', 'termine', 'livre',
 ];
 
-const PROJECT_STATUS_META: Record<ProjectStatut, { label: string; color: string; bg: string }> = {
+const projectStatusMeta = (P: Palette): Record<ProjectStatut, { label: string; color: string; bg: string }> => ({
     brouillon:              { label: 'Brouillon',             color: P.sub,     bg: P.border },
     confirme:               { label: 'Confirmé',              color: P.primary, bg: P.goldBg },
     en_preparation:         { label: 'En préparation',        color: P.warning, bg: P.warningBg },
@@ -55,9 +44,9 @@ const PROJECT_STATUS_META: Record<ProjectStatut, { label: string; color: string;
     termine:                { label: 'Terminé',               color: P.success, bg: P.successBg },
     livre:                  { label: 'Livré',                 color: P.success, bg: P.successBg },
     annule:                 { label: 'Annulé',                color: P.error,   bg: P.errorBg },
-};
+});
 
-const ORDER_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+const orderStatusLabels = (P: Palette): Record<string, { label: string; color: string }> => ({
     pending:      { label: 'En attente',  color: P.sub },
     creee:        { label: 'Créée',       color: P.sub },
     en_attente:   { label: 'En attente',  color: P.sub },
@@ -71,12 +60,14 @@ const ORDER_STATUS_LABELS: Record<string, { label: string; color: string }> = {
     delivered:    { label: 'Livrée',      color: P.success },
     cancelled:    { label: 'Annulée',     color: P.error },
     annulee:      { label: 'Annulée',     color: P.error },
-};
+});
 
 export const ProjectDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const { projectId } = route.params;
     const insets = useSafeAreaInsets();
-    const { showToast } = useToast();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
+    const PROJECT_STATUS_META = projectStatusMeta(P);
+    const ORDER_STATUS_LABELS = orderStatusLabels(P);
 
     const {
         getProjectById, projectRecaps, loadProjects, loadProjectRecap,
@@ -132,7 +123,7 @@ export const ProjectDetailsScreen: React.FC<Props> = ({ route, navigation }) => 
         setSavingPay(false);
         setPayAmount('');
         setPayModal(false);
-        showToast({ type: 'success', message: 'Paiement enregistré.' });
+        showSuccess('Paiement enregistré', `${formatCurrency(amount)} a été encaissé.`);
     };
 
     return (
@@ -140,20 +131,26 @@ export const ProjectDetailsScreen: React.FC<Props> = ({ route, navigation }) => 
             {/* ══ HEADER ══ */}
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-                    <Feather name="arrow-left" size={20} color={P.text} />
+                    <Feather name="arrow-left" size={18} color={P.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle} numberOfLines={1}>{project.nom}</Text>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.headerTitle} numberOfLines={1}>{project.nom}</Text>
+                </View>
                 <TouchableOpacity
                     style={styles.backBtn}
                     onPress={() => {
-                        Alert.alert(
+                        showAlert(
                             'Supprimer ce projet ?',
                             'Les vêtements déjà créés restent dans leurs commandes respectives.',
                             [
                                 { text: 'Annuler', style: 'cancel' },
                                 {
                                     text: 'Supprimer', style: 'destructive',
-                                    onPress: async () => { await deleteProject(projectId); navigation.goBack(); },
+                                    onPress: async () => {
+                                        await deleteProject(projectId);
+                                        showSuccess('Projet supprimé', 'Le projet a été retiré.', () => navigation.goBack());
+                                    },
                                 },
                             ]
                         );
@@ -308,8 +305,13 @@ export const ProjectDetailsScreen: React.FC<Props> = ({ route, navigation }) => 
                                 key={s}
                                 style={styles.statusOption}
                                 onPress={async () => {
-                                    await updateProjectStatut(projectId, s);
-                                    setStatusModal(false);
+                                    if (s !== project.statut) {
+                                        await updateProjectStatut(projectId, s);
+                                        setStatusModal(false);
+                                        showSuccess('Statut modifié', `Le projet est maintenant « ${PROJECT_STATUS_META[s].label} ».`);
+                                    } else {
+                                        setStatusModal(false);
+                                    }
                                 }}
                             >
                                 <View style={[styles.statusDot, { backgroundColor: PROJECT_STATUS_META[s].color }]} />
@@ -357,21 +359,24 @@ export const ProjectDetailsScreen: React.FC<Props> = ({ route, navigation }) => 
     );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     root: { flex: 1, backgroundColor: P.pageBg },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     header: {
-        backgroundColor: P.surface, flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: SPACING.md, paddingVertical: 12,
-        borderBottomWidth: 0.5, borderBottomColor: P.borderHard, gap: 8,
+        backgroundColor: P.pageBg, flexDirection: 'row', alignItems: 'flex-start',
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, gap: 12,
     },
     backBtn: {
-        width: 36, height: 36, borderRadius: 10, backgroundColor: P.pageBg,
-        borderWidth: 0.5, borderColor: P.borderHard, alignItems: 'center', justifyContent: 'center',
+        width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+        borderWidth: 0.5, borderColor: P.borderHard, alignItems: 'center', justifyContent: 'center', marginTop: 4,
     },
-    headerTitle: { flex: 1, fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text, textAlign: 'center' },
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2,
+    },
+    headerTitle: { fontSize: 22, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.4 },
 
-    card: { backgroundColor: P.surface, borderRadius: 16, padding: 14, borderWidth: 0.5, borderColor: P.borderHard, gap: 8 },
+    card: { backgroundColor: P.surface, borderRadius: 18, padding: 14, borderWidth: 0.5, borderColor: P.borderHard, gap: 8 },
     rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     cardLabel: { fontSize: 12.5, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
     hint: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_400Regular' },
@@ -388,7 +393,8 @@ const styles = StyleSheet.create({
 
     payBtn: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-        backgroundColor: P.primary, borderRadius: 10, paddingVertical: 11, marginTop: 6,
+        backgroundColor: P.bg, borderRadius: 16, paddingVertical: 11, marginTop: 6,
+        borderWidth: 1, borderColor: P.goldRim,
     },
     payBtnText: { color: '#fff', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13 },
 
@@ -409,7 +415,7 @@ const styles = StyleSheet.create({
         paddingTop: 10, borderTopWidth: 0.5, borderTopColor: P.border,
     },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(26,16,51,0.5)', justifyContent: 'center', padding: SPACING.lg },
+    modalOverlay: { flex: 1, backgroundColor: P.overlay, justifyContent: 'center', padding: SPACING.lg },
     modalCard: { backgroundColor: P.surface, borderRadius: 20, padding: 18, gap: 10, maxHeight: '80%' },
     statusOption: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
     statusDot: { width: 10, height: 10, borderRadius: 5 },

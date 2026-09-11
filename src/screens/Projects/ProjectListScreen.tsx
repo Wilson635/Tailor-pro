@@ -7,7 +7,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
     View,
     Text,
-    StyleSheet,
     FlatList,
     TouchableOpacity,
     TextInput,
@@ -20,35 +19,13 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrency, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import type { ProjectStatut } from '../../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProjectList'>;
 
-// ──────────────────────────────────────────
-// PALETTE — identique à OrderDetailsScreen
-// ──────────────────────────────────────────
-
-const P = {
-    bg:        '#16123A',
-    primary:   '#6C3EB8',
-    pageBg:    '#F5F4FB',
-    surface:   '#FFFFFF',
-    text:      '#1A1033',
-    sub:       '#7C6FA8',
-    border:    'rgba(108,62,184,0.10)',
-    borderHard:'rgba(108,62,184,0.15)',
-    gold:      '#D4AF37',
-    goldBg:    'rgba(212,175,55,0.10)',
-    success:   '#16A34A',
-    successBg: 'rgba(22,163,74,0.10)',
-    error:     '#EF4444',
-    errorBg:   'rgba(239,68,68,0.10)',
-    warning:   '#D97706',
-    warningBg: 'rgba(217,119,6,0.10)',
-};
-
-const PROJECT_STATUS_META: Record<ProjectStatut, { label: string; color: string; bg: string }> = {
+const projectStatusMeta = (P: Palette): Record<ProjectStatut, { label: string; color: string; bg: string }> => ({
     brouillon:              { label: 'Brouillon',            color: P.sub,     bg: P.border },
     confirme:               { label: 'Confirmé',             color: P.primary, bg: P.goldBg },
     en_preparation:         { label: 'En préparation',       color: P.warning, bg: P.warningBg },
@@ -59,10 +36,12 @@ const PROJECT_STATUS_META: Record<ProjectStatut, { label: string; color: string;
     termine:                { label: 'Terminé',               color: P.success, bg: P.successBg },
     livre:                  { label: 'Livré',                 color: P.success, bg: P.successBg },
     annule:                 { label: 'Annulé',                color: P.error,   bg: P.errorBg },
-};
+});
 
 export const ProjectListScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
+    const PROJECT_STATUS_META = projectStatusMeta(P);
     const { projects, projectRecaps, loadProjects, isLoading } = useAppStore();
     const [search, setSearch] = useState('');
     const [refreshing, setRefreshing] = useState(false);
@@ -85,11 +64,14 @@ export const ProjectListScreen: React.FC<Props> = ({ navigation }) => {
             {/* ══ HEADER ══ */}
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-                    <Feather name="arrow-left" size={20} color={P.text} />
+                    <Feather name="arrow-left" size={18} color={P.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Projets</Text>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.headerTitle}>Projets</Text>
+                </View>
                 <TouchableOpacity style={styles.addBtn} onPress={() => navigation.navigate('AddProject')}>
-                    <Feather name="plus" size={20} color="#fff" />
+                    <Feather name="plus" size={20} color={P.gold} />
                 </TouchableOpacity>
             </View>
 
@@ -117,7 +99,7 @@ export const ProjectListScreen: React.FC<Props> = ({ navigation }) => {
                         Regroupe un mariage, une cérémonie ou une commande de groupe en un seul projet.
                     </Text>
                     <TouchableOpacity style={styles.emptyBtn} onPress={() => navigation.navigate('AddProject')}>
-                        <Feather name="plus" size={16} color="#fff" />
+                        <Feather name="plus" size={16} color={P.gold} />
                         <Text style={styles.emptyBtnText}>Créer un projet</Text>
                     </TouchableOpacity>
                 </View>
@@ -189,32 +171,35 @@ export const ProjectListScreen: React.FC<Props> = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     root: { flex: 1, backgroundColor: P.pageBg },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 32 },
 
     header: {
-        backgroundColor: P.surface,
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: SPACING.md, paddingVertical: 12,
-        borderBottomWidth: 0.5, borderBottomColor: P.borderHard,
-        gap: 8,
+        backgroundColor: P.pageBg,
+        flexDirection: 'row', alignItems: 'flex-start',
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, gap: 12,
     },
     backBtn: {
-        width: 36, height: 36, borderRadius: 10,
-        backgroundColor: P.pageBg, borderWidth: 0.5, borderColor: P.borderHard,
-        alignItems: 'center', justifyContent: 'center',
+        width: 40, height: 40, borderRadius: 12,
+        backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
+        alignItems: 'center', justifyContent: 'center', marginTop: 4,
     },
-    headerTitle: { flex: 1, fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text, textAlign: 'center' },
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2,
+    },
+    headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
     addBtn: {
-        width: 36, height: 36, borderRadius: 10,
-        backgroundColor: P.primary, alignItems: 'center', justifyContent: 'center',
+        width: 40, height: 40, borderRadius: 12,
+        backgroundColor: P.bg, alignItems: 'center', justifyContent: 'center',
+        borderWidth: 1, borderColor: P.goldRim, marginTop: 4,
     },
 
     searchWrap: {
         flexDirection: 'row', alignItems: 'center', gap: 8,
-        margin: SPACING.md, marginBottom: 0,
-        backgroundColor: P.surface, borderRadius: 12,
+        marginHorizontal: 20, marginBottom: 8,
+        backgroundColor: P.surface, borderRadius: 14,
         paddingHorizontal: 14, paddingVertical: 10,
         borderWidth: 0.5, borderColor: P.borderHard,
     },
@@ -224,12 +209,13 @@ const styles = StyleSheet.create({
     emptySub: { fontSize: 13, color: P.sub, textAlign: 'center', fontFamily: 'PlusJakartaSans_400Regular' },
     emptyBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
-        backgroundColor: P.primary, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, marginTop: 8,
+        backgroundColor: P.bg, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 16, marginTop: 8,
+        borderWidth: 1, borderColor: P.goldRim,
     },
     emptyBtnText: { color: '#fff', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13 },
 
     card: {
-        backgroundColor: P.surface, borderRadius: 16, padding: 14,
+        backgroundColor: P.surface, borderRadius: 18, padding: 14,
         borderWidth: 0.5, borderColor: P.borderHard, gap: 10,
     },
     cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },

@@ -162,6 +162,31 @@ export const uploadClientPhoto = async (
     }
 };
 
+export const uploadProfilePhoto = async (
+    localUri: string,
+    userId: string,
+): Promise<{ publicUrl: string | null; error: Error | null }> => {
+    try {
+        const ext = guessImageExt(localUri);
+        const path = `${userId}/profile/avatar_${Date.now()}.${ext}`;
+        const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const arrayBuffer = await uriToArrayBuffer(localUri);
+
+        const { error } = await supabase.storage
+            .from('catalog-photos')
+            .upload(path, arrayBuffer, { contentType, upsert: false });
+        if (error) {
+            console.error('Erreur upload photo profil:', error);
+            return { publicUrl: null, error };
+        }
+        const { data } = supabase.storage.from('catalog-photos').getPublicUrl(path);
+        return { publicUrl: data.publicUrl, error: null };
+    } catch (e) {
+        console.error('Exception upload photo profil:', e);
+        return { publicUrl: null, error: e as Error };
+    }
+};
+
 export const resolveClientPhotoForSave = async (
     photo: string | null | undefined,
     couturierId: string,
@@ -700,6 +725,7 @@ export const paymentService = {
         amount: number;
         method: string;
         notes?: string;
+        typePaiement?: string;
     }) => {
         if (!payment.orderId && !payment.projectId) {
             return { data: null, error: new Error('Un paiement doit être lié à une commande ou à un projet') };
@@ -714,6 +740,7 @@ export const paymentService = {
                 client_id:    payment.clientId,
                 amount:       payment.amount,
                 method:       payment.method,
+                type:         payment.typePaiement ?? 'acompte',
                 notes:        payment.notes ?? null,
                 date:         new Date().toISOString().slice(0, 10),
             })

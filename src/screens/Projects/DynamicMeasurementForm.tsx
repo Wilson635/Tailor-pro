@@ -6,18 +6,12 @@
 // ==========================================
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 import { useAppStore } from '@store/useAppStore';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import type { TypeVetement } from '../../types';
-
-const P = {
-    primary: '#6C3EB8', pageBg: '#F5F4FB', surface: '#FFFFFF',
-    text: '#1A1033', sub: '#7C6FA8',
-    border: 'rgba(108,62,184,0.10)', borderHard: 'rgba(108,62,184,0.15)',
-    error: '#DC2626',
-};
 
 interface Props {
     typeVetement: TypeVetement;
@@ -123,6 +117,7 @@ const slugify = (label: string) =>
 export const DynamicMeasurementForm: React.FC<Props> = ({
                                                             typeVetement, initialValues, initialUnite, onSubmit, onCancel, submitLabel,
                                                         }) => {
+    const { colors: P, styles } = useThemedStyles(makeStyles);
     const { getMeasurementFields, loadMeasurementFields } = useAppStore();
     const [loading, setLoading] = useState(true);
     const [unite, setUnite] = useState<'cm' | 'pouces'>(initialUnite ?? 'cm');
@@ -279,12 +274,12 @@ export const DynamicMeasurementForm: React.FC<Props> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     loadingBox: { paddingVertical: 24, alignItems: 'center' },
 
     uniteRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-    uniteChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: P.pageBg, borderWidth: 0.5, borderColor: P.borderHard },
-    uniteChipActive: { backgroundColor: P.primary, borderColor: P.primary },
+    uniteChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard },
+    uniteChipActive: { backgroundColor: P.bg, borderColor: P.goldRim },
     uniteChipText: { fontSize: 12.5, color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold' },
     uniteChipTextActive: { color: '#fff' },
 
@@ -304,8 +299,8 @@ const styles = StyleSheet.create({
         fontFamily: 'PlusJakartaSans_500Medium', backgroundColor: P.pageBg,
     },
     addFieldBtn: {
-        width: 40, height: 40, borderRadius: 10, backgroundColor: P.primary,
-        alignItems: 'center', justifyContent: 'center',
+        width: 40, height: 40, borderRadius: 10, backgroundColor: P.bg,
+        alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: P.goldRim,
     },
 
     actionsRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
@@ -313,7 +308,8 @@ const styles = StyleSheet.create({
     cancelBtnText: { color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold' },
     submitBtn: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-        backgroundColor: P.primary, borderRadius: 10, paddingVertical: 12,
+        backgroundColor: P.bg, borderRadius: 16, paddingVertical: 12,
+        borderWidth: 1, borderColor: P.goldRim,
     },
     submitBtnText: { color: '#fff', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13 },
 });

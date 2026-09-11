@@ -486,6 +486,7 @@ export type RootStackParamList = {
   Settings: undefined;
   Profile: undefined;
   Statistics: undefined;
+  Notifications: undefined;
 };
 
 export type TabParamList = {

@@ -3,9 +3,10 @@
 // ==========================================
 
 import React, { useState, useCallback } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
-  Alert, ActivityIndicator, Image, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Image, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -78,21 +79,21 @@ export const AddTissuScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const pickPhoto = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission requise', "Accès galerie refusé."); return; }
+    if (status !== 'granted') { showAlert('Permission requise', "Accès galerie refusé."); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
     if (!result.canceled) setPhotoUri(result.assets[0].uri);
   }, []);
 
   const takePhoto = useCallback(async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission requise', "Accès caméra refusé."); return; }
+    if (status !== 'granted') { showAlert('Permission requise', "Accès caméra refusé."); return; }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
     if (!result.canceled) setPhotoUri(result.assets[0].uri);
   }, []);
 
   const handleSubmit = async () => {
-    if (!typeTissu)    { Alert.alert('Champ requis', 'Sélectionnez le type de tissu.'); return; }
-    if (!nomCommercial.trim()) { Alert.alert('Champ requis', 'Entrez le nom commercial.'); return; }
+    if (!typeTissu)    { showAlert('Champ requis', 'Sélectionnez le type de tissu.'); return; }
+    if (!nomCommercial.trim()) { showAlert('Champ requis', 'Entrez le nom commercial.'); return; }
     setIsSaving(true);
     const result = await addTissu({
       typeTissu,
@@ -106,10 +107,11 @@ export const AddTissuScreen: React.FC<Props> = ({ route, navigation }) => {
     setIsSaving(false);
 
     if (result) {
-      // If came from AddRealisation via picker, go back with the new tissu id
-      if (navigation.canGoBack()) navigation.goBack();
+      showSuccess('Tissu créé', `${nomCommercial.trim()} a été enregistré.`, () => {
+        if (navigation.canGoBack()) navigation.goBack();
+      });
     } else {
-      Alert.alert('Erreur', 'Impossible de créer le tissu.');
+      showAlert('Erreur', 'Impossible de créer le tissu.');
     }
   };
 

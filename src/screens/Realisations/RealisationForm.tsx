@@ -7,15 +7,17 @@
 // ==========================================
 
 import React, { useCallback, useState } from 'react';
+import { showAlert } from '@/src/context/DialogContext';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
-  Alert, ActivityIndicator, Image,
+  ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAppStore } from '@store/useAppStore';
 import { COULEURS_RAPIDES } from '@constants/realisationConstants';
 import { TYPE_VETEMENT_LABELS } from '@constants/mensurationConstants';
+import { DateField } from '@components/ui';
 
 // ── PALETTE "ATELIER" ────────────────────────────────────────────────
 // Encre aubergine + fil d'or : identité de la collection Réalisations.
@@ -196,7 +198,7 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
   const pickPhotos = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission requise', "L'accès à la galerie est nécessaire pour ajouter des photos.");
+      showAlert('Permission requise', "L'accès à la galerie est nécessaire pour ajouter des photos.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -210,7 +212,7 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
   const takePhoto = useCallback(async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission requise', "L'accès à la caméra est nécessaire.");
+      showAlert('Permission requise', "L'accès à la caméra est nécessaire.");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
@@ -226,7 +228,7 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
 
   const handleSubmit = () => {
     if (mode === 'create' && !parseDate(v.dateCreation)) {
-      Alert.alert('Date invalide', 'La date de création doit être au format JJ/MM/AAAA.');
+      showAlert('Date invalide', 'La date de création doit être au format JJ/MM/AAAA.');
       return;
     }
     onSubmit(v);
@@ -392,34 +394,24 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
         <View style={{ marginBottom: 26 }}>
           <SectionHead icon="calendar-outline" title="Dates" />
           {mode === 'create' && (
-              <View style={{ marginBottom: 4 }}>
-                <FieldLabel>Date de création</FieldLabel>
-                <Underline
-                    value={v.dateCreation}
-                    onChangeText={t => patch({ dateCreation: t })}
-                    placeholder="JJ/MM/AAAA"
-                    keyboardType="numeric"
-                />
-              </View>
+              <DateField
+                  label="Date de création"
+                  value={v.dateCreation}
+                  onChange={t => patch({ dateCreation: t })}
+              />
           )}
-          <View style={{ marginBottom: 4, marginTop: mode === 'create' ? 8 : 0 }}>
-            <FieldLabel>Date d'essayage (optionnel)</FieldLabel>
-            <Underline
-                value={v.dateEssayage}
-                onChangeText={t => patch({ dateEssayage: t })}
-                placeholder="JJ/MM/AAAA"
-                keyboardType="numeric"
-            />
-          </View>
-          <View style={{ marginTop: 8 }}>
-            <FieldLabel>Date de livraison prévue (optionnel)</FieldLabel>
-            <Underline
-                value={v.dateLivraison}
-                onChangeText={t => patch({ dateLivraison: t })}
-                placeholder="JJ/MM/AAAA"
-                keyboardType="numeric"
-            />
-          </View>
+          <DateField
+              label="Date d'essayage (optionnel)"
+              value={v.dateEssayage}
+              onChange={t => patch({ dateEssayage: t })}
+              placeholder="Choisir une date d'essayage"
+          />
+          <DateField
+              label="Date de livraison prévue (optionnel)"
+              value={v.dateLivraison}
+              onChange={t => patch({ dateLivraison: t })}
+              placeholder="Choisir une date de livraison"
+          />
         </View>
 
         {/* ── NOTES ── */}

@@ -3,12 +3,12 @@
 // ==========================================
 
 import React, { useState } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -71,7 +71,7 @@ export const EditCatalogModelScreen: React.FC<Props> = ({ route, navigation }) =
   const pickPhotos = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission refusée', 'Autorisez l’accès à la galerie.');
+      showAlert('Permission refusée', 'Autorisez l’accès à la galerie.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -86,7 +86,7 @@ export const EditCatalogModelScreen: React.FC<Props> = ({ route, navigation }) =
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission refusée', 'Autorisez l’accès à la caméra.');
+      showAlert('Permission refusée', 'Autorisez l’accès à la caméra.');
       return;
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
@@ -94,7 +94,7 @@ export const EditCatalogModelScreen: React.FC<Props> = ({ route, navigation }) =
   };
 
   const handlePickSource = () =>
-    Alert.alert('Photos', 'Choisissez une source', [
+    showAlert('Photos', 'Choisissez une source', [
       { text: 'Galerie', onPress: pickPhotos },
       { text: 'Caméra', onPress: takePhoto },
       { text: 'Annuler', style: 'cancel' },
@@ -102,7 +102,7 @@ export const EditCatalogModelScreen: React.FC<Props> = ({ route, navigation }) =
 
   const handleSave = async () => {
     if (!nom.trim()) {
-      Alert.alert('Champ requis', 'Donnez un nom à ce modèle.');
+      showAlert('Champ requis', 'Donnez un nom à ce modèle.');
       return;
     }
     setIsLoading(true);
@@ -129,16 +129,16 @@ export const EditCatalogModelScreen: React.FC<Props> = ({ route, navigation }) =
         accessoiresNecessaires: accessoires,
         statut,
       });
-      navigation.goBack();
+      showSuccess('Modèle modifié', 'Les modifications ont été enregistrées.', () => navigation.goBack());
     } catch (error: any) {
-      Alert.alert('Erreur', error?.message || 'Impossible de modifier le modèle.');
+      showAlert('Erreur', error?.message || 'Impossible de modifier le modèle.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleArchive = () => {
-    Alert.alert(
+    showAlert(
       'Archiver ce modèle ?',
       `"${model.nom}" quittera le catalogue. L’historique des commandes reste intact.`,
       [
@@ -148,7 +148,7 @@ export const EditCatalogModelScreen: React.FC<Props> = ({ route, navigation }) =
           style: 'destructive',
           onPress: async () => {
             await archiveCatalogModel(modelId);
-            navigation.popToTop();
+            showSuccess('Modèle retiré', `"${model.nom}" a quitté le catalogue.`, () => navigation.popToTop());
           },
         },
       ],

@@ -3,6 +3,7 @@
 // ==========================================
 
 import React, { useState } from "react";
+import { showAlert } from '@/src/context/DialogContext';
 import {
     View,
     Text,
@@ -11,7 +12,6 @@ import {
     KeyboardAvoidingView,
     Platform,
     ScrollView,
-    Alert,
     ActivityIndicator,
     StatusBar,
     StyleSheet,
@@ -533,14 +533,14 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
             if (!data.user)  throw new Error("Erreur lors de la création du compte");
 
             if (!data.session) {
-                Alert.alert(
+                showAlert(
                     "Vérification requise",
                     "Un email de confirmation a été envoyé. Vérifiez votre boîte mail.",
                     [{ text: "OK", onPress: () => navigation.navigate("Login") }]
                 );
             }
         } catch (e: any) {
-            Alert.alert("Erreur", e.message ?? "Impossible de créer le compte");
+            showAlert("Erreur", e.message ?? "Impossible de créer le compte");
         } finally {
             setLoading(false);
         }

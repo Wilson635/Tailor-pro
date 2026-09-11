@@ -4,9 +4,10 @@
 // ==========================================
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
-    View, Text, TouchableOpacity, StyleSheet,
-    ScrollView, Switch, StatusBar, Alert, TextInput,
+    View, Text, TouchableOpacity,
+    ScrollView, Switch, StatusBar, TextInput,
     ActivityIndicator, Platform, Image,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -21,16 +22,19 @@ import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { useProfile } from '@hooks/useProfile';
 import { useAppStore } from '@store/useAppStore';
 import { supabase } from '@/src/lib/supabase';
-import { usePalette, useTheme } from '@/src/theme';
-import { lightPalette } from '@/src/theme/palette';
-import { usePreferences } from '@/src/context/PreferencesContext';
+import { uploadProfilePhoto } from '@services/supabaseService';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import { t } from '@/src/i18n';
 import { formatCurrency, formatCurrencyShort } from '@utils/formatters';
+import { buildInbox } from '@/src/utils/buildInbox';
+import {
+    getNotificationsEnabled,
+    requestNotificationPermission,
+    setNotificationsEnabled,
+    syncDeviceNotifications,
+} from '@/src/notifications/deviceNotifications';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
-
-// ── PALETTE ──────────────────────────────────────────────────────
-const P = lightPalette;
 
 // ── CONSTANTES ───────────────────────────────────────────────────
 const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
@@ -51,16 +55,15 @@ const SPECIALITIES_OPTIONS = [
     { id: 'accessoires',  label: 'Accessoires' },
 ];
 
-const PLAN_META: Record<string, { label: string; color: string; bg: string; desc: string }> = {
+const planMetaFor = (P: Palette): Record<string, { label: string; color: string; bg: string; desc: string }> => ({
     gratuit: { label: 'Gratuit',  color: P.sub,     bg: P.primaryBg, desc: 'Fonctionnalités de base' },
     pro:     { label: 'Pro',      color: P.primary,  bg: P.primaryMid, desc: 'Toutes les fonctionnalités' },
     business:{ label: 'Business', color: P.gold,     bg: P.goldBg,    desc: 'Multi-atelier & analytics' },
-};
+});
 
 // ── ASYNC STORAGE KEYS ────────────────────────────────────────────
 const DEVICES_KEY   = (uid: string) => `@tailorpro_devices_${uid}`;
 const HISTORY_KEY   = (uid: string) => `@tailorpro_login_history_${uid}`;
-const NOTIF_KEY     = (uid: string) => `@tailorpro_notif_${uid}`;
 const BIOMETRIC_KEY = (uid: string) => `@biometrics_enabled_${uid}`;
 
 // ── TYPES ─────────────────────────────────────────────────────────
@@ -94,70 +97,56 @@ const formatEventDate = (iso: string) => {
 };
 
 // ── SUB-COMPOSANTS ────────────────────────────────────────────────
-const SectionTitle = ({ title }: { title: string }) => (
-    <Text style={ss.sectionTitle}>{title}</Text>
-);
-const Card = ({ children, style }: { children: React.ReactNode; style?: object }) => (
-    <View style={[ss.card, style]}>{children}</View>
-);
-const Divider = () => <View style={ss.divider} />;
+const SectionTitle = ({ title }: { title: string }) => {
+    const { styles } = useThemedStyles(makeStyles);
+    return <Text style={styles.sectionTitle}>{title}</Text>;
+};
+const Card = ({ children, style }: { children: React.ReactNode; style?: object }) => {
+    const { styles } = useThemedStyles(makeStyles);
+    return <View style={[styles.card, style]}>{children}</View>;
+};
+const Divider = () => {
+    const { styles } = useThemedStyles(makeStyles);
+    return <View style={styles.divider} />;
+};
 
 const SettingRow = ({
-                        icon, iconBg, iconColor = P.gold, title, subtitle,
+                        icon, iconBg, iconColor, title, subtitle,
                         right, onPress, danger, isEditing, renderInput, multiline,
                     }: {
     icon: keyof typeof Ionicons.glyphMap; iconBg: string; iconColor?: string;
     title: string; subtitle?: string; right?: React.ReactNode;
     onPress?: () => void; danger?: boolean; isEditing?: boolean;
     renderInput?: () => React.ReactNode; multiline?: boolean;
-}) => (
+}) => {
+    const { colors: P, styles } = useThemedStyles(makeStyles);
+    return (
     <TouchableOpacity
-        style={[ss.row, multiline && ss.rowMulti]}
+        style={[styles.row, multiline && styles.rowMulti]}
         onPress={isEditing ? undefined : onPress}
         activeOpacity={onPress && !isEditing ? 0.65 : 1}
     >
-        <View style={[ss.rowIcon, { backgroundColor: iconBg }]}>
-            <Ionicons name={icon} size={17} color={iconColor} />
+        <View style={[styles.rowIcon, { backgroundColor: iconBg }]}>
+            <Ionicons name={icon} size={17} color={iconColor ?? P.gold} />
         </View>
-        <View style={[ss.rowContent, multiline && { alignSelf: 'flex-start', paddingTop: 2 }]}>
-            <Text style={[ss.rowTitle, danger && { color: P.error }]}>{title}</Text>
+        <View style={[styles.rowContent, multiline && { alignSelf: 'flex-start', paddingTop: 2 }]}>
+            <Text style={[styles.rowTitle, danger && { color: P.error }]}>{title}</Text>
             {isEditing && renderInput
-                ? <View style={[ss.inputWrapper, multiline && { borderBottomWidth: 0 }]}>{renderInput()}</View>
-                : subtitle ? <Text style={ss.rowSub}>{subtitle}</Text> : null
+                ? <View style={[styles.inputWrapper, multiline && { borderBottomWidth: 0 }]}>{renderInput()}</View>
+                : subtitle ? <Text style={styles.rowSub}>{subtitle}</Text> : null
             }
         </View>
         {!isEditing && (right ?? (onPress && <Ionicons name="chevron-forward" size={15} color={P.muted} />))}
     </TouchableOpacity>
-);
-
-const ss = StyleSheet.create({
-    sectionTitle: {
-        fontSize: 10, fontWeight: '700', color: P.sub,
-        letterSpacing: 1.4, textTransform: 'uppercase',
-        marginTop: 22, marginBottom: 10, paddingHorizontal: 2,
-    },
-    card: {
-        backgroundColor: P.surface, borderRadius: 16,
-        borderWidth: 0.5, borderColor: P.borderHard, overflow: 'hidden',
-    },
-    row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 14 },
-    rowMulti: { alignItems: 'flex-start', paddingVertical: 16 },
-    rowIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-    rowContent: { flex: 1 },
-    rowTitle: { fontSize: 13, fontWeight: '500', color: P.sub },
-    rowSub: { fontSize: 14, fontWeight: '600', color: P.text, marginTop: 2 },
-    inputWrapper: { marginTop: 4, borderBottomWidth: 1.5, borderBottomColor: P.gold, paddingBottom: 2 },
-    divider: { height: 0.5, backgroundColor: P.border, marginLeft: 66 },
-});
+    );
+};
 
 // ── ÉCRAN PRINCIPAL ───────────────────────────────────────────────
 export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
+    const { colors: P, styles, isDark } = useThemedStyles(makeStyles);
     const { profile, updateProfile, refetch } = useProfile();
-    const { statistics, orders, clients } = useAppStore();
-    const theme = usePalette();
-    const { isDark } = useTheme();
-    const { langue, devise, uniteMesure } = usePreferences();
+    const { statistics, orders, clients, activities } = useAppStore();
 
     const [activeTab, setActiveTab] = useState<'profil' | 'securite' | 'atelier'>('profil');
     const [isEditing, setIsEditing] = useState(false);
@@ -219,8 +208,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
             if (profile?.id) {
                 const stored = await AsyncStorage.getItem(BIOMETRIC_KEY(profile.id));
                 setBiometricEnabled(stored === 'true');
-                const notifStored = await AsyncStorage.getItem(NOTIF_KEY(profile.id));
-                if (notifStored !== null) setNotifEnabled(notifStored === 'true');
+                setNotifEnabled(await getNotificationsEnabled(profile.id));
             }
         };
         init();
@@ -300,15 +288,16 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
     // ── Avatar ────────────────────────────────────────────────────
     const handleAvatarPress = async () => {
-        if (!isEditing) return;
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-            Alert.alert('Permission requise', 'Autorisez l\'accès à la galerie.');
+            showAlert('Permission requise', 'Autorisez l\'accès à la galerie.');
             return;
         }
         const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true, aspect: [1, 1], quality: 0.8,
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
         });
         if (result.canceled || !result.assets[0]) return;
         const asset = result.assets[0];
@@ -316,16 +305,13 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('Non connecté');
-            const ext = asset.uri.split('.').pop() ?? 'jpg';
-            const path = `${user.id}/avatar.${ext}`;
-            const blob = await (await fetch(asset.uri)).blob();
-            const { error: upErr } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true });
-            if (upErr) throw upErr;
-            const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
-            await updateProfile({ avatar_url: publicUrl });
-            await refetch();
+            const { publicUrl, error: upErr } = await uploadProfilePhoto(asset.uri, user.id);
+            if (upErr || !publicUrl) throw upErr ?? new Error('Upload échoué');
+            const { error } = await updateProfile({ avatar_url: publicUrl });
+            if (error) throw error;
+            showSuccess('Photo mise à jour', 'Votre avatar a été enregistré.');
         } catch (e: any) {
-            Alert.alert('Erreur', e.message ?? 'Upload échoué');
+            showAlert('Erreur', e.message ?? 'Upload échoué');
         } finally {
             setIsUploadingAvatar(false);
         }
@@ -350,10 +336,10 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
             };
             const { error } = await updateProfile(updates);
             if (error) throw error;
-            Alert.alert('Enregistré ✓', 'Votre profil a été mis à jour.');
+            showSuccess('Enregistré', 'Votre profil a été mis à jour.');
             setIsEditing(false);
         } catch (e: any) {
-            Alert.alert('Erreur', e.message ?? 'Impossible de sauvegarder.');
+            showAlert('Erreur', e.message ?? 'Impossible de sauvegarder.');
         } finally {
             setIsSaving(false);
         }
@@ -363,7 +349,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     const handleToggleBiometrics = async (value: boolean) => {
         if (!profile?.id) return;
         if (value && !biometricAvailable) {
-            Alert.alert('Indisponible', 'Aucun capteur biométrique configuré sur cet appareil.');
+            showAlert('Indisponible', 'Aucun capteur biométrique configuré sur cet appareil.');
             return;
         }
         const result = await LocalAuthentication.authenticateAsync({
@@ -377,23 +363,45 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                 await AsyncStorage.setItem(BIOMETRIC_KEY(profile.id), 'true');
                 setBiometricEnabled(true);
                 await recordSecurityEvent('Biométrie activée');
-                Alert.alert('Activé', 'Connexion biométrique activée.');
+                showAlert('Activé', 'Connexion biométrique activée.');
             } else {
                 await AsyncStorage.removeItem(BIOMETRIC_KEY(profile.id));
                 setBiometricEnabled(false);
                 await recordSecurityEvent('Biométrie désactivée');
-                Alert.alert('Désactivé', 'Connexion biométrique retirée.');
+                showAlert('Désactivé', 'Connexion biométrique retirée.');
             }
         }
     };
 
     const handleToggleNotif = async (value: boolean) => {
-        setNotifEnabled(value);
-        if (profile?.id) await AsyncStorage.setItem(NOTIF_KEY(profile.id), value ? 'true' : 'false');
+        if (!profile?.id) return;
+        if (!value) {
+            setNotifEnabled(false);
+            await setNotificationsEnabled(profile.id, false);
+            return;
+        }
+        const granted = await requestNotificationPermission();
+        if (!granted) {
+            setNotifEnabled(false);
+            await setNotificationsEnabled(profile.id, false);
+            showAlert(
+                'Notifications refusées',
+                Platform.OS === 'web'
+                    ? 'Les notifications système ne sont pas disponibles sur le web.'
+                    : 'Autorisez les notifications TailorPro dans les réglages du téléphone pour recevoir les alertes atelier (livraisons, paiements) sur l’écran de verrouillage.',
+            );
+            return;
+        }
+        setNotifEnabled(true);
+        await setNotificationsEnabled(profile.id, true);
+        await syncDeviceNotifications(
+            profile.id,
+            buildInbox({ orders, clients, activities, statistics }),
+        );
     };
 
     const handleRevokeDevice = (device: StoredDevice) => {
-        Alert.alert('Déconnecter l\'appareil', `Retirer "${device.name}" ?`, [
+        showAlert('Déconnecter l\'appareil', `Retirer "${device.name}" ?`, [
             { text: 'Annuler', style: 'cancel' },
             {
                 text: 'Retirer', style: 'destructive',
@@ -411,7 +419,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     };
 
     const handleRevokeAllOthers = () => {
-        Alert.alert('Déconnecter tous les autres ?', 'Seul l\'appareil actuel restera.', [
+        showAlert('Déconnecter tous les autres ?', 'Seul l\'appareil actuel restera.', [
             { text: 'Annuler', style: 'cancel' },
             {
                 text: 'Confirmer', style: 'destructive',
@@ -430,15 +438,15 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
     const handleChangePassword = async () => {
         if (!profile?.email) return;
-        Alert.alert('Réinitialiser le mot de passe', `Un e-mail sera envoyé à ${profile.email}`, [
+        showAlert('Réinitialiser le mot de passe', `Un e-mail sera envoyé à ${profile.email}`, [
             { text: 'Annuler', style: 'cancel' },
             {
                 text: 'Envoyer',
                 onPress: async () => {
                     const { error } = await supabase.auth.resetPasswordForEmail(profile.email);
-                    if (error) Alert.alert('Erreur', error.message);
+                    if (error) showAlert('Erreur', error.message);
                     else {
-                        Alert.alert('E-mail envoyé', 'Vérifiez votre boîte de réception.');
+                        showAlert('E-mail envoyé', 'Vérifiez votre boîte de réception.');
                         await recordSecurityEvent('Réinitialisation mot de passe demandée');
                     }
                 },
@@ -452,9 +460,9 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     };
 
     const handleDeleteAccount = () => {
-        Alert.alert('Supprimer le compte', 'Cette action est irréversible. Toutes vos données seront perdues.', [
+        showAlert('Supprimer le compte', 'Cette action est irréversible. Toutes vos données seront perdues.', [
             { text: 'Annuler', style: 'cancel' },
-            { text: 'Supprimer', style: 'destructive', onPress: () => Alert.alert('Demande enregistrée', 'Notre équipe traitera votre demande sous 48h.') },
+            { text: 'Supprimer', style: 'destructive', onPress: () => showAlert('Demande enregistrée', 'Notre équipe traitera votre demande sous 48h.') },
         ]);
     };
 
@@ -466,19 +474,22 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
     const currentDeviceId = getCurrentDeviceId();
     const plan = profile?.plan_abonnement ?? 'gratuit';
-    const planMeta = PLAN_META[plan];
+    const planMeta = planMetaFor(P)[plan] ?? planMetaFor(P).gratuit;
 
     // ── RENDER ────────────────────────────────────────────────────
     return (
-        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.pageBg }]}>
-            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.pageBg} />
+        <View style={[styles.container, { paddingTop: insets.top }]}>
+            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={P.pageBg} />
 
             {/* ── HEADER ── */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={20} color={P.text} />
+                    <Ionicons name="arrow-back" size={18} color={P.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Mon profil</Text>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.headerTitle}>Mon profil</Text>
+                </View>
                 <TouchableOpacity
                     style={[styles.editBtn, isEditing && styles.editBtnActive]}
                     onPress={() => {
@@ -508,7 +519,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                     <TouchableOpacity
                         style={styles.avatarWrap}
                         onPress={handleAvatarPress}
-                        activeOpacity={isEditing ? 0.75 : 1}
+                        activeOpacity={0.75}
                     >
                         {profile?.avatar_url ? (
                             <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
@@ -676,11 +687,11 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                         <SectionTitle title="À propos de l'atelier" />
                         <Card style={{ marginBottom: 16 }}>
                             <View style={styles.descriptionRow}>
-                                <View style={[ss.rowIcon, { backgroundColor: P.primaryBg, flexShrink: 0 }]}>
+                                <View style={[styles.rowIcon, { backgroundColor: P.primaryBg, flexShrink: 0 }]}>
                                     <Ionicons name="document-text-outline" size={17} color={P.primary} />
                                 </View>
                                 <View style={{ flex: 1 }}>
-                                    <Text style={ss.rowTitle}>Description</Text>
+                                    <Text style={styles.rowTitle}>Description</Text>
                                     {isEditing ? (
                                         <TextInput
                                             style={styles.descriptionInput}
@@ -693,7 +704,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                                             textAlignVertical="top"
                                         />
                                     ) : (
-                                        <Text style={[ss.rowSub, description ? {} : { color: P.muted }]}>
+                                        <Text style={[styles.rowSub, description ? {} : { color: P.muted }]}>
                                             {description || 'Aucune description renseignée'}
                                         </Text>
                                     )}
@@ -703,13 +714,13 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
                         <SectionTitle title="Catalogue" />
                         <Card style={{ marginBottom: 16 }}>
-                            <View style={ss.row}>
-                                <View style={[ss.rowIcon, { backgroundColor: P.goldBg }]}>
+                            <View style={styles.row}>
+                                <View style={[styles.rowIcon, { backgroundColor: P.goldBg }]}>
                                     <Ionicons name="eye-outline" size={17} color={P.gold} />
                                 </View>
-                                <View style={ss.rowContent}>
-                                    <Text style={ss.rowTitle}>Visibilité du catalogue</Text>
-                                    <Text style={ss.rowSub}>
+                                <View style={styles.rowContent}>
+                                    <Text style={styles.rowTitle}>Visibilité du catalogue</Text>
+                                    <Text style={styles.rowSub}>
                                         {statutCatalogue === 'public' ? '🌍 Public — visible par tous' : '🔒 Privé — sur invitation'}
                                     </Text>
                                 </View>
@@ -744,7 +755,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                             <SettingRow
                                 icon="log-out-outline" iconBg={P.errorBg} iconColor={P.error}
                                 title="Se déconnecter" danger
-                                onPress={() => Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
+                                onPress={() => showAlert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
                                     { text: 'Annuler', style: 'cancel' },
                                     { text: 'Déconnexion', style: 'destructive', onPress: handleLogout },
                                 ])}
@@ -833,7 +844,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                         <SectionTitle title="Spécialités" />
                         <Card style={{ marginBottom: 16, padding: 14 }}>
                             {specialites.length === 0 ? (
-                                <Text style={[ss.rowSub, { color: P.muted, textAlign: 'center', paddingVertical: 8 }]}>
+                                <Text style={[styles.rowSub, { color: P.muted, textAlign: 'center', paddingVertical: 8 }]}>
                                     Aucune spécialité renseignée
                                 </Text>
                             ) : (
@@ -850,7 +861,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                             )}
                             <TouchableOpacity
                                 style={styles.editSpecBtn}
-                                onPress={() => Alert.alert('Spécialités', 'Modifiez vos spécialités depuis les Paramètres de l\'atelier.')}
+                                onPress={() => showAlert('Spécialités', 'Modifiez vos spécialités depuis les Paramètres de l\'atelier.')}
                             >
                                 <Ionicons name="pencil-outline" size={13} color={P.primary} />
                                 <Text style={styles.editSpecText}>Modifier les spécialités</Text>
@@ -861,19 +872,19 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                         <SectionTitle title="Mon abonnement" />
                         <Card style={{ marginBottom: 16 }}>
                             <View style={[styles.planRow, { borderColor: planMeta.bg }]}>
-                                <View style={[ss.rowIcon, { backgroundColor: planMeta.bg }]}>
+                                <View style={[styles.rowIcon, { backgroundColor: planMeta.bg }]}>
                                     <Ionicons name="star-outline" size={17} color={planMeta.color} />
                                 </View>
-                                <View style={ss.rowContent}>
-                                    <Text style={ss.rowTitle}>Plan actuel</Text>
-                                    <Text style={[ss.rowSub, { color: planMeta.color }]}>
+                                <View style={styles.rowContent}>
+                                    <Text style={styles.rowTitle}>Plan actuel</Text>
+                                    <Text style={[styles.rowSub, { color: planMeta.color }]}>
                                         ✦ {planMeta.label} — {planMeta.desc}
                                     </Text>
                                 </View>
                                 {plan !== 'business' && (
                                     <TouchableOpacity
                                         style={styles.upgradeBtn}
-                                        onPress={() => Alert.alert('Upgrade', 'La mise à niveau vers Pro / Business sera disponible prochainement.')}
+                                        onPress={() => showAlert('Upgrade', 'La mise à niveau vers Pro / Business sera disponible prochainement.')}
                                     >
                                         <Text style={styles.upgradeBtnText}>Upgrader</Text>
                                     </TouchableOpacity>
@@ -902,8 +913,8 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                         <Card>
                             <SettingRow
                                 icon="notifications-outline" iconBg={P.primaryBg} iconColor={P.primary}
-                                title="Notifications push"
-                                subtitle={notifEnabled ? 'Activées' : 'Désactivées'}
+                                title="Notifications de l'appareil"
+                                subtitle={notifEnabled ? 'Bannière et écran de verrouillage' : 'Désactivées'}
                                 right={<Switch value={notifEnabled} onValueChange={handleToggleNotif}
                                                trackColor={{ false: P.border, true: P.primary }} thumbColor="#fff" />}
                             />
@@ -911,11 +922,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                             <SettingRow
                                 icon="settings-outline" iconBg={P.goldBg} iconColor={P.gold}
                                 title={t('profile.prefs')}
-                                subtitle={[
-                                    devise,
-                                    langue === 'en' ? t('settings.langEn') : t('settings.langFr'),
-                                    uniteMesure,
-                                ].join(' · ')}
+                                subtitle="Thème, langue, devise — un seul endroit"
                                 onPress={() => navigation.navigate('Settings')}
                             />
                         </Card>
@@ -943,7 +950,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                                 title="Double authentification (2FA)"
                                 subtitle={twoFAEnabled ? 'Activée' : 'Désactivée · Bientôt disponible'}
                                 right={<Switch value={twoFAEnabled}
-                                               onValueChange={v => { setTwoFAEnabled(v); if (v) Alert.alert('2FA', 'Le 2FA sera disponible prochainement.'); }}
+                                               onValueChange={v => { setTwoFAEnabled(v); if (v) showAlert('2FA', 'Le 2FA sera disponible prochainement.'); }}
                                                trackColor={{ false: P.border, true: P.warning }} thumbColor="#fff" />}
                             />
                             <Divider />
@@ -958,7 +965,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                                 icon="key-outline" iconBg={P.primaryBg} iconColor={P.primary}
                                 title="Gérer les passkeys"
                                 subtitle="Clé d'accès sans mot de passe — Bientôt"
-                                onPress={() => Alert.alert('Passkeys', 'Gestionnaire disponible prochainement.')}
+                                onPress={() => showAlert('Passkeys', 'Gestionnaire disponible prochainement.')}
                             />
                         </Card>
 
@@ -980,33 +987,33 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                                     const isCurrent = device.id === currentDeviceId;
                                     return (
                                         <React.Fragment key={device.id}>
-                                            <View style={dStyles.row}>
-                                                <View style={[dStyles.iconWrap, isCurrent && dStyles.iconWrapActive]}>
+                                            <View style={styles.deviceRow}>
+                                                <View style={[styles.deviceIconWrap, isCurrent && styles.deviceIconWrapActive]}>
                                                     <Ionicons
                                                         name={device.os.toLowerCase().includes('ios') ? 'logo-apple' : 'logo-android'}
                                                         size={18} color={isCurrent ? P.gold : P.sub}
                                                     />
                                                 </View>
-                                                <View style={dStyles.info}>
+                                                <View style={styles.deviceInfo}>
                                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                                        <Text style={dStyles.name} numberOfLines={1}>{device.name}</Text>
+                                                        <Text style={styles.deviceName} numberOfLines={1}>{device.name}</Text>
                                                         {isCurrent && (
-                                                            <View style={dStyles.currentBadge}>
-                                                                <Text style={dStyles.currentText}>Cet appareil</Text>
+                                                            <View style={styles.deviceCurrentBadge}>
+                                                                <Text style={styles.deviceCurrentText}>Cet appareil</Text>
                                                             </View>
                                                         )}
                                                     </View>
-                                                    <Text style={dStyles.sub}>{device.os}</Text>
-                                                    <Text style={dStyles.sub}>
+                                                    <Text style={styles.deviceSub}>{device.os}</Text>
+                                                    <Text style={styles.deviceSub}>
                                                         {isCurrent ? 'Actif maintenant' : `Vu le ${formatEventDate(device.lastSeen)}`}
                                                     </Text>
                                                 </View>
                                                 {!isCurrent ? (
-                                                    <TouchableOpacity style={dStyles.revokeBtn} onPress={() => handleRevokeDevice(device)}>
+                                                    <TouchableOpacity style={styles.deviceRevokeBtn} onPress={() => handleRevokeDevice(device)}>
                                                         <Feather name="trash-2" size={15} color={P.error} />
                                                     </TouchableOpacity>
                                                 ) : (
-                                                    <View style={dStyles.activeIndicator} />
+                                                    <View style={styles.deviceActiveIndicator} />
                                                 )}
                                             </View>
                                             {i < devices.length - 1 && <Divider />}
@@ -1025,12 +1032,12 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                             ) : (
                                 loginHistory.map((h, i) => (
                                     <React.Fragment key={h.id}>
-                                        <View style={hStyles.row}>
-                                            <View style={[hStyles.dot, { backgroundColor: h.success ? P.success : P.error }]} />
+                                        <View style={styles.historyRow}>
+                                            <View style={[styles.historyDot, { backgroundColor: h.success ? P.success : P.error }]} />
                                             <View style={{ flex: 1 }}>
-                                                <Text style={hStyles.action}>{h.action}</Text>
-                                                <Text style={hStyles.sub} numberOfLines={1}>{h.location}</Text>
-                                                <Text style={hStyles.date}>{formatEventDate(h.date)}</Text>
+                                                <Text style={styles.historyAction}>{h.action}</Text>
+                                                <Text style={styles.historySub} numberOfLines={1}>{h.location}</Text>
+                                                <Text style={styles.historyDate}>{formatEventDate(h.date)}</Text>
                                             </View>
                                             <Ionicons
                                                 name={h.success ? 'checkmark-circle' : 'close-circle'}
@@ -1045,7 +1052,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                         {loginHistory.length > 0 && (
                             <TouchableOpacity
                                 style={styles.clearHistoryBtn}
-                                onPress={() => Alert.alert('Effacer l\'historique ?', 'Cet historique ne sera plus consultable.', [
+                                onPress={() => showAlert('Effacer l\'historique ?', 'Cet historique ne sera plus consultable.', [
                                     { text: 'Annuler', style: 'cancel' },
                                     {
                                         text: 'Effacer',
@@ -1070,110 +1077,126 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     );
 };
 
-// ── STYLES SOUS-COMPOSANTS ────────────────────────────────────────
-const dStyles = StyleSheet.create({
-    row:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
-    iconWrap:{ width: 38, height: 38, borderRadius: 11, backgroundColor: P.primaryBg, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: P.borderHard },
-    iconWrapActive: { backgroundColor: P.goldBg, borderColor: P.goldRim },
-    info:    { flex: 1, minWidth: 0 },
-    name:    { fontSize: 13, fontWeight: '700', color: P.text },
-    sub:     { fontSize: 11, color: P.sub, marginTop: 1 },
-    currentBadge: { backgroundColor: P.goldBg, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 0.5, borderColor: P.goldRim },
-    currentText:  { fontSize: 10, fontWeight: '700', color: P.gold },
-    revokeBtn:    { padding: 6 },
-    activeIndicator: { width: 7, height: 7, borderRadius: 4, backgroundColor: P.success },
-});
-
-const hStyles = StyleSheet.create({
-    row:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
-    dot:    { width: 8, height: 8, borderRadius: 4, flexShrink: 0, marginTop: 2 },
-    action: { fontSize: 13, fontWeight: '600', color: P.text },
-    sub:    { fontSize: 11, color: P.sub, marginTop: 1 },
-    date:   { fontSize: 10, color: P.muted, marginTop: 1 },
-});
-
-// ── STYLES PRINCIPAL ──────────────────────────────────────────────
-const styles = StyleSheet.create({
+// ── STYLES ────────────────────────────────────────────────────────
+const makeStyles = (P: Palette) => ({
     container: { flex: 1, backgroundColor: P.pageBg },
 
     header: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        paddingHorizontal: 20, paddingVertical: 14,
-        backgroundColor: P.pageBg, borderBottomWidth: 0.5, borderBottomColor: P.border,
+        flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, backgroundColor: P.pageBg,
     },
-    backBtn:      { width: 38, height: 38, borderRadius: 11, backgroundColor: P.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: P.borderHard },
-    headerTitle:  { fontSize: 16, fontWeight: '700', color: P.text },
-    editBtn:      { width: 38, height: 38, borderRadius: 11, backgroundColor: P.primaryBg, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: P.border },
-    editBtnActive:{ backgroundColor: P.primary, borderColor: P.primary },
+    backBtn: {
+        width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+        alignItems: 'center', justifyContent: 'center',
+        borderWidth: 0.5, borderColor: P.borderHard, marginTop: 4,
+    },
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2,
+    },
+    headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
+    editBtn: {
+        width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+        alignItems: 'center', justifyContent: 'center',
+        borderWidth: 0.5, borderColor: P.borderHard, marginTop: 4,
+    },
+    editBtnActive: { backgroundColor: P.bg, borderColor: P.goldRim },
 
     scroll: { paddingHorizontal: 20, paddingTop: 16 },
 
-    // Hero
-    heroCard:    { borderRadius: 22, padding: 22, alignItems: 'center', backgroundColor: P.bg, borderWidth: 0.5, borderColor: 'rgba(212,175,55,0.2)', marginBottom: 16, overflow: 'hidden', position: 'relative' },
+    sectionTitle: {
+        fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: P.sub,
+        letterSpacing: 1.4, textTransform: 'uppercase',
+        marginTop: 22, marginBottom: 10, paddingHorizontal: 2,
+    },
+    card: {
+        backgroundColor: P.surface, borderRadius: 18,
+        borderWidth: 0.5, borderColor: P.borderHard, overflow: 'hidden',
+    },
+    row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 14 },
+    rowMulti: { alignItems: 'flex-start', paddingVertical: 16 },
+    rowIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    rowContent: { flex: 1 },
+    rowTitle: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub },
+    rowSub: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text, marginTop: 2 },
+    inputWrapper: { marginTop: 4, borderBottomWidth: 1.5, borderBottomColor: P.gold, paddingBottom: 2 },
+    divider: { height: 0.5, backgroundColor: P.border, marginLeft: 66 },
+
+    heroCard:    { borderRadius: 22, padding: 22, alignItems: 'center', backgroundColor: P.bg, borderWidth: 1, borderColor: P.goldRim, marginBottom: 16, overflow: 'hidden', position: 'relative' },
     heroBlob1:   { position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(108,62,184,0.35)' },
     heroBlob2:   { position: 'absolute', bottom: -50, left: -30, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(212,175,55,0.05)' },
-    heroGoldLine:{ position: 'absolute', top: 0, left: 24, right: 24, height: 0.5, backgroundColor: 'rgba(212,175,55,0.3)' },
+    heroGoldLine:{ position: 'absolute', top: 0, left: 24, right: 24, height: 0.5, backgroundColor: P.goldRim },
 
     avatarWrap:  { position: 'relative', marginBottom: 12, zIndex: 1 },
     avatarCircle:{ width: 80, height: 80, borderRadius: 40, backgroundColor: P.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: P.goldRim },
     avatarImage: { width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: P.goldRim },
-    avatarText:  { fontSize: 28, fontWeight: '800', color: '#fff' },
+    avatarText:  { fontSize: 28, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#fff' },
     avatarEdit:  { position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13, backgroundColor: P.gold, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: P.bg },
 
-    heroName:    { fontSize: 20, fontWeight: '800', color: '#fff', zIndex: 1 },
-    heroAtelier: { fontSize: 13, color: P.gold, fontWeight: '600', marginBottom: 2, zIndex: 1 },
+    heroName:    { fontSize: 20, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#fff', zIndex: 1 },
+    heroAtelier: { fontSize: 13, color: P.gold, fontFamily: 'PlusJakartaSans_600SemiBold', marginBottom: 2, zIndex: 1 },
     heroEmail:   { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 8, zIndex: 1 },
 
     planBadge:   { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 4, marginBottom: 14, zIndex: 1 },
-    planBadgeText:{ fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+    planBadgeText:{ fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', letterSpacing: 0.3 },
 
     statsRow:  { flexDirection: 'row', width: '100%', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.08)', overflow: 'hidden', zIndex: 1 },
     statSep:   { width: 0.5, backgroundColor: 'rgba(255,255,255,0.1)' },
     statItem:  { flex: 1, alignItems: 'center', paddingVertical: 12 },
-    statVal:   { fontSize: 18, fontWeight: '800', color: P.gold },
+    statVal:   { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
     statLbl:   { fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: 0.3, marginTop: 2 },
 
-    // Tabs
     tabs:         { flexDirection: 'row', backgroundColor: P.surface, borderRadius: 14, padding: 4, marginBottom: 4, borderWidth: 0.5, borderColor: P.borderHard },
-    tab:          { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
-    tabActive:    { backgroundColor: P.primary },
-    tabText:      { fontSize: 12, fontWeight: '600', color: P.sub },
-    tabTextActive:{ color: '#fff', fontWeight: '700' },
+    tab:          { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10, backgroundColor: P.surface },
+    tabActive:    { backgroundColor: P.bg, borderWidth: 1, borderColor: P.goldRim },
+    tabText:      { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
+    tabTextActive:{ color: '#fff', fontFamily: 'PlusJakartaSans_700Bold' },
 
-    // Inputs
-    textInput:    { fontSize: 14, color: P.text, paddingVertical: 2, fontWeight: '600' },
+    textInput:    { fontSize: 14, color: P.text, paddingVertical: 2, fontFamily: 'PlusJakartaSans_600SemiBold' },
     fixedBadge:   { backgroundColor: P.goldBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 0.5, borderColor: P.goldRim },
-    fixedBadgeText:{ fontSize: 10, fontWeight: '700', color: P.gold },
-    saveBtn:      { backgroundColor: P.primary, borderRadius: 14, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 4 },
-    saveBtnText:  { color: '#fff', fontSize: 14, fontWeight: '700' },
+    fixedBadgeText:{ fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: P.gold },
+    saveBtn:      { backgroundColor: P.bg, borderRadius: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 4, borderWidth: 1, borderColor: P.goldRim },
+    saveBtnText:  { color: '#fff', fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold' },
 
-    // Description
     descriptionRow:   { flexDirection: 'row', gap: 14, padding: 16 },
-    descriptionInput: { fontSize: 14, color: P.text, fontWeight: '500', marginTop: 4, borderWidth: 1, borderColor: P.gold, borderRadius: 10, padding: 10, minHeight: 90, lineHeight: 20 },
+    descriptionInput: { fontSize: 14, color: P.text, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 4, borderWidth: 1, borderColor: P.gold, borderRadius: 10, padding: 10, minHeight: 90, lineHeight: 20 },
 
-    // Horaires
     horaireRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
-    joursLabel:   { width: 38, fontSize: 12, fontWeight: '700', color: P.sub },
-    horaireInput: { flex: 1, fontSize: 14, color: P.text, fontWeight: '600', borderBottomWidth: 1.5, borderBottomColor: P.gold, paddingBottom: 2 },
-    horaireValue: { flex: 1, fontSize: 14, fontWeight: '600', color: P.text },
+    joursLabel:   { width: 38, fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', color: P.sub },
+    horaireInput: { flex: 1, fontSize: 14, color: P.text, fontFamily: 'PlusJakartaSans_600SemiBold', borderBottomWidth: 1.5, borderBottomColor: P.gold, paddingBottom: 2 },
+    horaireValue: { flex: 1, fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
 
-    // Spécialités chips
     chipsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
-    chip:      { backgroundColor: P.primaryBg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 0.5, borderColor: P.border },
-    chipText:  { fontSize: 12, fontWeight: '600', color: P.primary },
+    chip:      { backgroundColor: P.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 0.5, borderColor: P.borderHard },
+    chipText:  { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
     editSpecBtn:  { flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center', paddingTop: 8, borderTopWidth: 0.5, borderTopColor: P.border },
-    editSpecText: { fontSize: 12, color: P.primary, fontWeight: '600' },
+    editSpecText: { fontSize: 12, color: P.primary, fontFamily: 'PlusJakartaSans_600SemiBold' },
 
-    // Plan
     planRow:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 14 },
-    upgradeBtn: { backgroundColor: P.primary, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-    upgradeBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+    upgradeBtn: { backgroundColor: P.bg, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: P.goldRim },
+    upgradeBtnText: { fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 
-    // Sécurité
     sectionHeaderRow:  { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-    revokeAllText:     { fontSize: 11, color: P.error, fontWeight: '600', marginBottom: 10 },
+    revokeAllText:     { fontSize: 11, color: P.error, fontFamily: 'PlusJakartaSans_600SemiBold', marginBottom: 10 },
     clearHistoryBtn:   { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', marginTop: 10, paddingVertical: 8 },
-    clearHistoryText:  { fontSize: 12, color: P.error, fontWeight: '600' },
+    clearHistoryText:  { fontSize: 12, color: P.error, fontFamily: 'PlusJakartaSans_600SemiBold' },
     emptyText: { textAlign: 'center', color: P.sub, paddingVertical: 20, fontSize: 12 },
     version:   { textAlign: 'center', fontSize: 11, color: P.muted, marginTop: 32, marginBottom: 8, letterSpacing: 0.5 },
+
+    deviceRow:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+    deviceIconWrap:{ width: 38, height: 38, borderRadius: 11, backgroundColor: P.primaryBg, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: P.borderHard },
+    deviceIconWrapActive: { backgroundColor: P.goldBg, borderColor: P.goldRim },
+    deviceInfo:    { flex: 1, minWidth: 0 },
+    deviceName:    { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+    deviceSub:     { fontSize: 11, color: P.sub, marginTop: 1 },
+    deviceCurrentBadge: { backgroundColor: P.goldBg, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 0.5, borderColor: P.goldRim },
+    deviceCurrentText:  { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: P.gold },
+    deviceRevokeBtn:    { padding: 6 },
+    deviceActiveIndicator: { width: 7, height: 7, borderRadius: 4, backgroundColor: P.success },
+
+    historyRow:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
+    historyDot:    { width: 8, height: 8, borderRadius: 4, flexShrink: 0, marginTop: 2 },
+    historyAction: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+    historySub:    { fontSize: 11, color: P.sub, marginTop: 1 },
+    historyDate:   { fontSize: 10, color: P.muted, marginTop: 1 },
 });

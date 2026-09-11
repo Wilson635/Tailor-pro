@@ -233,8 +233,7 @@ const styles = StyleSheet.create({
         padding: 14,
         flexDirection: 'row',
         alignItems: 'flex-start',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+        borderWidth: 0.5, borderColor: P.borderHard,
     },
     rowIcon: {
         width: 38, height: 38, borderRadius: 19,

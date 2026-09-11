@@ -7,7 +7,6 @@ import React, { useMemo, useState } from 'react';
 import {
     View,
     Text,
-    StyleSheet,
     ScrollView,
     TouchableOpacity,
     TextInput,
@@ -23,19 +22,12 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { useAppStore } from '@store/useAppStore';
 import { SPACING } from '@constants/theme';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import type { ParticipantRole } from '../../types';
-import { useToast } from '@/src/context/ToastContext';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddProject'>;
-
-const P = {
-    primary: '#6C3EB8', pageBg: '#F5F4FB', surface: '#FFFFFF',
-    text: '#1A1033', sub: '#7C6FA8',
-    border: 'rgba(108,62,184,0.10)', borderHard: 'rgba(108,62,184,0.15)',
-    gold: '#D4AF37', goldBg: 'rgba(212,175,55,0.10)',
-    error: '#EF4444', errorBg: 'rgba(239,68,68,0.10)',
-};
 
 const ROLES: { value: ParticipantRole; label: string }[] = [
     { value: 'mariee',         label: 'Mariée' },
@@ -63,7 +55,7 @@ interface DraftParticipant {
 
 export const AddProjectScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
-    const { showToast } = useToast();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
     const { clients, addProject, addParticipant } = useAppStore();
 
     const [nom, setNom] = useState('');
@@ -108,7 +100,7 @@ export const AddProjectScreen: React.FC<Props> = ({ navigation }) => {
 
     const handleSubmit = async () => {
         if (!nom.trim() || !clientId) {
-            showToast({ type: 'error', message: 'Nom du projet et contact principal sont requis.' });
+            showAlert('Champs requis', 'Nom du projet et contact principal sont requis.');
             return;
         }
         setIsLoading(true);
@@ -134,10 +126,11 @@ export const AddProjectScreen: React.FC<Props> = ({ navigation }) => {
                 )
             );
 
-            showToast({ type: 'success', message: 'Projet créé avec succès.' });
-            navigation.replace('ProjectDetails', { projectId: project.id });
+            showSuccess('Projet créé', 'Le projet a bien été enregistré.', () =>
+                navigation.replace('ProjectDetails', { projectId: project.id }),
+            );
         } catch (e) {
-            showToast({ type: 'error', message: "Erreur lors de la création du projet." });
+            showAlert('Erreur', "Erreur lors de la création du projet.");
         } finally {
             setIsLoading(false);
         }
@@ -151,10 +144,12 @@ export const AddProjectScreen: React.FC<Props> = ({ navigation }) => {
         >
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-                    <Feather name="arrow-left" size={20} color={P.text} />
+                    <Feather name="arrow-left" size={18} color={P.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Nouveau projet</Text>
-                <View style={{ width: 36 }} />
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.headerTitle}>Nouveau projet</Text>
+                </View>
             </View>
 
             <ScrollView
@@ -355,20 +350,23 @@ export const AddProjectScreen: React.FC<Props> = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     root: { flex: 1, backgroundColor: P.pageBg },
     header: {
-        backgroundColor: P.surface, flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: SPACING.md, paddingVertical: 12,
-        borderBottomWidth: 0.5, borderBottomColor: P.borderHard, gap: 8,
+        backgroundColor: P.pageBg, flexDirection: 'row', alignItems: 'flex-start',
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, gap: 12,
     },
     backBtn: {
-        width: 36, height: 36, borderRadius: 10, backgroundColor: P.pageBg,
-        borderWidth: 0.5, borderColor: P.borderHard, alignItems: 'center', justifyContent: 'center',
+        width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+        borderWidth: 0.5, borderColor: P.borderHard, alignItems: 'center', justifyContent: 'center', marginTop: 4,
     },
-    headerTitle: { flex: 1, fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text, textAlign: 'center' },
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2,
+    },
+    headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
 
-    card: { backgroundColor: P.surface, borderRadius: 16, padding: 14, borderWidth: 0.5, borderColor: P.borderHard, gap: 10 },
+    card: { backgroundColor: P.surface, borderRadius: 18, padding: 14, borderWidth: 0.5, borderColor: P.borderHard, gap: 10 },
     cardHeadRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     label: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
     hint: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_400Regular' },
@@ -379,8 +377,8 @@ const styles = StyleSheet.create({
     },
 
     chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: P.pageBg, borderWidth: 0.5, borderColor: P.borderHard },
-    chipActive: { backgroundColor: P.primary, borderColor: P.primary },
+    chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard },
+    chipActive: { backgroundColor: P.bg, borderColor: P.goldRim },
     chipText: { fontSize: 12.5, color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold' },
     chipTextActive: { color: '#fff' },
 
@@ -403,14 +401,14 @@ const styles = StyleSheet.create({
 
     footer: {
         position: 'absolute', bottom: 0, left: 0, right: 0,
-        backgroundColor: P.surface, borderTopWidth: 0.5, borderTopColor: P.borderHard,
+        backgroundColor: P.pageBg, borderTopWidth: 0.5, borderTopColor: P.borderHard,
         padding: SPACING.md,
     },
-    submitBtn: { backgroundColor: P.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+    submitBtn: { backgroundColor: P.bg, borderRadius: 16, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: P.goldRim },
     submitBtnText: { color: '#fff', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14 },
     cancelBtn: { paddingVertical: 14, paddingHorizontal: 18, borderRadius: 12, backgroundColor: P.pageBg },
     cancelBtnText: { color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold' },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(26,16,51,0.5)', justifyContent: 'center', padding: SPACING.lg },
+    modalOverlay: { flex: 1, backgroundColor: P.overlay, justifyContent: 'center', padding: SPACING.lg },
     modalCard: { backgroundColor: P.surface, borderRadius: 20, padding: 18, gap: 10 },
 });

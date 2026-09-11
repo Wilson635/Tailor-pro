@@ -4,39 +4,28 @@
 // catégories, meilleur mois, filtrage période, export Excel.
 // ──────────────────────────────────────────────────────────
 import React, { useState, useMemo, useCallback } from 'react';
+import { showAlert } from '@/src/context/DialogContext';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Share, Alert, ActivityIndicator,
+  View, Text, ScrollView, TouchableOpacity,
+  Dimensions, ActivityIndicator,
 } from 'react-native';
-import * as XLSX from 'xlsx';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import { useThemedStyles, type Palette } from '@/src/theme';
+import { Ionicons } from '@expo/vector-icons';
 import { BarChart, PieChart } from 'react-native-chart-kit';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrency } from '@utils/formatters';
-
-// ── Palette ──────────────────────────────────────────────
-const P = {
-  bg:         '#16123A',
-  primary:    '#6C3EB8',
-  pageBg:     '#F5F4FB',
-  surface:    '#FFFFFF',
-  text:       '#1A1033',
-  sub:        '#7C6FA8',
-  border:     'rgba(108,62,184,0.10)',
-  gold:       '#D4AF37',
-  goldBg:     'rgba(212,175,55,0.10)',
-  success:    '#059669',
-  successBg:  'rgba(5,150,105,0.10)',
-  warning:    '#D97706',
-  warningBg:  'rgba(217,119,6,0.10)',
-  error:      '#DC2626',
-  errorBg:    'rgba(220,38,38,0.10)',
-};
+import { exportExcelFile, exportPdfFile } from '@utils/exportFiles';
 
 const { width: W } = Dimensions.get('window');
 const CHART_W = W - 32;
+
+const hexAlpha = (hex: string, opacity = 1) => {
+  const h = hex.replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${opacity})`;
+};
 
 // ── Labels catégories ─────────────────────────────────────
 const CAT_LABELS: Record<string, string> = {
@@ -56,56 +45,46 @@ const PIE_PAID    = '#059669';
 const PIE_PARTIAL = '#D97706';
 const PIE_UNPAID  = '#DC2626';
 
-// ── chartConfig partagé ───────────────────────────────────
-const chartConfig = {
-  backgroundColor:         P.surface,
-  backgroundGradientFrom:  P.surface,
-  backgroundGradientTo:    P.surface,
-  decimalPlaces:           0,
-  color: (opacity = 1) => `rgba(108,62,184,${opacity})`,
-  labelColor: () => P.sub,
-  propsForBackgroundLines: { stroke: P.border },
-  barPercentage: 0.55,
+const SectionTitle = ({ children, style }: { children: string; style?: object }) => {
+  const { styles: s } = useThemedStyles(makeStyles);
+  return <Text style={[s.sectionTitle, style]}>{children}</Text>;
 };
-
-// ──────────────────────────────────────────────────────────
-// Composants mineurs
-// ──────────────────────────────────────────────────────────
-const SectionTitle = ({ children, style }: { children: string; style?: object }) => (
-    <Text style={[s.sectionTitle, style]}>{children}</Text>
-);
 
 const KpiCard = ({
                    icon, label, value, sub, color, bg,
                  }: {
   icon: string; label: string; value: string;
   sub?: string; color: string; bg: string;
-}) => (
+}) => {
+  const { styles: s } = useThemedStyles(makeStyles);
+  return (
     <View style={[s.kpiCard, { borderLeftColor: color }]}>
       <View style={[s.kpiIcon, { backgroundColor: bg }]}>
-        <Feather name={icon as any} size={14} color={color} />
+        <Ionicons name={icon as any} size={14} color={color} />
       </View>
       <Text style={s.kpiValue}>{value}</Text>
       <Text style={s.kpiLabel}>{label}</Text>
       {sub ? <Text style={s.kpiSub}>{sub}</Text> : null}
     </View>
-);
+  );
+};
 
-// Barre horizontale proportionnelle
 const HBar = ({
-                label, value, maxValue, suffix = '', color = P.primary,
+                label, value, maxValue, suffix = '', color,
               }: {
   label: string; value: number; maxValue: number;
   suffix?: string; color?: string;
 }) => {
+  const { colors: P, styles: s } = useThemedStyles(makeStyles);
+  const fill = color ?? P.primary;
   const pct = maxValue > 0 ? (value / maxValue) * 100 : 0;
   return (
       <View style={s.hBarRow}>
         <Text style={s.hBarLabel} numberOfLines={1}>{label}</Text>
         <View style={s.hBarTrack}>
-          <View style={[s.hBarFill, { width: `${Math.max(pct, 2)}%`, backgroundColor: color }]} />
+          <View style={[s.hBarFill, { width: `${Math.max(pct, 2)}%`, backgroundColor: fill }]} />
         </View>
-        <Text style={[s.hBarValue, { color }]}>{suffix}{typeof value === 'number' && value > 999 ? formatCurrency(value) : value}</Text>
+        <Text style={[s.hBarValue, { color: fill }]}>{suffix}{typeof value === 'number' && value > 999 ? formatCurrency(value) : value}</Text>
       </View>
   );
 };
@@ -117,10 +96,22 @@ type PeriodKey = 6 | 12 | 24;
 
 export const StatisticsScreen = () => {
   const navigation = useNavigation();
+  const { colors: P, styles: s } = useThemedStyles(makeStyles);
   const { clients, orders, realisations, catalog } = useAppStore();
 
   const [monthCount, setMonthCount] = useState<PeriodKey>(12);
   const [exporting,  setExporting]  = useState(false);
+
+  const chartConfig = useMemo(() => ({
+    backgroundColor: P.surface,
+    backgroundGradientFrom: P.surface,
+    backgroundGradientTo: P.surface,
+    decimalPlaces: 0,
+    color: (opacity = 1) => hexAlpha(P.primary, opacity),
+    labelColor: () => P.sub,
+    propsForBackgroundLines: { stroke: P.border },
+    barPercentage: 0.55,
+  }), [P]);
 
   // ── Réalisations aplaties ─────────────────────────────
   const allReals = useMemo(
@@ -174,7 +165,7 @@ export const StatisticsScreen = () => {
   const clientsStats = useMemo(() => {
     const ordersByClient = new Map<string, number>();
     orders.forEach(o => ordersByClient.set(o.clientId, (ordersByClient.get(o.clientId) ?? 0) + 1));
-    const fideles  = [...ordersByClient.values()].filter(c => c >= 2).length;
+    const fideles  = [...ordersByClient.values()].filter(c => c > 2).length;
     const nouveaux = clients.filter(c => new Date(c.createdAt) >= periodStart).length;
     return { total: clients.length, nouveaux, fideles };
   }, [clients, orders, periodStart]);
@@ -254,7 +245,7 @@ export const StatisticsScreen = () => {
       { name: 'Impayées', population: paiementStats.unpaid,   color: PIE_UNPAID,  legendFontColor: P.text, legendFontSize: 11 },
     ].filter(d => d.population > 0);
     return items.length ? items : [{ name: 'Aucune', population: 1, color: P.border, legendFontColor: P.sub, legendFontSize: 11 }];
-  }, [paiementStats]);
+  }, [paiementStats, P]);
 
   // ── PieChart catégories ───────────────────────────────
   const pieDataCategories = useMemo(() => {
@@ -266,102 +257,40 @@ export const StatisticsScreen = () => {
       legendFontColor: P.text,
       legendFontSize:  11,
     }));
-  }, [categorieStats]);
+  }, [categorieStats, P]);
 
   // ── Export Excel ────────────────────────────────────────
-  const exportExcel = useCallback(async () => {
+  const exportExcel = useCallback(async (kind: 'xlsx' | 'pdf' = 'xlsx') => {
     setExporting(true);
     try {
-      const data: any[] = [];
-
-      // Vue d'ensemble
-      data.push({
-        '': 'Vue d\'ensemble',
-        '': '',
-        '': '',
-      });
-      data.push({
-        '': 'Clients totaux',
-        '': clientsStats.total,
-        '': '',
-      });
-      data.push({
-        '': 'Nouveaux clients (période)',
-        '': clientsStats.nouveaux,
-        '': '',
-      });
-      data.push({
-        '': 'Clients fidèles (≥2 commandes)',
-        '': clientsStats.fideles,
-        '': '',
-      });
-      data.push({
-        '': 'Commandes totales',
-        '': orders.length,
-        '': '',
-      });
-      data.push({
-        '': 'CA total (période)',
-        '': `${totalRevenuePeriod} FCFA`,
-        '': '',
-      });
-      data.push({
-        '': 'Meilleur mois',
-        '': `${bestMonth.label} — ${bestMonth.revenue} FCFA`,
-        '': '',
-      });
-
-      // CA mensuel
-      data.push({ '': '', '': '', '': '' });
-      data.push({ '': 'CA Mensuel', '': '', '': '' });
-      monthlyStats.forEach(m => {
-        data.push({
-          '': m.label,
-          '': `${m.revenue} FCFA`,
-          '': m.orders,
-        });
-      });
-
-      // Top clients
-      data.push({ '': '', '': '', '': '' });
-      data.push({ '': 'Top Clients', '': '', '': '' });
-      topClients.forEach(c => {
-        data.push({
-          '': c.name,
-          '': `${c.total} FCFA`,
-          '': c.count,
-        });
-      });
-
-      // Top modèles
-      data.push({ '': '', '': '', '': '' });
-      data.push({ '': 'Top Modèles', '': '', '': '' });
-      topModeles.forEach(m => {
-        data.push({
-          '': m.name,
-          '': m.count,
-          '': '',
-        });
-      });
-
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Statistiques');
-      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(excelBuffer)));
-      const uri = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${base64}`;
-
-      await Share.share({
-        message: uri,
-        title:   `TailorPro_Statistiques_${monthCount}mois.xlsx`,
-      });
+      const data = [
+        { Indicateur: 'Clients totaux', Valeur: clientsStats.total, Detail: '' },
+        { Indicateur: 'Nouveaux clients', Valeur: clientsStats.nouveaux, Detail: 'période' },
+        { Indicateur: 'Clients fidèles', Valeur: clientsStats.fideles, Detail: '> 2 commandes' },
+        { Indicateur: 'Commandes', Valeur: orders.length, Detail: '' },
+        { Indicateur: 'CA période', Valeur: totalRevenuePeriod, Detail: 'FCFA' },
+        { Indicateur: 'Meilleur mois', Valeur: bestMonth.label, Detail: `${bestMonth.revenue} FCFA` },
+        ...monthlyStats.map(m => ({ Indicateur: `CA ${m.label}`, Valeur: m.revenue, Detail: `${m.orders} cmd` })),
+        ...topClients.map(c => ({ Indicateur: `Client ${c.name}`, Valeur: c.total, Detail: `${c.count} cmd` })),
+        ...topModeles.map(m => ({ Indicateur: `Modèle ${m.name}`, Valeur: m.count, Detail: 'réalisations' })),
+      ];
+      const name = `TailorPro_Statistiques_${monthCount}mois`;
+      if (kind === 'pdf') await exportPdfFile(name, 'Statistiques atelier', data);
+      else await exportExcelFile(name, data, 'Statistiques');
     } catch {
-      Alert.alert('Erreur', 'Impossible d\'exporter.');
+      showAlert('Erreur', "Impossible d'exporter.");
     } finally {
       setExporting(false);
     }
   }, [monthlyStats, topClients, topModeles, clientsStats, orders, totalRevenuePeriod, bestMonth, monthCount]);
+
+  const askExport = () => {
+    showAlert('Exporter', 'Choisissez un format', [
+      { text: 'Excel', onPress: () => exportExcel('xlsx') },
+      { text: 'PDF', onPress: () => exportExcel('pdf') },
+      { text: 'Annuler', style: 'cancel' },
+    ]);
+  };
 
   // ──────────────────────────────────────────────────────
   // RENDER
@@ -374,20 +303,20 @@ export const StatisticsScreen = () => {
         {/* Header */}
         <View style={s.header}>
           <TouchableOpacity style={s.backBtn} onPress={() => (navigation as any).goBack()}>
-            <Feather name="arrow-left" size={20} color="#fff" />
+            <Ionicons name="arrow-back" size={18} color={P.text} />
           </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.kicker}>Atelier</Text>
             <Text style={s.headerTitle}>Statistiques</Text>
-            <Text style={s.headerSub}>Analytique avancée de l'atelier</Text>
           </View>
           <TouchableOpacity
               style={[s.exportBtn, exporting && { opacity: 0.6 }]}
-              onPress={exportExcel}
+              onPress={askExport}
               disabled={exporting}
           >
             {exporting
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <Feather name="download" size={17} color="#fff" />
+                ? <ActivityIndicator size="small" color={P.gold} />
+                : <Ionicons name="download-outline" size={18} color={P.gold} />
             }
           </TouchableOpacity>
         </View>
@@ -416,15 +345,15 @@ export const StatisticsScreen = () => {
           <SectionTitle>Vue d'ensemble</SectionTitle>
           <View style={s.kpiGrid}>
             <KpiCard
-                icon="users"
+                icon="people-outline"
                 label="Clients totaux"
                 value={String(clientsStats.total)}
                 sub={`+${clientsStats.nouveaux} cette période`}
                 color={P.primary}
-                bg="rgba(108,62,184,0.10)"
+                bg={P.primaryBg}
             />
             <KpiCard
-                icon="shopping-bag"
+                icon="bag-handle-outline"
                 label="Commandes"
                 value={String(orders.length)}
                 sub={`${commandeStats.inProgress} en cours`}
@@ -434,7 +363,7 @@ export const StatisticsScreen = () => {
           </View>
           <View style={[s.kpiGrid, { marginTop: 10 }]}>
             <KpiCard
-                icon="trending-up"
+                icon="trending-up-outline"
                 label="CA période"
                 value={formatCurrency(totalRevenuePeriod)}
                 sub={`${monthCount} derniers mois`}
@@ -455,7 +384,7 @@ export const StatisticsScreen = () => {
           <View style={[s.card, { marginTop: 16, flexDirection: 'row', alignItems: 'center', padding: 14, gap: 16 }]}>
             <View style={s.fideleStat}>
               <Text style={s.fideleNum}>{clientsStats.fideles}</Text>
-              <Text style={s.fideleLabel}>Clients fidèles{'\n'}(≥ 2 commandes)</Text>
+              <Text style={s.fideleLabel}>Clients fidèles{'\n'}(> 2 commandes)</Text>
             </View>
             <View style={s.fideleDivider} />
             <View style={s.fideleStat}>
@@ -495,7 +424,7 @@ export const StatisticsScreen = () => {
                 height={170}
                 chartConfig={{
                   ...chartConfig,
-                  color: (opacity = 1) => `rgba(212,175,55,${opacity})`,
+                  color: (opacity = 1) => hexAlpha(P.gold, opacity),
                 }}
                 yAxisLabel=""
                 yAxisSuffix=""
@@ -623,13 +552,13 @@ export const StatisticsScreen = () => {
           {/* ── Export ──────────────────────────────── */}
           <TouchableOpacity
               style={[s.exportFullBtn, exporting && { opacity: 0.6 }]}
-              onPress={exportExcel}
+              onPress={askExport}
               disabled={exporting}
               activeOpacity={0.85}
           >
-            <Feather name="file-text" size={16} color="#fff" style={{ marginRight: 8 }} />
+            <Ionicons name="document-text-outline" size={16} color="#fff" style={{ marginRight: 8 }} />
             <Text style={s.exportFullBtnText}>
-              {exporting ? 'Export en cours…' : 'Exporter le rapport Excel'}
+              {exporting ? 'Export en cours…' : 'Exporter Excel ou PDF'}
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -638,38 +567,39 @@ export const StatisticsScreen = () => {
 };
 
 // ── Styles ────────────────────────────────────────────────
-const s = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
   safe:   { flex: 1, backgroundColor: P.pageBg },
 
   header: {
-    backgroundColor: P.bg,
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 14,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    paddingHorizontal: 20, paddingTop: 8, paddingVertical: 12,
   },
   backBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    justifyContent: 'center', alignItems: 'center',
+    width: 40, height: 40, borderRadius: 12,
+    borderWidth: 0.5, borderColor: P.borderHard,
+    justifyContent: 'center', alignItems: 'center', marginTop: 4,
   },
-  headerTitle: { color: '#fff', fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold' },
-  headerSub:   { color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 1 },
+  kicker: {
+    fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+    letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2,
+  },
+  headerTitle: { color: P.text, fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', letterSpacing: -0.6 },
+  headerSub:   { color: P.sub, fontSize: 13, marginTop: 4 },
   exportBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    width: 40, height: 40, borderRadius: 12, marginTop: 4,
+    backgroundColor: P.bg, borderWidth: 1, borderColor: P.goldRim,
     justifyContent: 'center', alignItems: 'center',
   },
 
   periodRow: {
-    flexDirection: 'row', backgroundColor: P.surface,
-    paddingHorizontal: 16, paddingVertical: 10, gap: 8,
-    borderBottomWidth: 1, borderBottomColor: P.border,
+    flexDirection: 'row', paddingHorizontal: 20, paddingBottom: 10, gap: 8,
   },
   periodChip: {
-    flex: 1, paddingVertical: 7, borderRadius: 20,
-    borderWidth: 1, borderColor: P.border,
-    alignItems: 'center', backgroundColor: P.pageBg,
+    flex: 1, paddingVertical: 8, borderRadius: 20,
+    borderWidth: 0.5, borderColor: P.borderHard,
+    alignItems: 'center', backgroundColor: P.surface,
   },
-  periodChipActive: { backgroundColor: P.primary, borderColor: P.primary },
+  periodChipActive: { backgroundColor: P.bg, borderColor: P.goldRim },
   periodText:       { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
   periodTextActive: { color: '#fff' },
 
@@ -681,10 +611,8 @@ const s = StyleSheet.create({
 
   kpiGrid: { flexDirection: 'row', gap: 10 },
   kpiCard: {
-    flex: 1, backgroundColor: P.surface, borderRadius: 12,
-    padding: 14, borderLeftWidth: 3,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+    flex: 1, backgroundColor: P.surface, borderRadius: 16,
+    padding: 14, borderLeftWidth: 3, borderWidth: 0.5, borderColor: P.borderHard,
   },
   kpiIcon: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   kpiValue: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
@@ -692,16 +620,14 @@ const s = StyleSheet.create({
   kpiSub:   { fontSize: 9, color: P.sub, marginTop: 1, fontStyle: 'italic' },
 
   card: {
-    backgroundColor: P.surface, borderRadius: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
-    overflow: 'hidden', paddingHorizontal: 14,
+    backgroundColor: P.surface, borderRadius: 16,
+    overflow: 'hidden' as const, paddingHorizontal: 14,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
   chartCard: {
-    backgroundColor: P.surface, borderRadius: 12,
+    backgroundColor: P.surface, borderRadius: 16,
     paddingVertical: 14, paddingHorizontal: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
 
   divider: { height: 1, backgroundColor: P.border },
@@ -715,7 +641,7 @@ const s = StyleSheet.create({
   // HBar
   hBarRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8 },
   hBarLabel: { fontSize: 12, color: P.text, width: 90 },
-  hBarTrack: { flex: 1, height: 7, borderRadius: 4, backgroundColor: 'rgba(108,62,184,0.08)' },
+  hBarTrack: { flex: 1, height: 7, borderRadius: 4, backgroundColor: P.primaryBg },
   hBarFill:  { height: 7, borderRadius: 4 },
   hBarValue: { fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', width: 80, textAlign: 'right' },
 
@@ -736,8 +662,8 @@ const s = StyleSheet.create({
   // Export
   exportFullBtn: {
     marginTop: 24, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', backgroundColor: P.primary,
-    borderRadius: 14, paddingVertical: 15,
+    justifyContent: 'center' as const, backgroundColor: P.bg,
+    borderRadius: 16, paddingVertical: 15, borderWidth: 1, borderColor: P.goldRim,
   },
   exportFullBtnText: { color: '#fff', fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold' },
 });

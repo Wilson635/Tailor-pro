@@ -3,9 +3,10 @@
 // ==========================================
 
 import React, { useState, useRef, useEffect } from 'react';
+import { showAlert } from '@/src/context/DialogContext';
 import {
     View, Text, TouchableOpacity, StyleSheet,
-    Animated, Alert, StatusBar, ScrollView,
+    Animated, StatusBar, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -176,7 +177,7 @@ export const BiometricAuthScreen: React.FC<Props> = ({ navigation }) => {
                 } else {
                     // Si le capteur matériel réussit mais que le token Supabase a expiré
                     setBiometricState('error');
-                    Alert.alert(
+                    showAlert(
                         "Session expirée",
                         "Votre session a expiré. Veuillez vous reconnecter avec votre mot de passe.",
                         [{ text: "OK", onPress: () => navigation.replace('Login') }]

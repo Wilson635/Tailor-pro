@@ -3,7 +3,8 @@
 // ==========================================
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -65,9 +66,11 @@ export const AddRealisationScreen: React.FC<Props> = ({ route, navigation }) => 
     setIsSaving(false);
 
     if (result) {
-      navigation.replace('RealisationDetails', { realisationId: result.id, clientId });
+      showSuccess('Réalisation créée', 'La pièce a été enregistrée.', () =>
+        navigation.replace('RealisationDetails', { realisationId: result.id, clientId }),
+      );
     } else {
-      Alert.alert('Erreur', "Impossible de créer la réalisation.");
+      showAlert('Erreur', "Impossible de créer la réalisation.");
     }
   };
 

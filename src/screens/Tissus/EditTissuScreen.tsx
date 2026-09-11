@@ -3,9 +3,10 @@
 // ==========================================
 
 import React, { useState, useCallback } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
-  Alert, ActivityIndicator, Image, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Image, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -89,14 +90,14 @@ export const EditTissuScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const pickPhoto = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission requise', "Accès galerie refusé."); return; }
+    if (status !== 'granted') { showAlert('Permission requise', "Accès galerie refusé."); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
     if (!result.canceled) setPhotoUri(result.assets[0].uri);
   }, []);
 
   const handleSubmit = async () => {
-    if (!typeTissu)     { Alert.alert('Champ requis', 'Sélectionnez le type.'); return; }
-    if (!nomCommercial) { Alert.alert('Champ requis', 'Entrez le nom commercial.'); return; }
+    if (!typeTissu)     { showAlert('Champ requis', 'Sélectionnez le type.'); return; }
+    if (!nomCommercial) { showAlert('Champ requis', 'Entrez le nom commercial.'); return; }
     setIsSaving(true);
     // Determine if photo changed (new local URI vs existing remote URL)
     const newPhotoUri = photoUri !== tissu.photo ? photoUri : undefined;
@@ -109,7 +110,7 @@ export const EditTissuScreen: React.FC<Props> = ({ route, navigation }) => {
       quantiteUtilisee: parseFloat(quantiteUtilisee.replace(/\s/g, '').replace(',', '.')) || 0,
     }, newPhotoUri);
     setIsSaving(false);
-    navigation.goBack();
+    showSuccess('Modifications enregistrées', 'Le tissu a été mis à jour.', () => navigation.goBack());
   };
 
   return (

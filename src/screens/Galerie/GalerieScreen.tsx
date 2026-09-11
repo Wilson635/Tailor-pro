@@ -1,47 +1,33 @@
 // ──────────────────────────────────────────────────────────
 // GalerieScreen — Module 11
 // Grille visuelle de toutes les photos de réalisations.
-// Filtres par catégorie, sélection multiple, publication.
 // ──────────────────────────────────────────────────────────
 import React, {
-    useState, useMemo, useCallback, useRef,
+    useState, useMemo, useCallback,
 } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
-    View, Text, StyleSheet, FlatList, Image,
-    TouchableOpacity, TouchableHighlight, Dimensions,
-    Alert, ActivityIndicator, Platform,
+    View, Text, FlatList, Image,
+    TouchableOpacity, Dimensions,
+    ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAppStore } from '@store/useAppStore';
 import { Realisation, CatalogModel, Order } from '../../types';
-
-// ── Palette ──────────────────────────────────────────────
-const P = {
-    bg:       '#16123A',
-    primary:  '#6C3EB8',
-    pageBg:   '#0E0B1F',   // très sombre pour une galerie
-    surface:  '#FFFFFF',
-    text:     '#FFFFFF',
-    sub:      'rgba(255,255,255,0.55)',
-    gold:     '#D4AF37',
-    success:  '#059669',
-    successBg:'rgba(5,150,105,0.85)',
-    border:   'rgba(255,255,255,0.10)',
-};
+import { useThemedStyles, type Palette } from '@/src/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-// ── Constantes grille ─────────────────────────────────────
 const { width: W } = Dimensions.get('window');
-const GAP          = 2;
-const N_COLS       = 3;
-const CELL_SIZE    = (W - GAP * (N_COLS + 1)) / N_COLS;
+const GAP = 8;
+const PAD = 20;
+const N_COLS = 3;
+const CELL_SIZE = (W - PAD * 2 - GAP * (N_COLS - 1)) / N_COLS;
 
-// ── Catégories de la galerie ──────────────────────────────
 type GalerieCategorie =
     | 'tout' | 'femme' | 'homme' | 'enfant'
     | 'mariage' | 'traditionnel' | 'costume' | 'robe' | 'pantalon';
@@ -58,7 +44,6 @@ const CATEGORIES: { id: GalerieCategorie; label: string }[] = [
     { id: 'enfant',       label: 'Enfant'        },
 ];
 
-// ── Mapping ClothingType → GalerieCategorie ───────────────
 const CLOTHING_TO_CAT: Record<string, GalerieCategorie> = {
     robe_longue:  'robe',
     robe_courte:  'robe',
@@ -71,7 +56,6 @@ const CLOTHING_TO_CAT: Record<string, GalerieCategorie> = {
     tenue_enfant: 'enfant',
 };
 
-// ── Mapping CatalogCategory → GalerieCategorie ───────────
 const CATALOG_TO_CAT: Record<string, GalerieCategorie> = {
     femme:        'femme',
     homme:        'homme',
@@ -83,9 +67,8 @@ const CATALOG_TO_CAT: Record<string, GalerieCategorie> = {
     chemise:      'homme',
 };
 
-// ── PhotoItem ─────────────────────────────────────────────
 interface PhotoItem {
-    key:           string;        // realisationId + '_' + photoIndex
+    key:           string;
     uri:           string;
     realisationId: string;
     clientId:      string;
@@ -94,18 +77,15 @@ interface PhotoItem {
     isPublished:   boolean;
 }
 
-// ── Dériver la catégorie d'une réalisation ────────────────
 function deriveCategorie(
     real: Realisation,
     catalog: CatalogModel[],
     orders: Order[],
 ): GalerieCategorie {
-    // 1. Via le modèle du catalogue
     if (real.modeleId) {
         const modele = catalog.find(m => m.id === real.modeleId);
         if (modele) return CATALOG_TO_CAT[modele.categorie] ?? 'tout';
     }
-    // 2. Via la commande (clothingType)
     if (real.commandeId) {
         const order = orders.find(o => o.id === real.commandeId);
         if (order) return CLOTHING_TO_CAT[order.clothingType] ?? 'tout';
@@ -113,24 +93,18 @@ function deriveCategorie(
     return 'tout';
 }
 
-// ──────────────────────────────────────────────────────────
-// SCREEN
-// ──────────────────────────────────────────────────────────
 export function GalerieScreen() {
     const navigation = useNavigation<Nav>();
     const insets = useSafeAreaInsets();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
 
-    const { realisations, clients, catalog, orders, updateCatalogModel, loadCatalog } = useAppStore();
+    const { realisations, catalog, orders, updateCatalogModel, loadCatalog } = useAppStore();
 
-    // Filtres
     const [categorie, setCategorie] = useState<GalerieCategorie>('tout');
-
-    // Mode sélection
     const [selecting,  setSelecting]  = useState(false);
-    const [selected,   setSelected]   = useState<Set<string>>(new Set()); // clés PhotoItem
+    const [selected,   setSelected]   = useState<Set<string>>(new Set());
     const [publishing, setPublishing] = useState(false);
 
-    // ── Construire la liste de photos ─────────────────────
     const allPhotos = useMemo<PhotoItem[]>(() => {
         const items: PhotoItem[] = [];
         Object.entries(realisations).forEach(([clientId, reals]) => {
@@ -152,11 +126,9 @@ export function GalerieScreen() {
                 });
             });
         });
-        // Trier par réalisation la plus récente en premier (par position dans le store)
         return items;
     }, [realisations, catalog, orders]);
 
-    // ── Filtrer ────────────────────────────────────────────
     const filtered = useMemo(() =>
         categorie === 'tout'
             ? allPhotos
@@ -164,7 +136,14 @@ export function GalerieScreen() {
         [allPhotos, categorie]
     );
 
-    // ── Navigation ─────────────────────────────────────────
+    const toggleSelect = (key: string) => {
+        setSelected(prev => {
+            const next = new Set(prev);
+            next.has(key) ? next.delete(key) : next.add(key);
+            return next;
+        });
+    };
+
     const openRealisation = useCallback((item: PhotoItem) => {
         if (selecting) {
             toggleSelect(item.key);
@@ -176,18 +155,9 @@ export function GalerieScreen() {
         });
     }, [selecting, navigation]);
 
-    // ── Gestion sélection ──────────────────────────────────
     const enterSelectMode = (key: string) => {
         setSelecting(true);
         setSelected(new Set([key]));
-    };
-
-    const toggleSelect = (key: string) => {
-        setSelected(prev => {
-            const next = new Set(prev);
-            next.has(key) ? next.delete(key) : next.add(key);
-            return next;
-        });
     };
 
     const exitSelectMode = () => {
@@ -195,38 +165,18 @@ export function GalerieScreen() {
         setSelected(new Set());
     };
 
-    // ── Sélectionner par réalisation (toutes photos liées) ─
-    const toggleRealisation = (realisationId: string) => {
-        const realisationKeys = filtered
-            .filter(p => p.realisationId === realisationId)
-            .map(p => p.key);
-        const allSelected = realisationKeys.every(k => selected.has(k));
-        setSelected(prev => {
-            const next = new Set(prev);
-            realisationKeys.forEach(k => allSelected ? next.delete(k) : next.add(k));
-            return next;
-        });
-    };
-
-    // ── Publication ────────────────────────────────────────
     const handlePublish = async () => {
         if (selected.size === 0) return;
-
-        // Trouver les réalisations sélectionnées
         const selectedPhotos = filtered.filter(p => selected.has(p.key));
-
-        // Dédupliquer par realisationId
         const realMap = new Map<string, PhotoItem>();
         selectedPhotos.forEach(p => { if (!realMap.has(p.realisationId)) realMap.set(p.realisationId, p); });
-
         const withModel    = [...realMap.values()].filter(p => p.modeleId);
         const withoutModel = [...realMap.values()].filter(p => !p.modeleId);
-
         const msg = withoutModel.length > 0
             ? `${withModel.length} photo(s) seront publiées.\n${withoutModel.length} réalisation(s) sans modèle catalogue ne peuvent pas être publiées.`
             : `Publier ${withModel.length} réalisation(s) dans la galerie publique ?`;
 
-        Alert.alert('Publier dans la galerie', msg, [
+        showAlert('Publier dans la galerie', msg, [
             { text: 'Annuler', style: 'cancel' },
             {
                 text: 'Publier',
@@ -239,10 +189,10 @@ export function GalerieScreen() {
                             )
                         );
                         await loadCatalog();
-                        Alert.alert('✓ Publié', `${withModel.length} modèle(s) maintenant visibles dans l'espace client.`);
+                        showSuccess('Publié', `${withModel.length} modèle(s) visibles dans l'espace client.`);
                         exitSelectMode();
                     } catch {
-                        Alert.alert('Erreur', 'Impossible de publier.');
+                        showAlert('Erreur', 'Impossible de publier.');
                     } finally {
                         setPublishing(false);
                     }
@@ -251,7 +201,6 @@ export function GalerieScreen() {
         ]);
     };
 
-    // ── Dépublication ──────────────────────────────────────
     const handleUnpublish = async () => {
         if (selected.size === 0) return;
         const selectedPhotos = filtered.filter(p => selected.has(p.key));
@@ -260,11 +209,11 @@ export function GalerieScreen() {
         const withModel = [...realMap.values()].filter(p => p.modeleId && p.isPublished);
 
         if (withModel.length === 0) {
-            Alert.alert('Info', 'Aucune des réalisations sélectionnées n\'est publiée.');
+            showAlert('Info', "Aucune des réalisations sélectionnées n'est publiée.");
             return;
         }
 
-        Alert.alert('Dépublier', `Retirer ${withModel.length} modèle(s) de la galerie publique ?`, [
+        showAlert('Dépublier', `Retirer ${withModel.length} modèle(s) de la galerie publique ?`, [
             { text: 'Annuler', style: 'cancel' },
             {
                 text: 'Dépublier',
@@ -277,6 +226,7 @@ export function GalerieScreen() {
                         );
                         await loadCatalog();
                         exitSelectMode();
+                        showSuccess('Retiré', `${withModel.length} modèle(s) ont quitté la galerie publique.`);
                     } finally {
                         setPublishing(false);
                     }
@@ -285,20 +235,12 @@ export function GalerieScreen() {
         ]);
     };
 
-    // ── Rendu cellule photo ────────────────────────────────
-    const renderPhoto = useCallback(({ item, index }: { item: PhotoItem; index: number }) => {
+    const renderPhoto = useCallback(({ item }: { item: PhotoItem }) => {
         const isSelected = selected.has(item.key);
-        const col = index % N_COLS;
-        const marginLeft  = col === 0 ? GAP : GAP / 2;
-        const marginRight = col === N_COLS - 1 ? GAP : GAP / 2;
-
         return (
-            <TouchableHighlight
-                style={{
-                    width: CELL_SIZE, height: CELL_SIZE,
-                    marginTop: GAP, marginLeft, marginRight,
-                }}
-                underlayColor="rgba(0,0,0,0.3)"
+            <TouchableOpacity
+                style={styles.cell}
+                activeOpacity={0.88}
                 onPress={() => openRealisation(item)}
                 onLongPress={() => {
                     if (!selecting) enterSelectMode(item.key);
@@ -306,105 +248,84 @@ export function GalerieScreen() {
                 }}
                 delayLongPress={350}
             >
-                <View style={{ flex: 1 }}>
-                    <Image
-                        source={{ uri: item.uri }}
-                        style={StyleSheet.absoluteFill}
-                        resizeMode="cover"
-                    />
-
-                    {/* Overlay sélection */}
-                    {selecting && (
-                        <View style={[
-                            styles.selectOverlay,
-                            isSelected && styles.selectOverlayActive,
-                        ]}>
-                            <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
-                                {isSelected && (
-                                    <Feather name="check" size={12} color="#fff" />
-                                )}
-                            </View>
+                <Image source={{ uri: item.uri }} style={styles.cellImg} resizeMode="cover" />
+                {selecting && (
+                    <View style={[styles.selectOverlay, isSelected && styles.selectOverlayOn]}>
+                        <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
+                            {isSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
                         </View>
-                    )}
-
-                    {/* Badge "PUBLIC" */}
-                    {item.isPublished && !selecting && (
-                        <View style={styles.publicBadge}>
-                            <Feather name="globe" size={9} color="#fff" />
-                        </View>
-                    )}
-                </View>
-            </TouchableHighlight>
+                    </View>
+                )}
+                {item.isPublished && !selecting && (
+                    <View style={styles.publicBadge}>
+                        <Ionicons name="globe-outline" size={11} color={P.gold} />
+                    </View>
+                )}
+            </TouchableOpacity>
         );
-    }, [selected, selecting, openRealisation]);
+    }, [selected, selecting, openRealisation, styles, P.gold]);
 
     const selectedPublished = filtered.filter(p => selected.has(p.key) && p.isPublished).length;
     const selectedCount     = selected.size;
 
     return (
-        <View style={styles.root}>
-            <SafeAreaView edges={['top']} style={{ backgroundColor: P.bg }}>
-                {/* Header */}
-                <View style={styles.header}>
-                    <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-                        <Feather name="arrow-left" size={20} color="#fff" />
-                    </TouchableOpacity>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={styles.headerTitle}>Galerie</Text>
-                        <Text style={styles.headerSub}>
-                            {filtered.length} photo{filtered.length !== 1 ? 's' : ''}
-                            {selecting ? ` · ${selectedCount} sélectionnée${selectedCount !== 1 ? 's' : ''}` : ''}
-                        </Text>
-                    </View>
-                    {selecting ? (
-                        <TouchableOpacity style={styles.cancelBtn} onPress={exitSelectMode}>
-                            <Text style={styles.cancelBtnText}>Annuler</Text>
-                        </TouchableOpacity>
-                    ) : (
-                        <TouchableOpacity
-                            style={styles.selectBtn}
-                            onPress={() => setSelecting(true)}
-                        >
-                            <Feather name="check-square" size={18} color="rgba(255,255,255,0.8)" />
-                        </TouchableOpacity>
-                    )}
+        <View style={[styles.root, { paddingTop: insets.top }]}>
+            <View style={styles.header}>
+                <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+                    <Ionicons name="arrow-back" size={18} color={P.text} />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.headerTitle}>Galerie</Text>
+                    <Text style={styles.headerSub}>
+                        {filtered.length} photo{filtered.length !== 1 ? 's' : ''}
+                        {selecting ? ` · ${selectedCount} sélectionnée${selectedCount !== 1 ? 's' : ''}` : ''}
+                    </Text>
                 </View>
-            </SafeAreaView>
-
-            {/* Filtre catégories */}
-            <View style={styles.filterBar}>
-                <FlatList
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    data={CATEGORIES}
-                    keyExtractor={c => c.id}
-                    renderItem={({ item: c }) => (
-                        <TouchableOpacity
-                            style={[styles.catChip, categorie === c.id && styles.catChipActive]}
-                            onPress={() => setCategorie(c.id)}
-                            activeOpacity={0.75}
-                        >
-                            <Text style={[styles.catText, categorie === c.id && styles.catTextActive]}>
-                                {c.label}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                    contentContainerStyle={{ paddingHorizontal: GAP, paddingVertical: 10 }}
-                />
+                {selecting ? (
+                    <TouchableOpacity style={styles.textBtn} onPress={exitSelectMode}>
+                        <Text style={styles.textBtnLabel}>Annuler</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <TouchableOpacity style={styles.addBtn} onPress={() => setSelecting(true)}>
+                        <Ionicons name="checkmark" size={18} color={P.gold} />
+                    </TouchableOpacity>
+                )}
             </View>
 
-            {/* Grille photos */}
+            <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={CATEGORIES}
+                keyExtractor={c => c.id}
+                style={{ flexGrow: 0 }}
+                contentContainerStyle={styles.chips}
+                renderItem={({ item: c }) => {
+                    const on = categorie === c.id;
+                    return (
+                        <TouchableOpacity
+                            style={[styles.chip, on && styles.chipOn]}
+                            onPress={() => setCategorie(c.id)}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={[styles.chipText, on && styles.chipTextOn]}>{c.label}</Text>
+                        </TouchableOpacity>
+                    );
+                }}
+            />
+
             {filtered.length === 0 ? (
                 <View style={styles.empty}>
-                    <Feather name="image" size={48} color="rgba(255,255,255,0.2)" />
+                    <View style={styles.emptyIcon}>
+                        <Ionicons name="images-outline" size={26} color={P.gold} />
+                    </View>
                     <Text style={styles.emptyTitle}>
                         {categorie === 'tout'
-                            ? 'Aucune photo dans les réalisations'
-                            : `Aucune photo en catégorie "${CATEGORIES.find(c => c.id === categorie)?.label}"`
-                        }
+                            ? 'Aucune photo'
+                            : `Rien en « ${CATEGORIES.find(c => c.id === categorie)?.label} »`}
                     </Text>
                     <Text style={styles.emptySub}>
-                        Ajoutez des photos à vos réalisations pour les voir ici.
+                        Ajoutez des photos à vos réalisations pour les retrouver ici.
                     </Text>
                 </View>
             ) : (
@@ -413,150 +334,129 @@ export function GalerieScreen() {
                     keyExtractor={p => p.key}
                     renderItem={renderPhoto}
                     numColumns={N_COLS}
-                    columnWrapperStyle={{ marginHorizontal: 0 }}
+                    columnWrapperStyle={styles.row}
                     contentContainerStyle={{
+                        paddingHorizontal: PAD,
                         paddingBottom: selecting ? 110 + insets.bottom : 24 + insets.bottom,
                     }}
-                    getItemLayout={(_, i) => ({
-                        length: CELL_SIZE + GAP,
-                        offset: (CELL_SIZE + GAP) * Math.floor(i / N_COLS),
-                        index: i,
-                    })}
                     initialNumToRender={18}
                     maxToRenderPerBatch={12}
                     windowSize={5}
                 />
             )}
 
-            {/* Barre d'action sélection */}
             {selecting && (
                 <View style={[styles.actionBar, { paddingBottom: insets.bottom + 12 }]}>
-                    <View style={styles.actionBarInner}>
-                        {/* Dépublier (si certaines déjà publiées) */}
+                    <View style={styles.actionRow}>
                         {selectedPublished > 0 && (
                             <TouchableOpacity
-                                style={[styles.actionBtn, styles.actionBtnSecondary]}
+                                style={styles.actionGhost}
                                 onPress={handleUnpublish}
                                 disabled={publishing}
-                                activeOpacity={0.85}
                             >
-                                <Feather name="eye-off" size={15} color={P.primary} style={{ marginRight: 6 }} />
-                                <Text style={[styles.actionBtnText, { color: P.primary }]}>
-                                    Dépublier ({selectedPublished})
-                                </Text>
+                                <Ionicons name="eye-off-outline" size={15} color={P.primary} />
+                                <Text style={styles.actionGhostText}>Dépublier</Text>
                             </TouchableOpacity>
                         )}
-
-                        {/* Publier */}
                         <TouchableOpacity
-                            style={[
-                                styles.actionBtn,
-                                styles.actionBtnPrimary,
-                                (selectedCount === 0 || publishing) && { opacity: 0.5 },
-                            ]}
+                            style={[styles.actionPrimary, (selectedCount === 0 || publishing) && { opacity: 0.5 }]}
                             onPress={handlePublish}
                             disabled={selectedCount === 0 || publishing}
-                            activeOpacity={0.85}
                         >
                             {publishing
-                                ? <ActivityIndicator size="small" color="#fff" style={{ marginRight: 6 }} />
-                                : <Feather name="globe" size={15} color="#fff" style={{ marginRight: 6 }} />
-                            }
-                            <Text style={styles.actionBtnText}>
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Ionicons name="globe-outline" size={15} color={P.gold} />}
+                            <Text style={styles.actionPrimaryText}>
                                 {publishing ? 'Publication…' : `Publier (${selectedCount})`}
                             </Text>
                         </TouchableOpacity>
                     </View>
-
-                    {/* Indication */}
-                    <Text style={styles.actionHint}>
-                        {selectedCount === 0
-                            ? 'Appuyez sur les photos pour les sélectionner'
-                            : `${selectedCount} photo${selectedCount > 1 ? 's' : ''} sélectionnée${selectedCount > 1 ? 's' : ''} · Appui long pour sélectionner`
-                        }
-                    </Text>
                 </View>
             )}
         </View>
     );
 }
 
-// ── Styles ────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     root: { flex: 1, backgroundColor: P.pageBg },
-
     header: {
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingVertical: 12,
-        backgroundColor: P.bg,
+        flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 12,
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
     },
     backBtn: {
-        width: 36, height: 36, borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.10)',
-        justifyContent: 'center', alignItems: 'center',
+        width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+        alignItems: 'center' as const, justifyContent: 'center' as const,
+        borderWidth: 0.5, borderColor: P.borderHard, marginTop: 4,
     },
-    headerTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
-    headerSub:   { color: P.sub, fontSize: 11, marginTop: 1 },
-    selectBtn:   { padding: 6 },
-    cancelBtn: {
-        paddingHorizontal: 12, paddingVertical: 6,
-        backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 16,
+    addBtn: {
+        width: 40, height: 40, borderRadius: 12, backgroundColor: P.bg,
+        alignItems: 'center' as const, justifyContent: 'center' as const,
+        borderWidth: 1, borderColor: P.goldRim, marginTop: 4,
     },
-    cancelBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-
-    filterBar: { backgroundColor: '#1A1640', borderBottomWidth: 1, borderBottomColor: P.border },
-    catChip: {
-        paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20,
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-        marginRight: 6, backgroundColor: 'rgba(255,255,255,0.06)',
+    textBtn: { marginTop: 10, paddingHorizontal: 8, paddingVertical: 6 },
+    textBtnLabel: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
     },
-    catChipActive: { backgroundColor: P.primary, borderColor: P.primary },
-    catText:       { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.60)' },
-    catTextActive: { color: '#fff' },
-
+    headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
+    headerSub: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, marginTop: 4 },
+    chips: { paddingHorizontal: 20, paddingBottom: 12, gap: 8 },
+    chip: {
+        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+        backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
+    },
+    chipOn: { backgroundColor: P.bg, borderColor: P.goldRim },
+    chipText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub },
+    chipTextOn: { color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold' },
+    row: { gap: GAP, marginBottom: GAP },
+    cell: {
+        width: CELL_SIZE, height: CELL_SIZE, borderRadius: 16, overflow: 'hidden' as const,
+        backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
+    },
+    cellImg: { width: '100%' as const, height: '100%' as const },
     selectOverlay: {
-        ...StyleSheet.absoluteFillObject,
+        position: 'absolute' as const, left: 0, right: 0, top: 0, bottom: 0,
         backgroundColor: 'transparent',
     },
-    selectOverlayActive: { backgroundColor: 'rgba(108,62,184,0.35)' },
+    selectOverlayOn: { backgroundColor: 'rgba(22,18,58,0.35)' },
     checkbox: {
-        position: 'absolute', top: 6, right: 6,
+        position: 'absolute' as const, top: 8, right: 8,
         width: 22, height: 22, borderRadius: 11,
-        borderWidth: 2, borderColor: '#fff',
-        backgroundColor: 'rgba(0,0,0,0.25)',
-        justifyContent: 'center', alignItems: 'center',
+        borderWidth: 1.5, borderColor: '#fff',
+        alignItems: 'center' as const, justifyContent: 'center' as const,
+        backgroundColor: 'rgba(22,18,58,0.35)',
     },
-    checkboxActive: { backgroundColor: P.primary, borderColor: P.primary },
-
+    checkboxOn: { backgroundColor: P.bg, borderColor: P.goldRim },
     publicBadge: {
-        position: 'absolute', bottom: 5, right: 5,
-        backgroundColor: P.successBg,
-        borderRadius: 10, padding: 3,
+        position: 'absolute' as const, bottom: 6, right: 6,
+        width: 22, height: 22, borderRadius: 8, backgroundColor: P.bg,
+        alignItems: 'center' as const, justifyContent: 'center' as const,
+        borderWidth: 1, borderColor: P.goldRim,
     },
-
-    empty: {
-        flex: 1, alignItems: 'center', justifyContent: 'center',
-        paddingHorizontal: 32, gap: 12,
+    empty: { alignItems: 'center' as const, paddingTop: 56, paddingHorizontal: 28 },
+    emptyIcon: {
+        width: 60, height: 60, borderRadius: 18, backgroundColor: P.bg, marginBottom: 14,
+        alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1, borderColor: P.goldRim,
     },
-    emptyTitle: { color: 'rgba(255,255,255,0.7)', fontSize: 15, fontWeight: '700', textAlign: 'center' },
-    emptySub:   { color: P.sub, fontSize: 13, textAlign: 'center', lineHeight: 19 },
-
+    emptyTitle: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
+    emptySub: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, textAlign: 'center' as const, marginTop: 6 },
     actionBar: {
-        position: 'absolute', bottom: 0, left: 0, right: 0,
-        backgroundColor: 'rgba(22,18,58,0.97)',
-        borderTopWidth: 1, borderTopColor: P.border,
-        paddingTop: 12, paddingHorizontal: 16,
+        position: 'absolute' as const, bottom: 0, left: 0, right: 0,
+        backgroundColor: P.pageBg, borderTopWidth: 0.5, borderTopColor: P.borderHard,
+        paddingTop: 12, paddingHorizontal: 20,
     },
-    actionBarInner: { flexDirection: 'row', gap: 10 },
-    actionBtn: {
-        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-        paddingVertical: 13, borderRadius: 12,
+    actionRow: { flexDirection: 'row' as const, gap: 10 },
+    actionGhost: {
+        flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 6,
+        paddingVertical: 14, borderRadius: 16, backgroundColor: P.surface,
+        borderWidth: 0.5, borderColor: P.borderHard,
     },
-    actionBtnPrimary:   { backgroundColor: P.primary },
-    actionBtnSecondary: { backgroundColor: 'rgba(108,62,184,0.12)', borderWidth: 1, borderColor: P.primary },
-    actionBtnText:      { color: '#fff', fontSize: 14, fontWeight: '700' },
-    actionHint: {
-        textAlign: 'center', fontSize: 11, color: P.sub,
-        marginTop: 8,
+    actionGhostText: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.primary },
+    actionPrimary: {
+        flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 6,
+        paddingVertical: 14, borderRadius: 16, backgroundColor: P.bg,
+        borderWidth: 1, borderColor: P.goldRim,
     },
+    actionPrimaryText: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });

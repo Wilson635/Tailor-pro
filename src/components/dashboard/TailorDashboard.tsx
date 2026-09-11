@@ -8,7 +8,6 @@ import React, { useMemo, useState } from 'react';
 import {
     View,
     Text,
-    StyleSheet,
     ScrollView,
     TouchableOpacity,
     Image,
@@ -19,47 +18,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency, formatCurrencyShort, formatRelativeTime } from '@utils/formatters';
-import { SPACING } from '@constants/theme';
+import { formatCurrencyShort, formatRelativeTime } from '@utils/formatters';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
-import { usePalette } from '@/src/theme';
+import { useThemedStyles, type Palette } from '@/src/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Period = 'jour' | 'semaine' | 'mois';
 
 const { width: W } = Dimensions.get('window');
-const THUMB_SIZE   = (W - SPACING.lg * 2 - SPACING.sm * 3) / 4;
+const THUMB_SIZE   = (W - 20 * 2 - 8 * 3) / 4;
 
-// ──────────────────────────────────────────
-// PALETTE
-// ──────────────────────────────────────────
-const P = {
-    bg:        '#16123A',
-    primary:   '#6C3EB8',
-    pageBg:    '#F5F4FB',
-    surface:   '#FFFFFF',
-    text:      '#1A1033',
-    sub:       '#7C6FA8',
-    border:    'rgba(108,62,184,0.10)',
-    gold:      '#D4AF37',
-    goldBg:    'rgba(212,175,55,0.10)',
-    goldRim:   'rgba(212,175,55,0.28)',
-    success:   '#16A34A',
-    successBg: 'rgba(22,163,74,0.10)',
-    error:     '#EF4444',
-    errorBg:   'rgba(239,68,68,0.10)',
-    warning:   '#D97706',
-    warningBg: 'rgba(217,119,6,0.10)',
-    info:      '#2563EB',
-    infoBg:    'rgba(37,99,235,0.10)',
-};
-
-// ──────────────────────────────────────────
-// HELPERS
-// ──────────────────────────────────────────
 type ActivityType = 'new_order' | 'payment_received' | 'order_completed' | 'new_client' | string;
 
-const activityMeta = (type: ActivityType) => {
+const activityMeta = (type: ActivityType, P: Palette) => {
     switch (type) {
         case 'new_order':        return { icon: 'shopping-bag' as const, color: P.info,    bg: P.infoBg,    label: 'Commande' };
         case 'payment_received': return { icon: 'credit-card'  as const, color: P.success, bg: P.successBg, label: 'Paiement' };
@@ -85,18 +56,18 @@ const orderStatusLabel: Record<string, string> = {
     annulee:      'Annulée',
 };
 
-const orderStatusColor: Record<string, string> = {
+const statusColor = (P: Palette): Record<string, string> => ({
     pending: P.warning, in_progress: P.info, completed: P.success,
     delivered: P.gold, cancelled: P.error, creee: P.info,
     en_attente: P.warning, en_confection: P.info, essayage: P.primary,
     retouches: P.warning, terminee: P.success, livree: P.gold, annulee: P.error,
-};
-const orderStatusBg: Record<string, string> = {
+});
+const statusBg = (P: Palette): Record<string, string> => ({
     pending: P.warningBg, in_progress: P.infoBg, completed: P.successBg,
     delivered: P.goldBg, cancelled: P.errorBg, creee: P.infoBg,
-    en_attente: P.warningBg, en_confection: P.infoBg, essayage: 'rgba(108,62,184,0.12)',
+    en_attente: P.warningBg, en_confection: P.infoBg, essayage: P.primaryBg,
     retouches: P.warningBg, terminee: P.successBg, livree: P.goldBg, annulee: P.errorBg,
-};
+});
 
 const INACTIVE_STATUSES = ['livree', 'delivered', 'annulee', 'cancelled'];
 
@@ -124,7 +95,9 @@ const KpiCard = ({
     icon: string; label: string; value: string;
     sub?: string; color: string; bg: string;
     onPress?: () => void;
-}) => (
+}) => {
+    const { styles } = useThemedStyles(makeStyles);
+    return (
     <TouchableOpacity
         style={[styles.kpiCard, { borderLeftColor: color }]}
         onPress={onPress}
@@ -137,16 +110,18 @@ const KpiCard = ({
         <Text style={styles.kpiLabel}>{label}</Text>
         {sub ? <Text style={styles.kpiSub}>{sub}</Text> : null}
     </TouchableOpacity>
-);
+    );
+};
 
-/** Pill livraisons / retards */
 const StatPill = ({
                       icon, count, label, color, bg, borderColor, onPress,
                   }: {
     icon: string; count: number; label: string;
     color: string; bg: string; borderColor: string;
     onPress: () => void;
-}) => (
+}) => {
+    const { styles } = useThemedStyles(makeStyles);
+    return (
     <TouchableOpacity style={[styles.pill, { backgroundColor: bg, borderColor }]} onPress={onPress} activeOpacity={0.8}>
         <View style={[styles.pillIconWrap, { backgroundColor: color + '20' }]}>
             <Feather name={icon as any} size={16} color={color} />
@@ -154,7 +129,8 @@ const StatPill = ({
         <Text style={[styles.pillCount, { color }]}>{count}</Text>
         <Text style={styles.pillLabel}>{label}</Text>
     </TouchableOpacity>
-);
+    );
+};
 
 // ──────────────────────────────────────────
 // COMPOSANT PRINCIPAL
@@ -162,7 +138,7 @@ const StatPill = ({
 export const TailorDashboard: React.FC = () => {
     const insets     = useSafeAreaInsets();
     const navigation = useNavigation<Nav>();
-    const colors     = usePalette();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
     const { statistics, activities, orders, clients, realisations } = useAppStore();
 
     const [period, setPeriod] = useState<Period>('mois');
@@ -260,7 +236,7 @@ export const TailorDashboard: React.FC = () => {
     // ──────────────────────────────────────────
     return (
         <ScrollView
-            style={[styles.scroll, { backgroundColor: colors.pageBg }]}
+            style={styles.scroll}
             contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 110 }]}
             showsVerticalScrollIndicator={false}
         >
@@ -347,7 +323,7 @@ export const TailorDashboard: React.FC = () => {
                         value={formatCurrencyShort(encaissePeriode)}
                         sub={periodLabel}
                         color={P.primary}
-                        bg="rgba(108,62,184,0.10)"
+                        bg={P.primaryBg}
                     />
                 </View>
                 <View style={[styles.kpiRow, { marginTop: 10 }]}>
@@ -377,8 +353,8 @@ export const TailorDashboard: React.FC = () => {
                     count={livraisonsJour.length}
                     label={'Livraisons\naujourd\'hui'}
                     color={livraisonsJour.length > 0 ? P.success : P.sub}
-                    bg={livraisonsJour.length > 0 ? P.successBg : 'rgba(124,111,168,0.06)'}
-                    borderColor={livraisonsJour.length > 0 ? 'rgba(22,163,74,0.25)' : P.border}
+                    bg={livraisonsJour.length > 0 ? P.successBg : P.surface}
+                    borderColor={livraisonsJour.length > 0 ? P.success : P.borderHard}
                     onPress={() => navigation.navigate('CommandeKanban')}
                 />
                 <StatPill
@@ -386,8 +362,8 @@ export const TailorDashboard: React.FC = () => {
                     count={commandesEnRetard.length}
                     label={'En retard'}
                     color={commandesEnRetard.length > 0 ? P.error : P.sub}
-                    bg={commandesEnRetard.length > 0 ? P.errorBg : 'rgba(124,111,168,0.06)'}
-                    borderColor={commandesEnRetard.length > 0 ? 'rgba(239,68,68,0.25)' : P.border}
+                    bg={commandesEnRetard.length > 0 ? P.errorBg : P.surface}
+                    borderColor={commandesEnRetard.length > 0 ? P.error : P.borderHard}
                     onPress={() => navigation.navigate('CommandeKanban')}
                 />
                 <StatPill
@@ -395,8 +371,8 @@ export const TailorDashboard: React.FC = () => {
                     count={clients.length}
                     label={'Clients'}
                     color={P.primary}
-                    bg="rgba(108,62,184,0.08)"
-                    borderColor={P.border}
+                    bg={P.primaryBg}
+                    borderColor={P.borderHard}
                     onPress={() => navigation.navigate('AddClient')}
                 />
             </View>
@@ -406,7 +382,7 @@ export const TailorDashboard: React.FC = () => {
                 <View style={styles.alertsBlock}>
                     {hasRetard && (
                         <TouchableOpacity
-                            style={[styles.alertRow, { borderColor: 'rgba(239,68,68,0.25)', backgroundColor: P.errorBg }]}
+                            style={[styles.alertRow, { borderColor: P.error, backgroundColor: P.errorBg }]}
                             onPress={() => navigation.navigate('CommandeKanban')}
                             activeOpacity={0.8}
                         >
@@ -419,7 +395,7 @@ export const TailorDashboard: React.FC = () => {
                     )}
                     {hasImpayes && (
                         <TouchableOpacity
-                            style={[styles.alertRow, { borderColor: 'rgba(217,119,6,0.25)', backgroundColor: P.warningBg }]}
+                            style={[styles.alertRow, { borderColor: P.warning, backgroundColor: P.warningBg }]}
                             onPress={() => navigation.navigate('Comptabilite')}
                             activeOpacity={0.8}
                         >
@@ -432,7 +408,7 @@ export const TailorDashboard: React.FC = () => {
                     )}
                     {statistics.unpaidInvoices > 0 && !hasRetard && !hasImpayes && (
                         <TouchableOpacity
-                            style={[styles.alertRow, { borderColor: 'rgba(217,119,6,0.25)', backgroundColor: P.warningBg }]}
+                            style={[styles.alertRow, { borderColor: P.warning, backgroundColor: P.warningBg }]}
                             onPress={() => navigation.navigate('Comptabilite')}
                             activeOpacity={0.8}
                         >
@@ -444,7 +420,7 @@ export const TailorDashboard: React.FC = () => {
                         </TouchableOpacity>
                     )}
                     {hasUrgent && (
-                        <View style={[styles.alertRow, { borderColor: 'rgba(37,99,235,0.20)', backgroundColor: P.infoBg }]}>
+                        <View style={[styles.alertRow, { borderColor: P.info, backgroundColor: P.infoBg }]}>
                             <Feather name="zap" size={15} color={P.info} />
                             <Text style={[styles.alertRowText, { color: P.info }]}>
                                 Livraisons urgentes dans moins de 3 jours
@@ -485,7 +461,7 @@ export const TailorDashboard: React.FC = () => {
                         onPress={() => navigation.navigate('CommandeKanban')}
                         activeOpacity={0.8}
                     >
-                        <View style={[styles.quickIcon, { backgroundColor: 'rgba(108,62,184,0.10)' }]}>
+                        <View style={[styles.quickIcon, { backgroundColor: P.primaryBg }]}>
                             <Feather name="trello" size={22} color={P.primary} />
                         </View>
                         <Text style={styles.quickLabel}>Kanban{'\n'}commandes</Text>
@@ -519,8 +495,10 @@ export const TailorDashboard: React.FC = () => {
                         const isRetard    = days < 0;
                         const isToday     = days === 0;
                         const isUrgent    = days >= 0 && days <= 3;
-                        const statusColor = orderStatusColor[order.orderStatus] ?? P.sub;
-                        const statusBg    = orderStatusBg[order.orderStatus]   ?? P.border;
+                        const statusColorMap = statusColor(P);
+                        const statusBgMap    = statusBg(P);
+                        const stColor = statusColorMap[order.orderStatus] ?? P.sub;
+                        const stBg    = statusBgMap[order.orderStatus]   ?? P.border;
                         const accentColor = isRetard ? P.error : isToday ? P.success : isUrgent ? P.warning : P.sub;
 
                         return (
@@ -568,8 +546,8 @@ export const TailorDashboard: React.FC = () => {
                                     </View>
 
                                     <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                                        <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
-                                            <Text style={[styles.statusText, { color: statusColor }]}>
+                                        <View style={[styles.statusBadge, { backgroundColor: stBg }]}>
+                                            <Text style={[styles.statusText, { color: stColor }]}>
                                                 {orderStatusLabel[order.orderStatus] ?? order.orderStatus}
                                             </Text>
                                         </View>
@@ -645,13 +623,13 @@ export const TailorDashboard: React.FC = () => {
 
                 {activities.length === 0 ? (
                     <View style={styles.emptyCard}>
-                        <Feather name="activity" size={28} color="rgba(108,62,184,0.2)" />
+                        <Feather name="activity" size={28} color={P.gold} />
                         <Text style={styles.emptyText}>Aucune activité récente</Text>
                     </View>
                 ) : (
                     <View style={styles.activitiesCard}>
                         {activities.slice(0, 5).map((activity, index) => {
-                            const meta = activityMeta(activity.type);
+                            const meta = activityMeta(activity.type, P);
                             return (
                                 <View key={activity.id}>
                                     <TouchableOpacity style={styles.actRow} activeOpacity={0.7}>
@@ -686,151 +664,147 @@ export const TailorDashboard: React.FC = () => {
 // ==========================================
 // STYLES
 // ==========================================
-const card = {
-    backgroundColor: P.surface,
-    borderRadius: 18,
-    borderWidth: 0.5,
-    borderColor: 'rgba(108,62,184,0.12)',
-} as const;
-
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     scroll:  { flex: 1, backgroundColor: P.pageBg },
-    content: { padding: SPACING.lg, gap: SPACING.lg },
+    content: { padding: 20, gap: 16 },
 
-    // ── Hero ──
     heroCard: {
-        backgroundColor: P.bg, borderRadius: 24,
-        padding: SPACING.xl, overflow: 'hidden', position: 'relative',
-        borderWidth: 0.5, borderColor: 'rgba(212,175,55,0.2)',
+        backgroundColor: '#16123A', borderRadius: 24,
+        padding: 20, overflow: 'hidden' as const, position: 'relative' as const,
+        borderWidth: 1, borderColor: P.goldRim,
     },
-    heroBlob1:    { position: 'absolute', top: -70,   right: -70,  width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(108,62,184,0.3)' },
-    heroBlob2:    { position: 'absolute', bottom: -60, left: -40,  width: 180, height: 180, borderRadius: 90,  backgroundColor: 'rgba(212,175,55,0.05)' },
-    heroGoldLine: { position: 'absolute', top: 0, left: 24, right: 24, height: 1, backgroundColor: 'rgba(212,175,55,0.25)' },
+    heroBlob1:    { position: 'absolute' as const, top: -70,   right: -70,  width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(108,62,184,0.3)' },
+    heroBlob2:    { position: 'absolute' as const, bottom: -60, left: -40,  width: 180, height: 180, borderRadius: 90,  backgroundColor: 'rgba(212,175,55,0.05)' },
+    heroGoldLine: { position: 'absolute' as const, top: 0, left: 24, right: 24, height: 1, backgroundColor: P.goldRim },
 
-    heroTop:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.lg },
+    heroTop:      { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'flex-start' as const, marginBottom: 16 },
     heroLabel:    { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'PlusJakartaSans_700Bold', letterSpacing: 1.5, marginBottom: 6 },
     heroAmount:   { fontSize: 34, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#fff', letterSpacing: -0.5 },
-    heroTrendRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-    trendPill:    { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: P.successBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 },
+    heroTrendRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginTop: 8 },
+    trendPill:    { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3, backgroundColor: P.successBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
     trendText:    { fontSize: 11, color: P.success, fontFamily: 'PlusJakartaSans_700Bold' },
     heroSub:      { fontSize: 11, color: 'rgba(255,255,255,0.3)' },
-    heroNetCard:  { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: SPACING.md, alignItems: 'flex-end', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)' },
+    heroNetCard:  { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 12, alignItems: 'flex-end' as const, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)' },
     heroNetLabel: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'PlusJakartaSans_600SemiBold', marginBottom: 4 },
     heroNetValue: { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
-    heroStatsRow: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 14, paddingVertical: 12, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.07)' },
-    heroMiniStat:    { flex: 1, alignItems: 'center', gap: 3 },
+    heroStatsRow: { flexDirection: 'row' as const, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 14, paddingVertical: 12, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.07)' },
+    heroMiniStat:    { flex: 1, alignItems: 'center' as const, gap: 3 },
     heroStatDivider: { width: 0.5, backgroundColor: 'rgba(255,255,255,0.1)' },
     heroMiniValue:   { fontSize: 20, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#fff' },
     heroMiniLabel:   { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'PlusJakartaSans_500Medium' },
 
-    // ── Période ──
-    periodRow: { flexDirection: 'row', gap: 8 },
+    periodRow: { flexDirection: 'row' as const, gap: 8 },
     periodTab: {
-        flex: 1, paddingVertical: 9, borderRadius: 22,
-        alignItems: 'center', borderWidth: 1, borderColor: P.border,
+        flex: 1, paddingVertical: 8, borderRadius: 20,
+        alignItems: 'center' as const, borderWidth: 0.5, borderColor: P.borderHard,
         backgroundColor: P.surface,
     },
-    periodTabActive:     { backgroundColor: P.primary, borderColor: P.primary },
+    periodTabActive:     { backgroundColor: P.bg, borderColor: P.goldRim },
     periodTabText:       { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
     periodTabTextActive: { color: '#fff' },
 
-    // ── KPIs ──
-    section:  { gap: SPACING.md },
-    kpiRow:   { flexDirection: 'row', gap: 10 },
+    section:  { gap: 12 },
+    kpiRow:   { flexDirection: 'row' as const, gap: 10 },
     kpiCard: {
-        flex: 1, backgroundColor: P.surface, borderRadius: 14,
+        flex: 1, backgroundColor: P.surface, borderRadius: 16,
         padding: 14, borderLeftWidth: 3,
-        borderWidth: 0.5, borderColor: 'rgba(108,62,184,0.08)',
+        borderWidth: 0.5, borderColor: P.borderHard,
     },
-    kpiIcon:  { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+    kpiIcon:  { width: 28, height: 28, borderRadius: 14, justifyContent: 'center' as const, alignItems: 'center' as const, marginBottom: 8 },
     kpiValue: { fontSize: 15, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
-    kpiLabel: { fontSize: 10, color: P.sub, marginTop: 2 },
-    kpiSub:   { fontSize: 9, color: P.sub, marginTop: 1, fontStyle: 'italic' },
+    kpiLabel: { fontSize: 10, color: P.sub, marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium' },
+    kpiSub:   { fontSize: 9, color: P.sub, marginTop: 1, fontStyle: 'italic' as const },
 
-    // ── Pills ──
-    pillRow: { flexDirection: 'row', gap: 10 },
+    pillRow: { flexDirection: 'row' as const, gap: 10 },
     pill: {
-        flex: 1, borderRadius: 14, padding: 12, alignItems: 'center', gap: 4,
-        borderWidth: 1,
+        flex: 1, borderRadius: 16, padding: 12, alignItems: 'center' as const, gap: 4,
+        borderWidth: 0.5,
     },
-    pillIconWrap: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
+    pillIconWrap: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center' as const, alignItems: 'center' as const },
     pillCount:    { fontSize: 20, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
-    pillLabel:    { fontSize: 10, color: P.sub, textAlign: 'center', lineHeight: 14 },
+    pillLabel:    { fontSize: 10, color: P.sub, textAlign: 'center' as const, lineHeight: 14 },
 
-    // ── Alertes ──
     alertsBlock: { gap: 8 },
     alertRow: {
-        flexDirection: 'row', alignItems: 'center', gap: 10,
-        borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
-        borderWidth: 1,
+        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10,
+        borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11,
+        borderWidth: 0.5,
     },
     alertRowText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', flex: 1 },
 
-    // ── Section header ──
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    sectionHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
     sectionTitle:  { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
     seeAll:        { fontSize: 12, color: P.primary, fontFamily: 'PlusJakartaSans_600SemiBold' },
 
-    // ── Quick actions ──
-    quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
-    quickCard: { width: '47.5%', ...card, padding: SPACING.md + 2, gap: SPACING.sm },
-    quickIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+    quickGrid: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
+    quickCard: {
+        width: '47.5%', backgroundColor: P.surface, borderRadius: 18,
+        borderWidth: 0.5, borderColor: P.borderHard, padding: 14, gap: 8,
+    },
+    quickIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center' as const, justifyContent: 'center' as const },
     quickLabel:{ fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text, lineHeight: 17 },
 
-    // ── Commandes ──
-    orderCard: { ...card, padding: SPACING.md, gap: SPACING.xs, overflow: 'hidden' },
-    orderCardUrgent: { borderColor: 'rgba(217,119,6,0.30)', borderWidth: 1 },
-    orderCardRetard: { borderColor: 'rgba(239,68,68,0.35)', borderWidth: 1 },
+    orderCard: {
+        backgroundColor: P.surface, borderRadius: 18, borderWidth: 0.5, borderColor: P.borderHard,
+        padding: 14, gap: 6, overflow: 'hidden' as const,
+    },
+    orderCardUrgent: { borderColor: P.warning, borderWidth: 1 },
+    orderCardRetard: { borderColor: P.error, borderWidth: 1 },
     urgentBadge: {
-        flexDirection: 'row', alignItems: 'center', gap: 3,
-        alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3,
-        borderRadius: 99, marginBottom: SPACING.xs,
+        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3,
+        alignSelf: 'flex-start' as const, paddingHorizontal: 8, paddingVertical: 3,
+        borderRadius: 20, marginBottom: 6,
     },
     urgentBadgeText: { fontSize: 10, color: '#fff', fontFamily: 'PlusJakartaSans_700Bold' },
-    orderCardRow:    { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+    orderCardRow:    { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10 },
     orderAvatar: {
         width: 40, height: 40, borderRadius: 12, backgroundColor: P.bg,
-        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        alignItems: 'center' as const, justifyContent: 'center' as const, flexShrink: 0,
+        borderWidth: 1, borderColor: P.goldRim,
     },
     orderAvatarText: { fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
     orderClient:     { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
-    orderType:       { fontSize: 11, color: P.sub, marginTop: 1 },
-    statusBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 },
+    orderType:       { fontSize: 11, color: P.sub, marginTop: 1, fontFamily: 'PlusJakartaSans_500Medium' },
+    statusBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
     statusText:      { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold' },
     orderDays:       { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold' },
     orderPayRow: {
-        flexDirection: 'row', alignItems: 'center', gap: 4,
-        paddingTop: 6, borderTopWidth: 0.5, borderTopColor: 'rgba(0,0,0,0.06)',
+        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4,
+        paddingTop: 6, borderTopWidth: 0.5, borderTopColor: P.borderHard,
     },
     orderPayText: { fontSize: 11, color: P.error, fontFamily: 'PlusJakartaSans_600SemiBold' },
 
-    // ── Dernières réalisations ──
-    thumbGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+    thumbGrid: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
     thumbItem: {
-        width: THUMB_SIZE, height: THUMB_SIZE, borderRadius: 10,
-        overflow: 'hidden', backgroundColor: P.border,
+        width: THUMB_SIZE, height: THUMB_SIZE, borderRadius: 12,
+        overflow: 'hidden' as const, backgroundColor: P.gray100,
+        borderWidth: 0.5, borderColor: P.borderHard,
     },
     thumbImg:       { width: '100%', height: '100%' },
     thumbCount: {
-        position: 'absolute', bottom: 4, right: 4,
-        backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 8,
+        position: 'absolute' as const, bottom: 4, right: 4,
+        backgroundColor: P.overlay, borderRadius: 8,
         paddingHorizontal: 5, paddingVertical: 2,
     },
     thumbCountText: { fontSize: 9, color: '#fff', fontFamily: 'PlusJakartaSans_700Bold' },
 
-    // ── Activités ──
-    activitiesCard: { ...card, overflow: 'hidden' },
-    actRow:    { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, gap: SPACING.sm },
-    actIcon:   { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    activitiesCard: {
+        backgroundColor: P.surface, borderRadius: 18, overflow: 'hidden' as const,
+        borderWidth: 0.5, borderColor: P.borderHard,
+    },
+    actRow:    { flexDirection: 'row' as const, alignItems: 'center' as const, padding: 14, gap: 10 },
+    actIcon:   { width: 40, height: 40, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const, flexShrink: 0 },
     actBody:   { flex: 1 },
     actTitle:  { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
-    actSub:    { fontSize: 11, color: P.sub, marginTop: 2 },
-    actRight:  { alignItems: 'flex-end', gap: 3 },
-    actTime:   { fontSize: 10, color: 'rgba(124,111,168,0.6)' },
+    actSub:    { fontSize: 11, color: P.sub, marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium' },
+    actRight:  { alignItems: 'flex-end' as const, gap: 3 },
+    actTime:   { fontSize: 10, color: P.muted },
     actAmount: { fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', color: P.success },
-    actDivider:{ height: 0.5, backgroundColor: 'rgba(0,0,0,0.06)', marginLeft: 60 },
+    actDivider:{ height: 0.5, backgroundColor: P.borderHard, marginLeft: 60 },
 
-    // ── Vide ──
-    emptyCard: { ...card, padding: SPACING.xl, alignItems: 'center', gap: SPACING.sm, borderStyle: 'dashed' },
-    emptyText: { fontSize: 13, color: P.sub, textAlign: 'center' },
+    emptyCard: {
+        backgroundColor: P.surface, borderRadius: 18, padding: 20, alignItems: 'center' as const, gap: 8,
+        borderWidth: 0.5, borderColor: P.borderHard, borderStyle: 'dashed' as const,
+    },
+    emptyText: { fontSize: 13, color: P.sub, textAlign: 'center' as const, fontFamily: 'PlusJakartaSans_500Medium' },
 });

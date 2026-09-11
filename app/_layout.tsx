@@ -20,6 +20,7 @@ import AppNavigator from '../src/navigation/AppNavigator';
 import { COLORS } from '@constants/theme';
 import { useAppStore } from '@store/useAppStore';
 import { ToastProvider } from '@/src/context/ToastContext';
+import { DialogProvider } from '@/src/context/DialogContext';
 import { PreferencesProvider } from '@/src/context/PreferencesContext';
 import { useTheme } from '@/src/theme';
 
@@ -78,7 +79,9 @@ export default function App() {
             <SafeAreaProvider>
                 <PreferencesProvider>
                     <ToastProvider>
-                        <ThemedApp session={session} />
+                        <DialogProvider>
+                            <ThemedApp session={session} />
+                        </DialogProvider>
                     </ToastProvider>
                 </PreferencesProvider>
             </SafeAreaProvider>

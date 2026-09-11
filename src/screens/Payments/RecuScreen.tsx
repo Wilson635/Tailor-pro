@@ -215,11 +215,8 @@ const styles = StyleSheet.create({
         backgroundColor: P.surface,
         borderRadius: 16,
         padding: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.07,
-        shadowRadius: 8,
-        elevation: 3,
+        borderWidth: 0.5,
+        borderColor: P.borderHard,
     },
     receiptHeader: { alignItems: 'center', paddingBottom: 16 },
     receiptLogoWrap: {

@@ -6,8 +6,9 @@
 // ==========================================
 
 import React, { useState } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -60,7 +61,7 @@ export const AddMeasurementsScreen: React.FC<Props> = ({ route, navigation }) =>
   const handleConfirmCustomType = () => {
     const trimmed = customType.trim();
     if (!trimmed) {
-      Alert.alert('Champ requis', 'Précise le type de vêtement.');
+      showAlert('Champ requis', 'Précise le type de vêtement.');
       return;
     }
     setTypeVetement(trimmed);
@@ -84,14 +85,14 @@ export const AddMeasurementsScreen: React.FC<Props> = ({ route, navigation }) =>
       });
 
       if (fiche) {
-        Alert.alert('Mesures enregistrées', 'La fiche a bien été créée.', [
-          { text: 'OK', onPress: () => navigation.replace('FicheDetails', { ficheId: fiche.id, clientId }) },
-        ]);
+        showSuccess('Mesures enregistrées', 'La fiche a bien été créée.', () =>
+          navigation.replace('FicheDetails', { ficheId: fiche.id, clientId }),
+        );
       } else {
-        Alert.alert('Erreur', 'Impossible d\'enregistrer les mesures. Réessayez.');
+        showAlert('Erreur', 'Impossible d\'enregistrer les mesures. Réessayez.');
       }
     } catch {
-      Alert.alert('Erreur', 'Une erreur inattendue s\'est produite.');
+      showAlert('Erreur', 'Une erreur inattendue s\'est produite.');
     } finally {
       setIsSaving(false);
     }

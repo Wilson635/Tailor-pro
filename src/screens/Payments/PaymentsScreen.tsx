@@ -1,260 +1,274 @@
 // ==========================================
-// ÉCRAN PAIEMENTS - TailorPro
+// PAIEMENTS ATELIER — TailorPro
+// Encaissements globaux + commandes à solder
 // ==========================================
 
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+  View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Header, Card, Badge, Button } from '@components/ui';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
-import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '@constants/theme';
-import { PAYMENT_STATUS_LABELS } from '@constants/theme';
+import { comptabiliteService } from '@services/supabaseService';
+import { formatCurrency, formatDate } from '@utils/formatters';
+import { MODE_PAIEMENT_META, type ModePaiement } from '@constants/paiementConstants';
+import { useThemedStyles, type Palette } from '@/src/theme';
+import { Avatar } from '@components/ui';
+import type { RootStackParamList } from '@/src/navigation/AppNavigator';
+import type { Order } from '../../types';
 
-interface PaymentsScreenProps {
-  clientId: string;
-  onBack?: () => void;
-  onAddPayment?: () => void;
+type Props = NativeStackScreenProps<RootStackParamList, 'Payments'>;
+type Tab = 'dues' | 'history';
+
+interface PayRow {
+  id: string;
+  amount: number;
+  method: string;
+  date: string;
+  notes?: string;
+  orderId?: string;
+  clientId?: string;
 }
 
-export const PaymentsScreen: React.FC<PaymentsScreenProps> = ({
-  clientId,
-  onBack,
-  onAddPayment,
-}) => {
-  const { getClientById, getOrdersByClient, getPaymentsByClient } = useAppStore();
-  const client = getClientById(clientId);
-  const orders = getOrdersByClient(clientId);
-  const payments = getPaymentsByClient(clientId);
+export const PaymentsScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { colors: P, styles } = useThemedStyles(makeStyles);
+  const filterClientId = route.params?.clientId || undefined;
 
-  // Calculate totals
-  const totalAmount = orders.reduce((sum, o) => sum + o.totalPrice, 0);
-  const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
-  const remainingAmount = totalAmount - totalPaid;
-  
-  const paymentStatus = remainingAmount === 0 ? 'paid' : 
-                        totalPaid > 0 ? 'partial' : 'unpaid';
+  const { orders, clients, getClientById } = useAppStore();
+  const [tab, setTab] = useState<Tab>('dues');
+  const [rows, setRows] = useState<PayRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const scopedOrders = useMemo(
+    () => filterClientId ? orders.filter(o => o.clientId === filterClientId) : orders,
+    [orders, filterClientId],
+  );
+
+  const unpaid = useMemo(
+    () => scopedOrders
+      .filter(o => (o.remainingAmount ?? 0) > 0 && o.orderStatus !== 'cancelled' && o.orderStatus !== 'annulee')
+      .sort((a, b) => (b.remainingAmount ?? 0) - (a.remainingAmount ?? 0)),
+    [scopedOrders],
+  );
+
+  const load = useCallback(async () => {
+    const { data } = await comptabiliteService.getAllPayments();
+    const mapped: PayRow[] = ((data ?? []) as any[]).map((p) => ({
+      id: p.id,
+      amount: Number(p.amount),
+      method: p.method ?? 'cash',
+      date: p.date ?? p.created_at,
+      notes: p.notes ?? undefined,
+      orderId: p.order_id,
+      clientId: p.client_id,
+    })).filter((p) => !filterClientId || p.clientId === filterClientId);
+    setRows(mapped);
+    setLoading(false);
+    setRefreshing(false);
+  }, [filterClientId]);
+
+  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const totalDue = unpaid.reduce((s, o) => s + (o.remainingAmount ?? 0), 0);
+  const totalIn = rows.reduce((s, r) => s + r.amount, 0);
+  const client = filterClientId ? getClientById(filterClientId) : undefined;
+
+  const openAdd = (order?: Order) => {
+    if (order) {
+      navigation.navigate('AddPayment', { clientId: order.clientId, orderId: order.id });
+      return;
+    }
+    if (filterClientId) {
+      navigation.navigate('AddPayment', { clientId: filterClientId });
+      return;
+    }
+    if (unpaid[0]) {
+      navigation.navigate('AddPayment', { clientId: unpaid[0].clientId, orderId: unpaid[0].id });
+    }
+  };
+
+  const renderDue = ({ item }: { item: Order }) => {
+    const c = getClientById(item.clientId);
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.82}
+        onPress={() => openAdd(item)}
+      >
+        <Avatar source={c?.photo} name={c?.nom ?? item.clientName} size={42} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle} numberOfLines={1}>{c?.nom ?? item.clientName}</Text>
+          <Text style={styles.cardSub} numberOfLines={1}>
+            {item.numeroCommande ?? 'Commande'} · reste {formatCurrency(item.remainingAmount)}
+          </Text>
+        </View>
+        <View style={styles.payChip}>
+          <Text style={styles.payChipText}>Encaisser</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderPay = ({ item }: { item: PayRow }) => {
+    const order = orders.find(o => o.id === item.orderId);
+    const c = item.clientId ? getClientById(item.clientId) : clients.find(cl => cl.id === order?.clientId);
+    const mode = MODE_PAIEMENT_META[item.method as ModePaiement];
+    return (
+      <View style={styles.card}>
+        <View style={styles.iconWrap}>
+          <Ionicons name="wallet-outline" size={16} color={P.gold} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle}>{formatCurrency(item.amount)}</Text>
+          <Text style={styles.cardSub} numberOfLines={1}>
+            {c?.nom ?? order?.clientName ?? 'Client'} · {mode?.label ?? item.method}
+          </Text>
+        </View>
+        <Text style={styles.date}>{item.date ? formatDate(new Date(item.date)) : ''}</Text>
+      </View>
+    );
+  };
 
   return (
-    <View style={styles.container}>
-      <Header
-        title="Paiements"
-        showBack
-        onBackPress={onBack}
-        rightIcon="add"
-        onRightPress={onAddPayment}
-      />
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={18} color={P.text} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.kicker}>Atelier</Text>
+          <Text style={styles.headerTitle}>Paiements</Text>
+          {client ? <Text style={styles.headerSub}>{client.nom}</Text> : null}
+        </View>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => openAdd()}
+          disabled={unpaid.length === 0 && !filterClientId}
+        >
+          <Ionicons name="add" size={18} color={P.gold} />
+        </TouchableOpacity>
+      </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Summary Card */}
-        <Card style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Montant total</Text>
-          <Text style={styles.summaryValue}>{formatCurrencyShort(totalAmount)}</Text>
-          
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryItemLabel}>Payé</Text>
-              <Text style={styles.summaryItemValue}>{formatCurrencyShort(totalPaid)}</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryItemLabel}>Reste à payer</Text>
-              <Text style={[styles.summaryItemValue, styles.remainingAmount]}>
-                {formatCurrencyShort(remainingAmount)}
+      <View style={styles.stats}>
+        <View style={styles.stat}>
+          <Text style={styles.statLbl}>À encaisser</Text>
+          <Text style={[styles.statVal, { color: P.gold }]}>{formatCurrency(totalDue)}</Text>
+        </View>
+        <View style={styles.stat}>
+          <Text style={styles.statLbl}>Encaissé</Text>
+          <Text style={styles.statVal}>{formatCurrency(totalIn)}</Text>
+        </View>
+      </View>
+
+      <View style={styles.tabs}>
+        {([
+          { key: 'dues' as Tab, label: `Soldes (${unpaid.length})` },
+          { key: 'history' as Tab, label: `Historique (${rows.length})` },
+        ]).map((t) => {
+          const on = tab === t.key;
+          return (
+            <TouchableOpacity key={t.key} style={[styles.chip, on && styles.chipOn]} onPress={() => setTab(t.key)}>
+              <Text style={[styles.chipText, on && styles.chipTextOn]}>{t.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {loading ? (
+        <ActivityIndicator color={P.primary} style={{ marginTop: 40 }} />
+      ) : (
+        <FlatList
+          data={tab === 'dues' ? unpaid : rows}
+          keyExtractor={(item: any) => item.id}
+          renderItem={tab === 'dues' ? renderDue : renderPay as any}
+          contentContainerStyle={styles.list}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <View style={styles.emptyIcon}>
+                <Ionicons name="wallet-outline" size={26} color={P.gold} />
+              </View>
+              <Text style={styles.emptyTitle}>{tab === 'dues' ? 'Aucun solde ouvert' : 'Aucun paiement'}</Text>
+              <Text style={styles.emptySub}>
+                {tab === 'dues'
+                  ? 'Les commandes avec un reste à payer apparaîtront ici.'
+                  : 'Enregistrez un encaissement depuis une commande.'}
               </Text>
             </View>
-          </View>
-          
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Statut</Text>
-            <Badge
-              label={PAYMENT_STATUS_LABELS[paymentStatus]}
-              variant={
-                paymentStatus === 'paid' ? 'success' :
-                paymentStatus === 'partial' ? 'warning' : 'error'
-              }
-              size="md"
-            />
-          </View>
-        </Card>
-
-        {/* Payment History */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Historique des paiements</Text>
-          
-          {payments.length > 0 ? (
-            <Card padding="none">
-              {payments.map((payment, index) => (
-                <View key={payment.id}>
-                  <TouchableOpacity style={styles.paymentItem}>
-                    <View style={styles.paymentDate}>
-                      <Text style={styles.paymentDateText}>
-                        {formatDate(payment.date)}
-                      </Text>
-                    </View>
-                    <View style={styles.paymentInfo}>
-                      <Text style={styles.paymentLabel}>Avance</Text>
-                      <Text style={styles.paymentAmount}>
-                        {formatCurrencyShort(payment.amount)}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                  {index < payments.length - 1 && <View style={styles.divider} />}
-                </View>
-              ))}
-            </Card>
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="wallet-outline" size={48} color={COLORS.gray300} />
-              <Text style={styles.emptyText}>Aucun paiement enregistré</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Add Payment Button */}
-        <Button
-          title="+ Enregistrer un paiement"
-          onPress={onAddPayment || (() => {})}
-          fullWidth
-          style={styles.addButton}
+          }
         />
-      </ScrollView>
+      )}
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
+const makeStyles = (P: Palette) => ({
+  root: { flex: 1, backgroundColor: P.pageBg },
+  header: {
+    flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 12,
+    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
   },
-  scrollView: {
-    flex: 1,
+  backBtn: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+    borderWidth: 0.5, borderColor: P.borderHard, marginTop: 4,
   },
-  scrollContent: {
-    padding: SPACING.lg,
-    paddingBottom: SPACING.xxxl,
+  addBtn: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: P.bg,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+    borderWidth: 1, borderColor: P.goldRim, marginTop: 4,
   },
-  
-  // Summary Card
-  summaryCard: {
-    marginBottom: SPACING.lg,
+  kicker: {
+    fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+    letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
   },
-  summaryLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gray500,
-    marginBottom: SPACING.xs,
+  headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
+  headerSub: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, marginTop: 4 },
+  stats: { flexDirection: 'row' as const, gap: 10, paddingHorizontal: 20, marginBottom: 12 },
+  stat: {
+    flex: 1, backgroundColor: P.surface, borderRadius: 16, padding: 14,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
-  summaryValue: {
-    fontSize: FONT_SIZES.title,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.text,
-    marginBottom: SPACING.lg,
+  statLbl: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub, marginBottom: 4 },
+  statVal: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
+  tabs: { flexDirection: 'row' as const, gap: 8, paddingHorizontal: 20, paddingBottom: 12 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.lg,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.gray100,
+  chipOn: { backgroundColor: P.bg, borderColor: P.goldRim },
+  chipText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub },
+  chipTextOn: { color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold' },
+  list: { paddingHorizontal: 20, paddingBottom: 40 },
+  card: {
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12,
+    backgroundColor: P.surface, borderRadius: 18, padding: 12,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
-  summaryItem: {
-    alignItems: 'center',
+  iconWrap: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: P.bg,
+    alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1, borderColor: P.goldRim,
   },
-  summaryItemLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gray500,
-    marginBottom: SPACING.xs,
+  cardTitle: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+  cardSub: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, marginTop: 2 },
+  date: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub },
+  payChip: {
+    backgroundColor: P.bg, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: P.goldRim,
   },
-  summaryItemValue: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.text,
+  payChipText: { fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
+  empty: { alignItems: 'center' as const, paddingTop: 48, paddingHorizontal: 28 },
+  emptyIcon: {
+    width: 60, height: 60, borderRadius: 18, backgroundColor: P.bg, marginBottom: 14,
+    alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1, borderColor: P.goldRim,
   },
-  remainingAmount: {
-    color: COLORS.error,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.gray100,
-  },
-  statusLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gray500,
-  },
-  
-  // Section
-  section: {
-    marginBottom: SPACING.lg,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.text,
-    marginBottom: SPACING.md,
-  },
-  
-  // Payment Item
-  paymentItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SPACING.lg,
-  },
-  paymentDate: {
-    flex: 1,
-  },
-  paymentDateText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gray500,
-  },
-  paymentInfo: {
-    alignItems: 'flex-end',
-  },
-  paymentLabel: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.gray400,
-  },
-  paymentAmount: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.success,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.gray100,
-    marginLeft: SPACING.lg,
-  },
-  
-  // Empty State
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: SPACING.xxxl,
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
-  },
-  emptyText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.gray400,
-    marginTop: SPACING.md,
-  },
-  
-  // Add Button
-  addButton: {
-    marginTop: SPACING.md,
-  },
+  emptyTitle: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
+  emptySub: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, textAlign: 'center' as const, marginTop: 6 },
 });

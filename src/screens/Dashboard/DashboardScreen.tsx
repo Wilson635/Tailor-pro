@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
   StatusBar,
   Animated,
-  Platform,
   Pressable,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -31,6 +30,7 @@ import { useThemedStyles, type Palette } from '@/src/theme';
 import { usePreferences } from '@/src/context/PreferencesContext';
 import { t } from '@/src/i18n';
 import { formatLongDate } from '@utils/formatters';
+import { useInbox } from '@/src/hooks/useInbox';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
@@ -56,6 +56,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   const { colors: P, styles, isDark } = useThemedStyles(makeDashStyles);
   usePreferences();
 
+  const { unreadCount } = useInbox();
   const [menuVisible, setMenuVisible] = useState(false);
   const [logoutModal, setLogoutModal] = useState(false);
 
@@ -105,22 +106,22 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
             TOP BAR
         ══════════════════════════════ */}
           <View style={styles.topbar}>
-
-            {/* Forme décorative en fond (pas d'ombre, juste une teinte) */}
-            <View style={styles.topbarDecor} pointerEvents="none" />
-
-            {/* Ligne 1 : date + salutation | actions */}
             <View style={styles.topRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.topDate}>{formatLongDate()}</Text>
-                <Text style={styles.greeting}>
-                  {getGreeting()}, <Text style={styles.greetingName}>{profile?.display_name?.split(' ')[0] ?? 'là'} 👋</Text>
+                <Text style={styles.kicker}>Atelier</Text>
+                <Text style={styles.greetingName} numberOfLines={1}>
+                  {getGreeting()}, {profile?.display_name?.split(' ')[0] ?? 'là'}
                 </Text>
+                <Text style={styles.topDate}>{formatLongDate()}</Text>
               </View>
               <View style={styles.topActions}>
-                <TouchableOpacity style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={() => navigation.navigate('Notifications')}
+                >
                   <Feather name="bell" size={17} color={P.text} />
-                  <View style={styles.notifDot} />
+                  {unreadCount > 0 ? <View style={styles.notifDot} /> : null}
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.avatarBtn} onPress={openMenu}>
                   <Text style={styles.avatarBtnText}>{getInitials()}</Text>
@@ -128,11 +129,10 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
               </View>
             </View>
 
-            {/* Ligne 2 : badges */}
             <View style={styles.greetRow}>
               {userRole === 'tailor' && profile?.atelier_name ? (
                   <View style={styles.atelierPill}>
-                    <Feather name="home" size={12} color={P.primary} />
+                    <Feather name="home" size={12} color={P.gold} />
                     <Text style={styles.atelierName}>{profile.atelier_name}</Text>
                   </View>
               ) : (
@@ -140,8 +140,6 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
                     {userRole === 'tailor' ? 'Votre atelier vous attend' : 'Suivez vos confections'}
                   </Text>
               )}
-
-              {/* Badge rôle */}
               <View style={[styles.rolePill, userRole === 'tailor' && styles.rolePillTailor]}>
                 <Feather
                     name={userRole === 'tailor' ? 'scissors' : 'user'}
@@ -164,7 +162,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
       ══════════════════════════════ */}
         <Modal visible={menuVisible} transparent animationType="none" onRequestClose={closeMenu}>
           <Pressable style={styles.menuOverlay} onPress={closeMenu}>
-            <BlurView intensity={8} tint="light" style={StyleSheet.absoluteFill} />
+            <BlurView intensity={18} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
           </Pressable>
 
           <Animated.View
@@ -192,20 +190,36 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
 
             <View style={styles.menuDivider} />
 
+            <TouchableOpacity style={styles.menuRow} onPress={() => { closeMenu(); navigation.navigate('Notifications'); }} activeOpacity={0.7}>
+              <View style={[styles.menuRowIcon, { backgroundColor: P.goldBg }]}>
+                <Feather name="bell" size={14} color={P.gold} />
+              </View>
+              <Text style={styles.menuRowText}>Notifications</Text>
+              <Feather name="chevron-right" size={14} color={P.muted} />
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.menuRow} onPress={() => { closeMenu(); navigation.navigate('Profile'); }} activeOpacity={0.7}>
               <View style={[styles.menuRowIcon, { backgroundColor: P.goldBg }]}>
                 <Feather name="user" size={14} color={P.gold} />
               </View>
               <Text style={styles.menuRowText}>Mon profil</Text>
-              <Feather name="chevron-right" size={14} color="rgba(0,0,0,0.2)" />
+              <Feather name="chevron-right" size={14} color={P.muted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuRow} onPress={() => { closeMenu(); navigation.navigate('Settings'); }} activeOpacity={0.7}>
+              <View style={[styles.menuRowIcon, { backgroundColor: P.primaryBg }]}>
+                <Feather name="settings" size={14} color={P.primary} />
+              </View>
+              <Text style={styles.menuRowText}>Apparence & langue</Text>
+              <Feather name="chevron-right" size={14} color={P.muted} />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.menuRow} onPress={() => { closeMenu(); navigation.navigate('Statistics'); }} activeOpacity={0.7}>
-              <View style={[styles.menuRowIcon, { backgroundColor: 'rgba(108,62,184,0.10)' }]}>
+              <View style={[styles.menuRowIcon, { backgroundColor: P.primaryBg }]}>
                 <Feather name="bar-chart-2" size={14} color={P.primary} />
               </View>
               <Text style={styles.menuRowText}>Statistiques</Text>
-              <Feather name="chevron-right" size={14} color="rgba(0,0,0,0.2)" />
+              <Feather name="chevron-right" size={14} color={P.muted} />
             </TouchableOpacity>
 
             <View style={styles.menuDivider} />
@@ -215,7 +229,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
                 <Feather name="log-out" size={14} color={P.error} />
               </View>
               <Text style={[styles.menuRowText, { color: P.error }]}>Déconnexion</Text>
-              <Feather name="chevron-right" size={14} color="rgba(239,68,68,0.25)" />
+              <Feather name="chevron-right" size={14} color={P.error} />
             </TouchableOpacity>
           </Animated.View>
         </Modal>
@@ -259,108 +273,100 @@ const makeDashStyles = (P: Palette) => ({
 
   // ── Top bar ──
   topbar: {
-    backgroundColor: P.topBg,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.md,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  topbarDecor: {
-    position: 'absolute',
-    top: 0,
-    left: -40,
-    right: -40,
-    height: 64,
-    backgroundColor: P.primaryBg,
-    borderBottomLeftRadius: 999,
-    borderBottomRightRadius: 999,
-    opacity: 0.6,
+    backgroundColor: P.pageBg,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
 
-  // Ligne 1 : date + salutation + icônes
   topRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    justifyContent: 'space-between' as const,
+    marginBottom: 10,
+  },
+  kicker: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: P.gold,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase' as const,
+    marginBottom: 2,
   },
   topDate: {
-    fontSize: 11,
+    fontSize: 12,
     color: P.sub,
     fontFamily: 'PlusJakartaSans_500Medium',
-    textTransform: 'capitalize',
+    textTransform: 'capitalize' as const,
+    marginTop: 2,
   },
-  topActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 2 },
+  topActions: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginTop: 4 },
   iconBtn: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: P.pageBg,
-    alignItems: 'center', justifyContent: 'center',
-    position: 'relative',
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: P.surface,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+    borderWidth: 0.5, borderColor: P.borderHard,
+    position: 'relative' as const,
   },
   notifDot: {
-    position: 'absolute', top: 7, right: 7,
+    position: 'absolute' as const, top: 8, right: 8,
     width: 7, height: 7, borderRadius: 4,
     backgroundColor: P.error,
-    borderWidth: 1.5, borderColor: P.topBg,
+    borderWidth: 1.5, borderColor: P.pageBg,
   },
   avatarBtn: {
-    width: 36, height: 36, borderRadius: 18,
+    width: 40, height: 40, borderRadius: 12,
     backgroundColor: P.bg,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: P.gold,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+    borderWidth: 1, borderColor: P.goldRim,
   },
   avatarBtnText: { fontSize: 12, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
 
-  // Ligne 2 : badges
   greetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    /*justifyContent: 'space-between',*/
-    gap: 5,
-  },
-  greeting: {
-    fontSize: 19,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: P.sub,
-    marginTop: 2,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
   },
   greetingName: {
-    fontSize: 19,
+    fontSize: 26,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     color: P.text,
+    letterSpacing: -0.6,
   },
   greetingSub: {
     fontSize: 12,
     color: P.sub,
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
   atelierPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: 6,
-    backgroundColor: 'rgba(108,62,184,0.08)',
+    backgroundColor: P.goldBg,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 99,
+    borderRadius: 20,
+    borderWidth: 0.5,
+    borderColor: P.goldRim,
   },
   atelierName: {
     fontSize: 12,
-    color: P.primary,
+    color: P.gold,
     fontFamily: 'PlusJakartaSans_600SemiBold',
   },
   rolePill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(108,62,184,0.08)',
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4,
+    backgroundColor: P.surface,
     paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 99,
-    borderWidth: 1, borderColor: 'rgba(108,62,184,0.15)',
+    borderRadius: 20,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
   rolePillTailor: {
-    backgroundColor: P.goldBg,
+    backgroundColor: P.bg,
     borderColor: P.goldRim,
   },
-  rolePillText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
-  rolePillTextTailor: { color: P.gold },
+  rolePillText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
+  rolePillTextTailor: { color: '#fff' },
 
   // ── Menu dropdown ──
   menuOverlay: { ...StyleSheet.absoluteFillObject },
@@ -368,13 +374,9 @@ const makeDashStyles = (P: Palette) => ({
     position: 'absolute',
     width: 256,
     backgroundColor: P.surface,
-    borderRadius: 20,
-    borderWidth: 1, borderColor: P.border,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios:     { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 24 },
-      android: { elevation: 14 },
-    }),
+    borderRadius: 18,
+    borderWidth: 0.5, borderColor: P.borderHard,
+    overflow: 'hidden' as const,
   },
   menuHeader: {
     flexDirection: 'row', alignItems: 'center',
@@ -384,12 +386,12 @@ const makeDashStyles = (P: Palette) => ({
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: P.bg,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: P.gold,
+    borderWidth: 1, borderColor: P.goldRim,
   },
   menuAvatarText: { fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
   menuName:  { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
   menuEmail: { fontSize: 11, color: P.sub, marginTop: 1 },
-  menuDivider: { height: 1, backgroundColor: 'rgba(0,0,0,0.05)' },
+  menuDivider: { height: 0.5, backgroundColor: P.borderHard },
   menuRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: SPACING.md, paddingVertical: 14, gap: 10,
@@ -403,7 +405,7 @@ const makeDashStyles = (P: Palette) => ({
   // ── Modal logout ──
   alertOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(22,18,58,0.5)',
+    backgroundColor: P.overlay,
     justifyContent: 'center', alignItems: 'center',
     padding: SPACING.xl,
   },
@@ -413,10 +415,7 @@ const makeDashStyles = (P: Palette) => ({
     borderRadius: 24,
     padding: SPACING.xl,
     alignItems: 'center',
-    ...Platform.select({
-      ios:     { shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 40 },
-      android: { elevation: 24 },
-    }),
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
   alertIconWrap: {
     width: 64, height: 64, borderRadius: 20,
@@ -431,7 +430,7 @@ const makeDashStyles = (P: Palette) => ({
     flex: 1, height: 48, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: P.pageBg,
-    borderWidth: 1, borderColor: P.border,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
   alertCancelText: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
   alertConfirm: {

@@ -3,6 +3,7 @@
 // ==========================================
 
 import React, { useEffect, useRef, useState } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View,
   Text,
@@ -13,7 +14,6 @@ import {
   Dimensions,
   Share,
   Animated,
-  Alert,
   ActivityIndicator,
   StatusBar,
   NativeScrollEvent,
@@ -100,11 +100,17 @@ export const ModelDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     setIsActing(true);
     const copy = await duplicateCatalogModel(model.id);
     setIsActing(false);
-    if (copy) navigation.replace('ModelDetails', { modelId: copy.id });
+    if (copy) {
+      showSuccess('Modèle dupliqué', `Une copie de « ${model.nom} » a été créée.`, () =>
+        navigation.replace('ModelDetails', { modelId: copy.id }),
+      );
+    } else {
+      showAlert('Erreur', 'Impossible de dupliquer le modèle.');
+    }
   };
 
   const handleDelete = () => {
-    Alert.alert('Retirer ce modèle ?', 'Il disparaîtra du catalogue. L’historique des commandes reste intact.', [
+    showAlert('Retirer ce modèle ?', 'Il disparaîtra du catalogue. L’historique des commandes reste intact.', [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Retirer',
@@ -113,7 +119,7 @@ export const ModelDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           setIsActing(true);
           await archiveCatalogModel(model.id);
           setIsActing(false);
-          navigation.goBack();
+          showSuccess('Modèle retiré', 'Il a disparu du catalogue.', () => navigation.goBack());
         },
       },
     ]);

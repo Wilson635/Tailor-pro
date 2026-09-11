@@ -3,9 +3,10 @@
 // ==========================================
 
 import React, { useMemo } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Alert, FlatList,
+  Image, FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -73,7 +74,7 @@ export const TissuDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const typeLabel = TYPE_TISSU_LABELS[tissu.typeTissu] ?? tissu.typeTissu;
 
   const handleDelete = () => {
-    Alert.alert(
+    showAlert(
       'Supprimer le tissu',
       realisationsLiees.length > 0
         ? `Ce tissu est utilisé dans ${realisationsLiees.length} réalisation(s). Continuer ?`
@@ -85,7 +86,7 @@ export const TissuDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           style: 'destructive',
           onPress: async () => {
             await deleteTissu(tissuId);
-            navigation.goBack();
+            showSuccess('Tissu supprimé', `${tissu.nomCommercial} a été retiré.`, () => navigation.goBack());
           },
         },
       ]

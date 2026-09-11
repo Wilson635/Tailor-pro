@@ -3,14 +3,13 @@
 // ==========================================
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   Image,
   Platform,
   Modal,
@@ -25,17 +24,17 @@ import { formatCurrency } from '@utils/formatters';
 import { getDeviseMeta } from '@constants/currencies';
 import { getRuntimePrefs } from '@/src/preferences/runtime';
 import {
-  COLORS, SPACING, FONT_SIZES,
+  SPACING, FONT_SIZES,
   BORDER_RADIUS, CLOTHING_TYPE_LABELS,
 } from '@constants/theme';
 import type { ClothingType, RootStackParamList, UrgencyLevel } from '../../types';
 import { Avatar } from '@components/ui';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from "@/src/lib/supabase";
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
-import {useToast} from "@/src/context/ToastContext";
 import { MeasurementPickerModal } from '@screens/Projects/MeasurementPickerModal';
 import type { MeasurementChoiceResult, TypeVetement } from '../../types';
 
@@ -61,17 +60,17 @@ const CLOTHING_TYPES: ClothingType[] = [
   'pantalon', 'boubou', 'ensemble', 'robe_mariage', 'tenue_enfant', 'autre',
 ];
 
-const URGENCY_OPTIONS: { key: UrgencyLevel; label: string; bg: string; color: string; dot: string }[] = [
-  { key: 'low',    label: 'Normal',  bg: '#D1FAE5', color: '#065F46', dot: '#10B981' },
-  { key: 'medium', label: 'Moyen',   bg: '#FEF3C7', color: '#92400E', dot: '#F59E0B' },
-  { key: 'high',   label: 'Urgent',  bg: '#FEE2E2', color: '#991B1B', dot: '#EF4444' },
+const urgencyOptions = (P: Palette): { key: UrgencyLevel; label: string; bg: string; color: string; dot: string }[] => [
+  { key: 'low',    label: 'Normal',  bg: P.successLight, color: P.success,  dot: P.success },
+  { key: 'medium', label: 'Moyen',   bg: P.warningLight, color: P.warning,  dot: P.warning },
+  { key: 'high',   label: 'Urgent',  bg: P.errorLight,   color: P.error,    dot: P.error },
 ];
 
-const getPaymentStatus = (total: number, advance: number) => {
-  if (total === 0) return { label: 'Non payé', bg: '#FEE2E2', color: '#991B1B' };
-  if (advance >= total) return { label: 'Payé', bg: '#D1FAE5', color: '#065F46' };
-  if (advance > 0) return { label: 'Paiement partiel', bg: '#FEF3C7', color: '#92400E' };
-  return { label: 'Non payé', bg: '#FEE2E2', color: '#991B1B' };
+const getPaymentStatus = (P: Palette, total: number, advance: number) => {
+  if (total === 0) return { label: 'Non payé', bg: P.errorLight, color: P.error };
+  if (advance >= total) return { label: 'Payé', bg: P.successLight, color: P.success };
+  if (advance > 0) return { label: 'Paiement partiel', bg: P.warningLight, color: P.warning };
+  return { label: 'Non payé', bg: P.errorLight, color: P.error };
 };
 
 // ── Sous-composants ──
@@ -82,7 +81,9 @@ const SectionCard = ({
   iconBg: string; iconColor: string;
   title: string; subtitle?: string;
   children: React.ReactNode;
-}) => (
+}) => {
+  const { styles } = useThemedStyles(makeStyles);
+  return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
         <View style={[styles.cardHeadIcon, { backgroundColor: iconBg }]}>
@@ -95,11 +96,13 @@ const SectionCard = ({
       </View>
       <View style={styles.cardContent}>{children}</View>
     </View>
-);
+  );
+};
 
-const FieldLabel = ({ label }: { label: string }) => (
-    <Text style={styles.fieldLabel}>{label}</Text>
-);
+const FieldLabel = ({ label }: { label: string }) => {
+  const { styles } = useThemedStyles(makeStyles);
+  return <Text style={styles.fieldLabel}>{label}</Text>;
+};
 
 const StyledInput = ({
                        placeholder, value, onChangeText, keyboardType, suffix, multiline, numberOfLines, icon,
@@ -110,12 +113,14 @@ const StyledInput = ({
   suffix?: string; multiline?: boolean;
   numberOfLines?: number;
   icon?: keyof typeof Ionicons.glyphMap;
-}) => (
+}) => {
+  const { colors: P, styles } = useThemedStyles(makeStyles);
+  return (
     <View style={styles.inputWrap}>
       <TextInput
           style={[styles.input, multiline && styles.inputMulti, suffix && { paddingRight: 60 }]}
           placeholder={placeholder}
-          placeholderTextColor={COLORS.gray400}
+          placeholderTextColor={P.muted}
           value={value}
           onChangeText={onChangeText}
           keyboardType={keyboardType ?? 'default'}
@@ -125,11 +130,12 @@ const StyledInput = ({
       {suffix && <Text style={styles.inputSuffix}>{suffix}</Text>}
       {icon && !suffix && (
           <View style={styles.inputIconRight}>
-            <Ionicons name={icon} size={18} color={COLORS.gray400} />
+            <Ionicons name={icon} size={18} color={P.gray400} />
           </View>
       )}
     </View>
-);
+  );
+};
 
 // ==========================================
 // ÉCRAN PRINCIPAL
@@ -137,9 +143,14 @@ const StyledInput = ({
 
 export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
-  const { showToast } = useToast();
+  const { colors: P, styles } = useThemedStyles(makeStyles);
   const currencySymbol = getDeviseMeta(getRuntimePrefs().currency).symbol;
-  const { addOrder, getClientById, clients, participants, promoteParticipant, loadProjectRecap, applyMeasurementChoice } = useAppStore();
+  const { addOrder, getClientById, clients, participants, promoteParticipant, loadProjectRecap, applyMeasurementChoice, orders } = useAppStore();
+  const fideleIds = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const o of orders) counts[o.clientId] = (counts[o.clientId] ?? 0) + 1;
+    return new Set(Object.entries(counts).filter(([, n]) => n > 2).map(([id]) => id));
+  }, [orders]);
 
   const preselectedClientId = route.params?.clientId ?? '';
   // ── Contexte "commande groupée" (arrivée depuis un Projet) ──
@@ -179,7 +190,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const total = parseInt(totalPrice.replace(/\s/g, '')) || 0;
   const advance = parseInt(advancePayment.replace(/\s/g, '')) || 0;
   const remaining = Math.max(0, total - advance);
-  const paymentStatus = getPaymentStatus(total, advance);
+  const paymentStatus = getPaymentStatus(P, total, advance);
 
   // ── Liste filtrée pour le modal ──
   const filteredClients = useMemo(() =>
@@ -193,7 +204,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const pickImage = async (type: 'fabric' | 'inspiration') => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission refusée', "L'accès à la galerie est requis.");
+      showAlert('Permission refusée', "L'accès à la galerie est requis.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -228,21 +239,15 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
     const effectiveClientId = selectedClientId || participant?.clientId;
 
     if (!effectiveClientId && !participant) {
-      showToast({ type: 'error', message: 'Veuillez remplir les champs obligatoires.' });
+      showAlert('Champs requis', 'Veuillez remplir les champs obligatoires.');
       return;
     }
     if (!clothingType || !totalPrice) {
-      showToast({
-        type: 'error',
-        message: 'Veuillez remplir les champs obligatoires.',
-      });
+      showAlert('Champs requis', 'Veuillez remplir les champs obligatoires.');
       return;
     }
     if (!measurementChoice) {
-      showToast({
-        type: 'error',
-        message: 'Veuillez sélectionner les mensurations avant d\'ajouter la commande.',
-      });
+      showAlert('Mensurations', 'Veuillez sélectionner les mensurations avant d\'ajouter la commande.');
       return;
     }
 
@@ -380,19 +385,15 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
       // 3. Rafraîchit le récap du projet, si applicable
       if (projectId) loadProjectRecap(projectId);
 
-      showToast({
-        type: 'success',
-        message: 'La commande a bien été enregistrée ! et votre catalogue enrichi',
-      });
-
-      if (projectId) navigation.goBack();
+      showSuccess(
+        'Commande enregistrée',
+        'La commande a bien été enregistrée et votre catalogue enrichi.',
+        () => { if (projectId) navigation.goBack(); },
+      );
 
     } catch (error: any) {
       console.error(error);
-      showToast({
-        type: 'error',
-        message: 'Une erreur est survenue lors de l\'enregistrement.',
-      });
+      showAlert('Erreur', 'Une erreur est survenue lors de l\'enregistrement.');
     } finally {
       setIsLoading(false);
     }
@@ -418,7 +419,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
       >
         <View style={styles.headerWrap}>
           <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={18} color={COLORS.text} />
+            <Ionicons name="arrow-back" size={18} color={P.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerKicker}>Atelier</Text>
@@ -437,7 +438,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           {participant ? (
               <SectionCard
                   iconName="people-outline"
-                  iconBg="#EDE9FE" iconColor="#6B21A8"
+                  iconBg={P.primaryBg} iconColor={P.primary}
                   title="Vêtement pour"
                   subtitle="Commande groupée / Projet"
               >
@@ -450,7 +451,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                   <View style={styles.clientInfo}>
                     <Text style={styles.clientName}>{participant.nom}</Text>
                     <View style={styles.clientSubRow}>
-                      <Ionicons name="ribbon-outline" size={12} color={COLORS.textSecondary} />
+                      <Ionicons name="ribbon-outline" size={12} color={P.textSecondary} />
                       <Text style={styles.clientSub}>{participant.role ?? 'Participant'}</Text>
                     </View>
                   </View>
@@ -459,7 +460,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           ) : (
               <SectionCard
                   iconName="person-outline"
-                  iconBg="#EDE9FE" iconColor="#6B21A8"
+                  iconBg={P.primaryBg} iconColor={P.primary}
                   title="Client"
                   subtitle="Sélectionnez la personne concernée"
               >
@@ -474,15 +475,15 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                         <View style={styles.clientInfo}>
                           <Text style={styles.clientName}>{selectedClient.nom}</Text>
                           <View style={styles.clientSubRow}>
-                            <Ionicons name="location-outline" size={12} color={COLORS.textSecondary} />
+                            <Ionicons name="location-outline" size={12} color={P.textSecondary} />
                             <Text style={styles.clientSub}>{selectedClient.adresse ?? '—'}</Text>
                           </View>
                         </View>
                       </>
                   ) : (
                       <>
-                        <View style={[styles.clientAvatar, { backgroundColor: COLORS.gray100 }]}>
-                          <Ionicons name="person-add-outline" size={20} color={COLORS.gray400} />
+                        <View style={[styles.clientAvatar, { backgroundColor: P.gray100 }]}>
+                          <Ionicons name="person-add-outline" size={20} color={P.gray400} />
                         </View>
                         <View style={styles.clientInfo}>
                           <Text style={styles.clientPlaceholder}>Sélectionner un client</Text>
@@ -491,7 +492,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                       </>
                   )}
                   <View style={styles.chevWrap}>
-                    <Ionicons name="chevron-forward" size={16} color={COLORS.gray400} />
+                    <Ionicons name="chevron-forward" size={16} color={P.gray400} />
                   </View>
                 </TouchableOpacity>
               </SectionCard>
@@ -500,7 +501,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           {/* ── Type de vêtement ── */}
           <SectionCard
               iconName="shirt-outline"
-              iconBg="#DBEAFE" iconColor="#1E40AF"
+              iconBg={P.infoBg} iconColor={P.info}
               title="Type de vêtement"
           >
             <ScrollView
@@ -533,14 +534,14 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           {(selectedClientId || participant) && (
               <SectionCard
                   iconName="body-outline"
-                  iconBg="#DCFCE7" iconColor="#16A34A"
+                  iconBg={P.successBg} iconColor={P.success}
                   title="Mensurations"
                   subtitle="Utilise une fiche existante ou prends de nouvelles mesures"
               >
                 {measurementChoice ? (
                     <View style={styles.measurementDoneRow}>
                       <View style={styles.measurementDoneBadge}>
-                        <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+                        <Ionicons name="checkmark-circle" size={16} color={P.success} />
                         <Text style={styles.measurementDoneText}>
                           {measurementChoice.mode === 'use_existing'
                               ? 'Fiche existante sélectionnée'
@@ -556,7 +557,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                         style={styles.measurementCta}
                         onPress={() => setMeasurementModalVisible(true)}
                     >
-                      <Ionicons name="body-outline" size={16} color="#16A34A" />
+                      <Ionicons name="body-outline" size={16} color={P.success} />
                       <Text style={styles.measurementCtaText}>Choisir les mensurations</Text>
                     </TouchableOpacity>
                 )}
@@ -566,7 +567,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           {/* ── Photos ── */}
           <SectionCard
               iconName="images-outline"
-              iconBg="#FEF3C7" iconColor="#92400E"
+              iconBg={P.goldBg} iconColor={P.warning}
               title="Photos"
               subtitle="Tissu et inspiration"
           >
@@ -581,7 +582,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }}>
                   <TouchableOpacity style={styles.photoAdd} onPress={() => pickImage('fabric')} activeOpacity={0.7}>
                     <View style={styles.photoAddIcon}>
-                      <Ionicons name="camera-outline" size={20} color={COLORS.primary} />
+                      <Ionicons name="camera-outline" size={20} color={P.primary} />
                     </View>
                     <Text style={styles.photoAddLabel}>Ajouter</Text>
                   </TouchableOpacity>
@@ -607,7 +608,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }}>
                   <TouchableOpacity style={styles.photoAdd} onPress={() => pickImage('inspiration')} activeOpacity={0.7}>
                     <View style={styles.photoAddIcon}>
-                      <Ionicons name="image-outline" size={20} color={COLORS.primary} />
+                      <Ionicons name="image-outline" size={20} color={P.primary} />
                     </View>
                     <Text style={styles.photoAddLabel}>Ajouter</Text>
                   </TouchableOpacity>
@@ -627,7 +628,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           {/* ── Détails ── */}
           <SectionCard
               iconName="document-text-outline"
-              iconBg="#EDE9FE" iconColor="#6B21A8"
+              iconBg={P.primaryBg} iconColor={P.primary}
               title="Détails"
           >
             <View style={styles.field}>
@@ -664,7 +665,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
             <View style={styles.field}>
               <FieldLabel label="Niveau d'urgence" />
               <View style={styles.urgencyRow}>
-                {URGENCY_OPTIONS.map((opt) => {
+                {urgencyOptions(P).map((opt) => {
                   const active = urgency === opt.key;
                   return (
                       <TouchableOpacity
@@ -693,7 +694,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           {/* ── Paiement ── */}
           <SectionCard
               iconName="wallet-outline"
-              iconBg="#D1FAE5" iconColor="#065F46"
+              iconBg={P.successBg} iconColor={P.success}
               title="Paiement"
           >
             <View style={styles.twoCol}>
@@ -722,7 +723,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
             <View style={styles.pricingSummary}>
               <View style={styles.pricingLeft}>
                 <View style={styles.pricingIconWrap}>
-                  <Ionicons name="cash-outline" size={16} color={COLORS.primary} />
+                  <Ionicons name="cash-outline" size={16} color={P.primary} />
                 </View>
                 <View>
                   <Text style={styles.psLabel}>Reste à payer</Text>
@@ -749,7 +750,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               disabled={isLoading}
               activeOpacity={0.85}
           >
-            <Ionicons name={isLoading ? 'reload-outline' : 'checkmark'} size={20} color="#D4AF37" />
+            <Ionicons name={isLoading ? 'reload-outline' : 'checkmark'} size={20} color={P.gold} />
             <Text style={styles.submitText}>
               {isLoading ? 'Enregistrement...' : 'Enregistrer la commande'}
             </Text>
@@ -780,24 +781,24 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                     setClientSearch('');
                   }}
               >
-                <Ionicons name="close" size={20} color={COLORS.text} />
+                <Ionicons name="close" size={20} color={P.text} />
               </TouchableOpacity>
             </View>
 
             {/* ── Barre de recherche ── */}
             <View style={styles.modalSearchWrap}>
-              <Ionicons name="search-outline" size={16} color={COLORS.gray400} />
+              <Ionicons name="search-outline" size={16} color={P.gray400} />
               <TextInput
                   style={styles.modalSearchInput}
                   placeholder="Rechercher par nom ou téléphone..."
-                  placeholderTextColor={COLORS.gray400}
+                  placeholderTextColor={P.gray400}
                   value={clientSearch}
                   onChangeText={setClientSearch}
                   autoFocus
               />
               {clientSearch.length > 0 && (
                   <TouchableOpacity onPress={() => setClientSearch('')} style={{ padding: 2 }}>
-                    <Ionicons name="close-circle" size={16} color={COLORS.gray400} />
+                    <Ionicons name="close-circle" size={16} color={P.gray400} />
                   </TouchableOpacity>
               )}
             </View>
@@ -820,7 +821,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                 ListEmptyComponent={
                   <View style={styles.modalEmpty}>
                     <View style={styles.modalEmptyIcon}>
-                      <Ionicons name="people-outline" size={32} color={COLORS.gray300} />
+                      <Ionicons name="people-outline" size={32} color={P.gray300} />
                     </View>
                     <Text style={styles.modalEmptyTitle}>Aucun client trouvé</Text>
                     <Text style={styles.modalEmptyText}>
@@ -845,23 +846,23 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
 
                         {/* Infos */}
                         <View style={styles.modalClientInfo}>
-                          <Text style={[styles.modalClientName, isSelected && { color: COLORS.primary }]}>
+                          <Text style={[styles.modalClientName, isSelected && { color: P.primary }]}>
                             {item.nom}
                           </Text>
                           <View style={styles.modalClientMeta}>
-                            <Ionicons name="call-outline" size={11} color={COLORS.gray400} />
+                            <Ionicons name="call-outline" size={11} color={P.gray400} />
                             <Text style={styles.modalClientSub}>{item.telephone}</Text>
                             {item.adresse ? (
                                 <>
                                   <Text style={styles.modalClientDot}>·</Text>
-                                  <Ionicons name="location-outline" size={11} color={COLORS.gray400} />
+                                  <Ionicons name="location-outline" size={11} color={P.gray400} />
                                   <Text style={styles.modalClientSub}>{item.adresse}</Text>
                                 </>
                             ) : null}
                           </View>
-                          {item.isFavorite && (
+                          {fideleIds.has(item.id) && (
                               <View style={styles.modalFavBadge}>
-                                <Ionicons name="star" size={10} color="#92400E" />
+                                <Ionicons name="star" size={10} color={P.gold} />
                                 <Text style={styles.modalFavText}>Cliente fidèle</Text>
                               </View>
                           )}
@@ -870,10 +871,10 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                         {/* Check ou chevron */}
                         {isSelected ? (
                             <View style={styles.modalCheckWrap}>
-                              <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+                              <Ionicons name="checkmark-circle" size={24} color={P.primary} />
                             </View>
                         ) : (
-                            <Ionicons name="chevron-forward" size={16} color={COLORS.gray300} />
+                            <Ionicons name="chevron-forward" size={16} color={P.gray300} />
                         )}
                       </TouchableOpacity>
                   );
@@ -897,31 +898,32 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
 // ==========================================
 // STYLES
 // ==========================================
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+const makeStyles = (P: Palette) => ({
+  container: { flex: 1, backgroundColor: P.pageBg },
 
   // ── Header ──
   headerWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
     gap: 12,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    backgroundColor: COLORS.background,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+    backgroundColor: P.pageBg,
   },
   headerBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: COLORS.white,
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: P.surface,
     borderWidth: 0.5,
-    borderColor: 'rgba(108,62,184,0.15)',
-    alignItems: 'center', justifyContent: 'center',
+    borderColor: P.borderHard,
+    alignItems: 'center' as const, justifyContent: 'center' as const, marginTop: 4,
   },
   headerKicker: {
-    fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: '#D4AF37',
-    letterSpacing: 1.2, textTransform: 'uppercase',
+    fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+    letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
   },
   headerTitle: {
-    fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: COLORS.text,
+    fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6,
   },
 
   scroll: { flex: 1 },
@@ -932,10 +934,10 @@ const styles = StyleSheet.create({
 
   // ── Card ──
   card: {
-    backgroundColor: COLORS.white,
+    backgroundColor: P.surface,
     borderRadius: 18,
     borderWidth: 0.5,
-    borderColor: 'rgba(108,62,184,0.15)',
+    borderColor: P.borderHard,
     overflow: 'hidden',
   },
   cardHead: {
@@ -953,11 +955,11 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: FONT_SIZES.md,
     fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: COLORS.text,
+    color: P.text,
   },
   cardSubtitle: {
     fontSize: 11,
-    color: COLORS.textSecondary,
+    color: P.textSecondary,
     marginTop: 1,
   },
   cardContent: {
@@ -970,35 +972,35 @@ const styles = StyleSheet.create({
   clientRow: {
     flexDirection: 'row', alignItems: 'center',
     gap: SPACING.md,
-    backgroundColor: COLORS.gray50,
+    backgroundColor: P.gray50,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
   },
   // ── Mensurations (Module 13) ──
   measurementCta: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#DCFCE7', borderRadius: BORDER_RADIUS.md, paddingVertical: 12,
+    backgroundColor: P.successLight, borderRadius: BORDER_RADIUS.md, paddingVertical: 12,
   },
-  measurementCtaText: { color: '#16A34A', fontSize: 13.5, fontFamily: 'PlusJakartaSans_700Bold' },
-  measurementDoneRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  measurementDoneBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  measurementDoneText: { color: '#16A34A', fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold' },
-  measurementChangeLink: { color: '#6C3EB8', fontSize: 12.5, fontFamily: 'PlusJakartaSans_700Bold' },
+  measurementCtaText: { color: P.success, fontSize: 13.5, fontFamily: 'PlusJakartaSans_700Bold' },
+  measurementDoneRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
+  measurementDoneBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
+  measurementDoneText: { color: P.success, fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  measurementChangeLink: { color: P.primary, fontSize: 12.5, fontFamily: 'PlusJakartaSans_700Bold' },
   clientAvatar: {
     width: 44, height: 44, borderRadius: 22,
-    backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: P.primaryBg, alignItems: 'center' as const, justifyContent: 'center' as const,
   },
   clientAvatarText: {
-    fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.primary,
+    fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary,
   },
   clientInfo: { flex: 1 },
-  clientName: { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
+  clientName: { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
   clientSubRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
-  clientSub: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
-  clientPlaceholder: { fontSize: FONT_SIZES.md, color: COLORS.text, fontFamily: 'PlusJakartaSans_500Medium' },
+  clientSub: { fontSize: FONT_SIZES.xs, color: P.textSecondary },
+  clientPlaceholder: { fontSize: FONT_SIZES.md, color: P.text, fontFamily: 'PlusJakartaSans_500Medium' },
   chevWrap: {
     width: 28, height: 28, borderRadius: 14,
-    backgroundColor: COLORS.white,
+    backgroundColor: P.surface,
     alignItems: 'center', justifyContent: 'center',
   },
 
@@ -1008,11 +1010,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: SPACING.md, paddingVertical: 9,
     borderRadius: BORDER_RADIUS.full,
-    borderWidth: 1, borderColor: COLORS.border,
-    backgroundColor: COLORS.gray50,
+    borderWidth: 0.5, borderColor: P.borderHard,
+    backgroundColor: P.surface,
   },
-  typeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  typeChipText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  typeChipActive: { backgroundColor: P.bg, borderColor: P.goldRim },
+  typeChipText: { fontSize: FONT_SIZES.sm, color: P.textSecondary },
   typeChipTextActive: { color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold' },
 
   // ── Photos ──
@@ -1021,56 +1023,56 @@ const styles = StyleSheet.create({
   photoSectionHead: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  photoTitle: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
-  photoCount: { fontSize: 11, color: COLORS.textSecondary },
-  photoDivider: { height: 0.5, backgroundColor: COLORS.border },
+  photoTitle: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+  photoCount: { fontSize: 11, color: P.textSecondary },
+  photoDivider: { height: 0.5, backgroundColor: P.border },
   photoAdd: {
     width: 90, height: 90,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1.5, borderStyle: 'dashed',
-    borderColor: COLORS.gray300,
-    backgroundColor: COLORS.gray50,
+    borderColor: P.gray300,
+    backgroundColor: P.gray50,
     alignItems: 'center', justifyContent: 'center', gap: 4,
   },
   photoAddIcon: {
     width: 32, height: 32, borderRadius: 16,
-    backgroundColor: COLORS.white,
+    backgroundColor: P.surface,
     alignItems: 'center', justifyContent: 'center',
   },
-  photoAddLabel: { fontSize: 11, color: COLORS.textSecondary, fontFamily: 'PlusJakartaSans_500Medium' },
+  photoAddLabel: { fontSize: 11, color: P.textSecondary, fontFamily: 'PlusJakartaSans_500Medium' },
   photoPreviewWrap: { position: 'relative' },
   photoPreview: { width: 90, height: 90, borderRadius: BORDER_RADIUS.md },
   removePhotoBtn: {
     position: 'absolute', top: -6, right: -6,
     width: 24, height: 24, borderRadius: 12,
-    backgroundColor: '#EF4444',
+    backgroundColor: P.error,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: COLORS.white,
+    borderWidth: 2, borderColor: P.surface,
   },
 
   // ── Field / inputs ──
   field: { gap: 6 },
   fieldLabel: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
+    color: P.textSecondary,
     fontFamily: 'PlusJakartaSans_500Medium',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
   inputWrap: { position: 'relative' },
   input: {
-    backgroundColor: COLORS.gray50,
+    backgroundColor: P.gray50,
     borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1, borderColor: P.border,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
-    fontSize: FONT_SIZES.md, color: COLORS.text,
+    fontSize: FONT_SIZES.md, color: P.text,
   },
   inputMulti: { height: 88, textAlignVertical: 'top' },
   inputSuffix: {
     position: 'absolute', right: SPACING.md, top: '50%', marginTop: -8,
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
+    color: P.textSecondary,
     fontFamily: 'PlusJakartaSans_500Medium',
   },
   inputIconRight: { position: 'absolute', right: SPACING.md, top: '50%', marginTop: -9 },
@@ -1082,28 +1084,28 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 11,
     borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1, borderColor: COLORS.border,
-    backgroundColor: COLORS.gray50,
+    borderWidth: 0.5, borderColor: P.borderHard,
+    backgroundColor: P.surface,
   },
   urgencyDot: { width: 8, height: 8, borderRadius: 4 },
-  urgencyLabel: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  urgencyLabel: { fontSize: FONT_SIZES.sm, color: P.textSecondary },
 
   // ── Pricing ──
   twoCol: { flexDirection: 'row', gap: SPACING.md },
   pricingSummary: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: COLORS.secondary,
+    backgroundColor: P.secondary,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
   },
   pricingLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   pricingIconWrap: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: COLORS.white,
+    backgroundColor: P.surface,
     alignItems: 'center', justifyContent: 'center',
   },
-  psLabel: { fontSize: 11, color: COLORS.textSecondary, marginBottom: 2 },
-  psValue: { fontSize: FONT_SIZES.lg, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
+  psLabel: { fontSize: 11, color: P.textSecondary, marginBottom: 2 },
+  psValue: { fontSize: FONT_SIZES.lg, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
   statusPill: {
     borderRadius: BORDER_RADIUS.full,
     paddingHorizontal: SPACING.md, paddingVertical: 6,
@@ -1113,19 +1115,19 @@ const styles = StyleSheet.create({
   // ── Footer flottant ──
   footer: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: COLORS.background,
+    backgroundColor: P.pageBg,
     paddingHorizontal: SPACING.lg, paddingTop: SPACING.md,
     borderTopWidth: 0.5,
-    borderTopColor: 'rgba(108,62,184,0.10)',
+    borderTopColor: P.border,
   },
   submitBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: '#16123A',
+    backgroundColor: P.bg,
     borderRadius: 16,
     paddingVertical: SPACING.md + 2,
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.28)',
+    borderColor: P.goldRim,
   },
   submitText: { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#fff' },
 
@@ -1134,7 +1136,7 @@ const styles = StyleSheet.create({
   // ══════════════════════════════════════
   modalContainer: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: P.pageBg,
   },
 
   // Header
@@ -1144,9 +1146,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
-    backgroundColor: COLORS.white,
+    backgroundColor: P.surface,
     borderBottomWidth: 0.5,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: P.border,
   },
   modalHeaderLeft: {
     gap: 2,
@@ -1154,16 +1156,16 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: FONT_SIZES.lg,
     fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: COLORS.text,
+    color: P.text,
   },
   modalSubtitle: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
+    color: P.textSecondary,
   },
   modalCloseBtn: {
     width: 36, height: 36,
     borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.gray100,
+    backgroundColor: P.gray100,
     alignItems: 'center', justifyContent: 'center',
   },
 
@@ -1175,21 +1177,21 @@ const styles = StyleSheet.create({
     margin: SPACING.lg,
     marginBottom: SPACING.sm,
     paddingHorizontal: SPACING.md,
-    backgroundColor: COLORS.white,
+    backgroundColor: P.surface,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: P.border,
     height: 44,
   },
   modalSearchInput: {
     flex: 1,
     fontSize: FONT_SIZES.md,
-    color: COLORS.text,
+    color: P.text,
     height: '100%',
   },
   modalResultCount: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
+    color: P.textSecondary,
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.sm,
   },
@@ -1202,7 +1204,7 @@ const styles = StyleSheet.create({
   },
   modalDivider: {
     height: 0.5,
-    backgroundColor: COLORS.border,
+    backgroundColor: P.border,
   },
 
   // Item client
@@ -1215,21 +1217,21 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
   },
   modalClientRowActive: {
-    backgroundColor: '#F5F3FF',
+    backgroundColor: P.primaryBg,
   },
   modalAvatar: {
     width: 46, height: 46, borderRadius: 23,
-    backgroundColor: '#EDE9FE',
+    backgroundColor: P.primaryBg,
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
   modalAvatarActive: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: P.primary,
   },
   modalAvatarText: {
     fontSize: FONT_SIZES.md,
     fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: COLORS.primary,
+    color: P.primary,
   },
   modalAvatarTextActive: {
     color: '#fff',
@@ -1241,7 +1243,7 @@ const styles = StyleSheet.create({
   modalClientName: {
     fontSize: FONT_SIZES.md,
     fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: COLORS.text,
+    color: P.text,
   },
   modalClientMeta: {
     flexDirection: 'row',
@@ -1251,17 +1253,17 @@ const styles = StyleSheet.create({
   },
   modalClientSub: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
+    color: P.textSecondary,
   },
   modalClientDot: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.gray300,
+    color: P.gray300,
   },
   modalFavBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: P.goldBg,
     borderRadius: BORDER_RADIUS.full,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -1270,7 +1272,7 @@ const styles = StyleSheet.create({
   },
   modalFavText: {
     fontSize: 10,
-    color: '#92400E',
+    color: P.gold,
     fontFamily: 'PlusJakartaSans_500Medium',
   },
   modalCheckWrap: {
@@ -1285,18 +1287,18 @@ const styles = StyleSheet.create({
   },
   modalEmptyIcon: {
     width: 64, height: 64, borderRadius: 32,
-    backgroundColor: COLORS.gray100,
+    backgroundColor: P.gray100,
     alignItems: 'center', justifyContent: 'center',
     marginBottom: SPACING.sm,
   },
   modalEmptyTitle: {
     fontSize: FONT_SIZES.md,
     fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: COLORS.text,
+    color: P.text,
   },
   modalEmptyText: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.gray400,
+    color: P.gray400,
     textAlign: 'center',
   },
 });

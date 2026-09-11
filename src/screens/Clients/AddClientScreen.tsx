@@ -4,11 +4,11 @@
 // ==========================================
 
 import React, { useState, useRef, useCallback } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
-  View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, Image, Alert, Modal,
+  View, Text, ScrollView,
+  TouchableOpacity, Image, Modal,
   FlatList, TextInput, ActivityIndicator,
-  Animated, Easing, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,37 +19,10 @@ import * as Location from 'expo-location';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { useAppStore } from '@store/useAppStore';
 import type { RootStackParamList } from '../../types';
-import { Avatar } from '@components/ui';
+import { Avatar, DateField } from '@components/ui';
+import { useThemedStyles, type Palette } from '@/src/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddClient'>;
-
-// ── PALETTE ─────────────────────────────────────────────────────
-const C = {
-  bg:            '#FFFFFF',
-  surface:       '#F7F6F4',
-  border:        '#EBEBEB',
-  borderFocus:   '#534AB7',
-  borderError:   '#EF4444',
-  textPrimary:   '#0E0B14',
-  textSecondary: '#7A7787',
-  textTertiary:  '#B0ACBA',
-  error:         '#EF4444',
-
-  purple900:  '#1A0033',
-  purple700:  '#2E0057',
-  purple600:  '#534AB7',
-  purple200:  '#AFA9EC',
-  purple100:  '#EEEDFE',
-  purple50:   '#F7F5FF',
-
-  gold:       '#D4AF37',
-  gold100:    '#FAEEDA',
-  gold800:    '#412402',
-
-  teal:       '#1D9E75',
-  teal100:    '#9FE1CB',
-  teal800:    '#04342C',
-};
 
 // ── CODES PAYS ───────────────────────────────────────────────────
 interface CountryCode {
@@ -92,6 +65,40 @@ function formatPhoneNumber(raw: string, format: string): string {
   return result;
 }
 
+function expectedLocalLength(format: string): number {
+  return (format.match(/#/g) || []).length;
+}
+
+/** Enlève l'indicatif pays déjà présent (+237, 237, 00237…) pour ne garder que le numéro national. */
+function parseImportedPhone(raw: string, fallback: CountryCode): { country: CountryCode; national: string } {
+  let digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+
+  const ranked = [...COUNTRY_CODES].sort(
+    (a, b) => b.dial.replace(/\D/g, '').length - a.dial.replace(/\D/g, '').length,
+  );
+
+  const tryStrip = (cc: CountryCode, d: string): string | null => {
+    const code = cc.dial.replace(/\D/g, '');
+    if (!code || !d.startsWith(code)) return null;
+    const rest = d.slice(code.length);
+    const expected = expectedLocalLength(cc.format);
+    if (rest.length >= expected) return rest;
+    return null;
+  };
+
+  for (const cc of ranked) {
+    const rest = tryStrip(cc, digits);
+    if (rest) return { country: cc, national: rest };
+  }
+
+  const expected = expectedLocalLength(fallback.format);
+  if (digits.startsWith('0') && digits.length === expected + 1) {
+    return { country: fallback, national: digits.slice(1) };
+  }
+  return { country: fallback, national: digits };
+}
+
 // ── MODAL SÉLECTION PAYS ─────────────────────────────────────────
 interface CountryPickerModalProps {
   visible: boolean;
@@ -103,6 +110,7 @@ interface CountryPickerModalProps {
 const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
                                                                  visible, selected, onSelect, onClose,
                                                                }) => {
+  const { colors: P, styles: cpStyles } = useThemedStyles(make_cpStyles);
   const [search, setSearch] = useState('');
   const insets = useSafeAreaInsets();
 
@@ -117,23 +125,23 @@ const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
           <View style={cpStyles.header}>
             <Text style={cpStyles.title}>Choisir le pays</Text>
             <TouchableOpacity onPress={onClose} style={cpStyles.closeBtn}>
-              <Ionicons name="close" size={18} color={C.textPrimary} />
+              <Ionicons name="close" size={18} color={P.text} />
             </TouchableOpacity>
           </View>
 
           <View style={cpStyles.searchWrap}>
-            <Ionicons name="search-outline" size={15} color={C.textTertiary} style={{ marginRight: 8 }} />
+            <Ionicons name="search-outline" size={15} color={P.muted} style={{ marginRight: 8 }} />
             <TextInput
                 style={cpStyles.searchInput}
                 placeholder="Rechercher un pays ou indicatif…"
-                placeholderTextColor={C.textTertiary}
+                placeholderTextColor={P.muted}
                 value={search}
                 onChangeText={setSearch}
                 autoFocus
             />
             {search.length > 0 && (
                 <TouchableOpacity onPress={() => setSearch('')}>
-                  <Ionicons name="close-circle" size={15} color={C.textTertiary} />
+                  <Ionicons name="close-circle" size={15} color={P.muted} />
                 </TouchableOpacity>
             )}
           </View>
@@ -173,27 +181,27 @@ const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
   );
 };
 
-const cpStyles = StyleSheet.create({
-  container:   { flex: 1, backgroundColor: C.bg },
-  handle:      { width: 40, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: 'center', marginBottom: 12 },
+const make_cpStyles = (P: Palette) => ({
+  container:   { flex: 1, backgroundColor: P.pageBg },
+  handle:      { width: 40, height: 4, borderRadius: 2, backgroundColor: P.borderHard, alignSelf: 'center', marginBottom: 12 },
   header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingBottom: 14 },
-  title:       { fontSize: 17, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textPrimary },
-  closeBtn:    { width: 30, height: 30, borderRadius: 10, backgroundColor: C.surface,
+  title:       { fontSize: 17, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+  closeBtn:    { width: 30, height: 30, borderRadius: 10, backgroundColor: P.surface,
     alignItems: 'center', justifyContent: 'center' },
   searchWrap:  { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 12,
-    backgroundColor: C.surface, borderRadius: 12, borderWidth: 0.5, borderColor: C.border,
+    backgroundColor: P.surface, borderRadius: 12, borderWidth: 0.5, borderColor: P.borderHard,
     paddingHorizontal: 12, height: 40 },
-  searchInput: { flex: 1, fontSize: 14, color: C.textPrimary },
+  searchInput: { flex: 1, fontSize: 14, color: P.text },
   item:        { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 12 },
-  itemActive:  { backgroundColor: C.purple50 },
+  itemActive:  { backgroundColor: P.primaryBg },
   flag:        { fontSize: 24 },
-  itemName:    { fontSize: 15, color: C.textPrimary, fontFamily: 'PlusJakartaSans_500Medium' },
-  itemNameActive: { color: C.purple600, fontFamily: 'PlusJakartaSans_600SemiBold' },
-  itemDial:    { fontSize: 12, color: C.textTertiary, marginTop: 2 },
-  checkBadge:  { width: 22, height: 22, borderRadius: 11, backgroundColor: C.purple600,
+  itemName:    { fontSize: 15, color: P.text, fontFamily: 'PlusJakartaSans_500Medium' },
+  itemNameActive: { color: P.primary, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  itemDial:    { fontSize: 12, color: P.muted, marginTop: 2 },
+  checkBadge:  { width: 22, height: 22, borderRadius: 11, backgroundColor: P.primary,
     alignItems: 'center', justifyContent: 'center' },
-  sep:         { height: 0.5, backgroundColor: C.border, marginHorizontal: 20 },
+  sep:         { height: 0.5, backgroundColor: P.borderHard, marginHorizontal: 20 },
 });
 
 // ── MODAL RÉPERTOIRE TÉLÉPHONIQUE ─────────────────────────────────
@@ -211,6 +219,7 @@ interface ContactsPickerModalProps {
 }
 
 const ContactsPickerModal: React.FC<ContactsPickerModalProps> = ({ visible, onSelect, onClose }) => {
+  const { colors: P, styles: ctStyles } = useThemedStyles(make_ctStyles);
   const insets = useSafeAreaInsets();
   const [contacts, setContacts]     = useState<Contact[]>([]);
   const [filtered, setFiltered]     = useState<Contact[]>([]);
@@ -264,7 +273,7 @@ const ContactsPickerModal: React.FC<ContactsPickerModalProps> = ({ visible, onSe
       setContacts(parsed);
       setFiltered(parsed);
     } catch {
-      Alert.alert('Erreur', 'Impossible de charger les contacts.');
+      showAlert('Erreur', 'Impossible de charger les contacts.');
     } finally {
       setLoading(false);
     }
@@ -279,7 +288,7 @@ const ContactsPickerModal: React.FC<ContactsPickerModalProps> = ({ visible, onSe
 
   // Couleur d'avatar déterministe
   const avatarColors = ['#EEEDFE', '#FAEEDA', '#9FE1CB', '#B5D4F4', '#F9C5D1'];
-  const avatarTextColors = [C.purple600, C.gold800, C.teal800, '#042C53', '#7C1D34'];
+  const avatarTextColors = [P.primary, P.gold, P.success, '#042C53', '#7C1D34'];
   const avatarColor = (name: string) => {
     const idx = name.charCodeAt(0) % avatarColors.length;
     return { bg: avatarColors[idx], text: avatarTextColors[idx] };
@@ -300,24 +309,24 @@ const ContactsPickerModal: React.FC<ContactsPickerModalProps> = ({ visible, onSe
               )}
             </View>
             <TouchableOpacity onPress={onClose} style={ctStyles.closeBtn}>
-              <Ionicons name="close" size={18} color={C.textPrimary} />
+              <Ionicons name="close" size={18} color={P.text} />
             </TouchableOpacity>
           </View>
 
           {/* Recherche */}
           {!permDenied && !loading && (
               <View style={ctStyles.searchWrap}>
-                <Ionicons name="search-outline" size={15} color={C.textTertiary} style={{ marginRight: 8 }} />
+                <Ionicons name="search-outline" size={15} color={P.muted} style={{ marginRight: 8 }} />
                 <TextInput
                     style={ctStyles.searchInput}
                     placeholder="Rechercher un contact…"
-                    placeholderTextColor={C.textTertiary}
+                    placeholderTextColor={P.muted}
                     value={search}
                     onChangeText={setSearch}
                 />
                 {search.length > 0 && (
                     <TouchableOpacity onPress={() => setSearch('')}>
-                      <Ionicons name="close-circle" size={15} color={C.textTertiary} />
+                      <Ionicons name="close-circle" size={15} color={P.muted} />
                     </TouchableOpacity>
                 )}
               </View>
@@ -326,13 +335,13 @@ const ContactsPickerModal: React.FC<ContactsPickerModalProps> = ({ visible, onSe
           {/* Contenu */}
           {loading ? (
               <View style={ctStyles.center}>
-                <ActivityIndicator size="large" color={C.purple600} />
+                <ActivityIndicator size="large" color={P.primary} />
                 <Text style={ctStyles.loadingText}>Chargement des contacts…</Text>
               </View>
           ) : permDenied ? (
               <View style={ctStyles.center}>
                 <View style={ctStyles.permIcon}>
-                  <Ionicons name="lock-closed-outline" size={32} color={C.textTertiary} />
+                  <Ionicons name="lock-closed-outline" size={32} color={P.muted} />
                 </View>
                 <Text style={ctStyles.permTitle}>Accès refusé</Text>
                 <Text style={ctStyles.permDesc}>
@@ -379,7 +388,7 @@ const ContactsPickerModal: React.FC<ContactsPickerModalProps> = ({ visible, onSe
 
                           {/* Chevron */}
                           <View style={ctStyles.importBtn}>
-                            <Ionicons name="add" size={16} color={C.purple600} />
+                            <Ionicons name="add" size={16} color={P.primary} />
                           </View>
                         </TouchableOpacity>
                     );
@@ -392,40 +401,40 @@ const ContactsPickerModal: React.FC<ContactsPickerModalProps> = ({ visible, onSe
   );
 };
 
-const ctStyles = StyleSheet.create({
-  container:    { flex: 1, backgroundColor: C.bg },
-  handle:       { width: 40, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: 'center', marginBottom: 12 },
+const make_ctStyles = (P: Palette) => ({
+  container:    { flex: 1, backgroundColor: P.pageBg },
+  handle:       { width: 40, height: 4, borderRadius: 2, backgroundColor: P.borderHard, alignSelf: 'center', marginBottom: 12 },
   header:       { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingBottom: 14 },
-  title:        { fontSize: 17, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textPrimary },
-  subtitle:     { fontSize: 12, color: C.textTertiary, marginTop: 2 },
-  closeBtn:     { width: 30, height: 30, borderRadius: 10, backgroundColor: C.surface,
+  title:        { fontSize: 17, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+  subtitle:     { fontSize: 12, color: P.muted, marginTop: 2 },
+  closeBtn:     { width: 30, height: 30, borderRadius: 10, backgroundColor: P.surface,
     alignItems: 'center', justifyContent: 'center' },
   searchWrap:   { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 8,
-    backgroundColor: C.surface, borderRadius: 12, borderWidth: 0.5, borderColor: C.border,
+    backgroundColor: P.surface, borderRadius: 12, borderWidth: 0.5, borderColor: P.borderHard,
     paddingHorizontal: 12, height: 40 },
-  searchInput:  { flex: 1, fontSize: 14, color: C.textPrimary },
+  searchInput:  { flex: 1, fontSize: 14, color: P.text },
   center:       { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 40 },
-  loadingText:  { fontSize: 14, color: C.textTertiary, marginTop: 8 },
-  permIcon:     { width: 72, height: 72, borderRadius: 20, backgroundColor: C.surface,
+  loadingText:  { fontSize: 14, color: P.muted, marginTop: 8 },
+  permIcon:     { width: 72, height: 72, borderRadius: 20, backgroundColor: P.surface,
     alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  permTitle:    { fontSize: 17, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textPrimary },
-  permDesc:     { fontSize: 14, color: C.textSecondary, textAlign: 'center', lineHeight: 20 },
+  permTitle:    { fontSize: 17, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+  permDesc:     { fontSize: 14, color: P.sub, textAlign: 'center', lineHeight: 20 },
   permBtn:      { marginTop: 8, paddingHorizontal: 24, paddingVertical: 10,
-    borderRadius: 12, backgroundColor: C.purple100 },
-  permBtnText:  { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.purple600 },
-  emptyText:    { fontSize: 15, color: C.textTertiary },
+    borderRadius: 12, backgroundColor: P.primaryBg },
+  permBtnText:  { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
+  emptyText:    { fontSize: 15, color: P.muted },
   contactItem:  { flexDirection: 'row', alignItems: 'center', gap: 14,
     paddingHorizontal: 20, paddingVertical: 10 },
   contactAvatar:{ width: 46, height: 46, borderRadius: 14, flexShrink: 0 },
   contactAvatarPlaceholder: { width: 46, height: 46, borderRadius: 14, flexShrink: 0,
     alignItems: 'center', justifyContent: 'center' },
   contactInitials: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold' },
-  contactName:  { fontSize: 15, fontFamily: 'PlusJakartaSans_500Medium', color: C.textPrimary },
-  contactPhone: { fontSize: 12, color: C.textTertiary, marginTop: 2 },
-  importBtn:    { width: 30, height: 30, borderRadius: 9, backgroundColor: C.purple100,
+  contactName:  { fontSize: 15, fontFamily: 'PlusJakartaSans_500Medium', color: P.text },
+  contactPhone: { fontSize: 12, color: P.muted, marginTop: 2 },
+  importBtn:    { width: 30, height: 30, borderRadius: 9, backgroundColor: P.primaryBg,
     alignItems: 'center', justifyContent: 'center' },
-  sep:          { height: 0.5, backgroundColor: C.border, marginLeft: 80 },
+  sep:          { height: 0.5, backgroundColor: P.borderHard, marginLeft: 80 },
 });
 
 // ── MODAL CARTE ───────────────────────────────────────────────────
@@ -436,6 +445,7 @@ interface MapPickerModalProps {
 }
 
 const MapPickerModal: React.FC<MapPickerModalProps> = ({ visible, onConfirm, onClose }) => {
+  const { colors: P, styles: mapStyles } = useThemedStyles(make_mapStyles);
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
 
@@ -465,7 +475,7 @@ const MapPickerModal: React.FC<MapPickerModalProps> = ({ visible, onConfirm, onC
     setIsLocating(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') { Alert.alert('Permission refusée', "L'accès à la localisation est requis."); return; }
+      if (status !== 'granted') { showAlert('Permission refusée', "L'accès à la localisation est requis."); return; }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const { latitude, longitude } = loc.coords;
       const newRegion = { latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 };
@@ -474,7 +484,7 @@ const MapPickerModal: React.FC<MapPickerModalProps> = ({ visible, onConfirm, onC
       mapRef.current?.animateToRegion(newRegion, 800);
       await reverseGeocode(latitude, longitude);
     } catch {
-      Alert.alert('Erreur', 'Impossible de récupérer votre position.');
+      showAlert('Erreur', 'Impossible de récupérer votre position.');
     } finally {
       setIsLocating(false);
     }
@@ -503,25 +513,25 @@ const MapPickerModal: React.FC<MapPickerModalProps> = ({ visible, onConfirm, onC
               }}
               showsUserLocation
           >
-            <Marker coordinate={markerCoord} pinColor={C.purple600} />
+            <Marker coordinate={markerCoord} pinColor={P.primary} />
           </MapView>
 
           <TouchableOpacity style={mapStyles.locateBtn} onPress={locateMe} disabled={isLocating}>
             {isLocating
-                ? <ActivityIndicator size="small" color={C.purple600} />
-                : <Ionicons name="locate" size={22} color={C.purple600} />
+                ? <ActivityIndicator size="small" color={P.primary} />
+                : <Ionicons name="locate" size={22} color={P.primary} />
             }
           </TouchableOpacity>
 
           <View style={[mapStyles.bottomCard, { paddingBottom: insets.bottom + 12 }]}>
             <View style={mapStyles.addressRow}>
               <View style={mapStyles.pinWrap}>
-                <Ionicons name="location" size={20} color={C.purple600} />
+                <Ionicons name="location" size={20} color={P.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={mapStyles.addressLabel}>EMPLACEMENT SÉLECTIONNÉ</Text>
                 {isGeocoding
-                    ? <ActivityIndicator size="small" color={C.textTertiary} style={{ alignSelf: 'flex-start' }} />
+                    ? <ActivityIndicator size="small" color={P.muted} style={{ alignSelf: 'flex-start' }} />
                     : <Text style={mapStyles.addressText} numberOfLines={2}>
                       {address || 'Appuyez sur la carte pour choisir un point'}
                     </Text>
@@ -541,24 +551,24 @@ const MapPickerModal: React.FC<MapPickerModalProps> = ({ visible, onConfirm, onC
   );
 };
 
-const mapStyles = StyleSheet.create({
-  container:    { flex: 1, backgroundColor: C.bg },
-  header:       { backgroundColor: C.purple700, flexDirection: 'row', alignItems: 'center',
+const make_mapStyles = (P: Palette) => ({
+  container:    { flex: 1, backgroundColor: P.pageBg },
+  header:       { backgroundColor: P.bg, flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 14 },
   headerBtn:    { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center', justifyContent: 'center' },
   headerTitle:  { fontSize: 17, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#fff' },
   map:          { flex: 1 },
   locateBtn:    { position: 'absolute', right: 16, bottom: 190, width: 48, height: 48, borderRadius: 24,
-    backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 5 },
-  bottomCard:   { backgroundColor: C.bg, padding: 20, gap: 16, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 10 },
+    backgroundColor: P.pageBg, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 0.5, borderColor: P.borderHard },
+  bottomCard:   { backgroundColor: P.pageBg, padding: 20, gap: 16, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    borderTopWidth: 0.5, borderColor: P.borderHard },
   addressRow:   { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
-  pinWrap:      { width: 40, height: 40, borderRadius: 12, backgroundColor: C.purple100, alignItems: 'center', justifyContent: 'center' },
-  addressLabel: { fontSize: 10, color: C.textTertiary, marginBottom: 4, letterSpacing: 0.8, fontFamily: 'PlusJakartaSans_600SemiBold' },
-  addressText:  { fontSize: 15, color: C.textPrimary, fontFamily: 'PlusJakartaSans_500Medium' },
-  confirmBtn:   { height: 52, borderRadius: 16, backgroundColor: C.purple700, alignItems: 'center', justifyContent: 'center' },
+  pinWrap:      { width: 40, height: 40, borderRadius: 12, backgroundColor: P.primaryBg, alignItems: 'center', justifyContent: 'center' },
+  addressLabel: { fontSize: 10, color: P.muted, marginBottom: 4, letterSpacing: 0.8, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  addressText:  { fontSize: 15, color: P.text, fontFamily: 'PlusJakartaSans_500Medium' },
+  confirmBtn:   { height: 52, borderRadius: 16, backgroundColor: P.bg, alignItems: 'center', justifyContent: 'center' },
   confirmBtnText: { fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });
 
@@ -567,26 +577,27 @@ const SectionCard: React.FC<{
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   children: React.ReactNode;
-}> = ({ icon, title, children }) => (
+}> = ({ icon, title, children }) => {
+  const { colors: P, styles: cardStyles } = useThemedStyles(make_cardStyles);
+  return (
     <View style={cardStyles.card}>
       <View style={cardStyles.header}>
         <View style={cardStyles.iconWrap}>
-          <Ionicons name={icon} size={15} color={C.purple600} />
+          <Ionicons name={icon} size={15} color={P.primary} />
         </View>
         <Text style={cardStyles.title}>{title}</Text>
       </View>
       {children}
     </View>
-);
+  );
+};
 
-const cardStyles = StyleSheet.create({
-  card:    { backgroundColor: C.bg, borderRadius: 20, padding: 18, marginBottom: 12,
-    borderWidth: 0.5, borderColor: C.border,
-    shadowColor: C.purple900, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
+const make_cardStyles = (P: Palette) => ({
+  card:    { backgroundColor: P.surface, borderRadius: 18, padding: 18, marginBottom: 12,
+    borderWidth: 0.5, borderColor: P.borderHard },
   header:  { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
-  iconWrap:{ width: 30, height: 30, borderRadius: 9, backgroundColor: C.purple100, alignItems: 'center', justifyContent: 'center' },
-  title:   { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textPrimary, letterSpacing: -0.1 },
+  iconWrap:{ width: 30, height: 30, borderRadius: 9, backgroundColor: P.primaryBg, alignItems: 'center', justifyContent: 'center' },
+  title:   { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text, letterSpacing: -0.1 },
 });
 
 // ── CHAMP GÉNÉRIQUE ───────────────────────────────────────────────
@@ -598,35 +609,38 @@ const Field = ({
   value: string; onChangeText: (t: string) => void;
   placeholder: string; keyboardType?: any;
   autoCapitalize?: any; optional?: boolean;
-}) => (
+}) => {
+    const { colors: P, styles: fieldStyles } = useThemedStyles(make_fieldStyles);
+    return (
     <View style={fieldStyles.wrap}>
       <Text style={fieldStyles.label}>
         {label}
         {optional && <Text style={fieldStyles.optional}> (optionnel)</Text>}
       </Text>
       <View style={fieldStyles.inputWrap}>
-        <Ionicons name={icon} size={16} color={C.textTertiary} style={{ marginRight: 10 }} />
+        <Ionicons name={icon} size={16} color={P.muted} style={{ marginRight: 10 }} />
         <TextInput
             style={fieldStyles.input}
             value={value}
             onChangeText={onChangeText}
             placeholder={placeholder}
-            placeholderTextColor={C.textTertiary}
+            placeholderTextColor={P.muted}
             keyboardType={keyboardType ?? 'default'}
             autoCapitalize={autoCapitalize ?? 'sentences'}
             autoCorrect={false}
         />
       </View>
     </View>
-);
+  );
+};
 
-const fieldStyles = StyleSheet.create({
+const make_fieldStyles = (P: Palette) => ({
   wrap:      { marginBottom: 12 },
-  label:     { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textSecondary, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 6 },
-  optional:  { color: C.textTertiary, fontFamily: 'PlusJakartaSans_400Regular', textTransform: 'none' },
-  inputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.surface, borderRadius: 12,
-    borderWidth: 0.5, borderColor: C.border, paddingHorizontal: 14, height: 50 },
-  input:     { flex: 1, fontSize: 15, color: C.textPrimary, height: '100%' },
+  label:     { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 6 },
+  optional:  { color: P.muted, fontFamily: 'PlusJakartaSans_400Regular', textTransform: 'none' },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: P.pageBg, borderRadius: 12,
+    borderWidth: 0.5, borderColor: P.borderHard, paddingHorizontal: 14, height: 50 },
+  input:     { flex: 1, fontSize: 15, color: P.text, height: '100%' },
 });
 
 // ── INTERFACE FORMDATA ────────────────────────────────────────────
@@ -647,6 +661,11 @@ interface FormData {
 // ==========================================
 export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
   const insets    = useSafeAreaInsets();
+  const { colors: P, styles } = useThemedStyles(make_styles);
+  const { styles: fieldStyles } = useThemedStyles(make_fieldStyles);
+  const { styles: phoneStyles } = useThemedStyles(make_phoneStyles);
+  const { styles: locStyles } = useThemedStyles(make_locStyles);
+  const { styles: genderStyles } = useThemedStyles(make_genderStyles);
   const addClient = useAppStore(s => s.addClient);
 
   // Modaux
@@ -670,7 +689,9 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
 
   // Sync whatsapp quand "same as phone" est actif
   const handlePhoneChange = (value: string) => {
-    const formatted = formatPhoneNumber(value, selectedCountry.format);
+    const parsed = parseImportedPhone(value, selectedCountry);
+    if (parsed.country.code !== selectedCountry.code) setSelectedCountry(parsed.country);
+    const formatted = formatPhoneNumber(parsed.national, parsed.country.format);
     setFormData(prev => ({
       ...prev,
       telephone: formatted,
@@ -693,7 +714,7 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
 
   // ── PHOTO ──
   const handlePhotoPress = () => {
-    Alert.alert('Photo du client', 'Choisir une option', [
+    showAlert('Photo du client', 'Choisir une option', [
       { text: 'Galerie', onPress: pickFromGallery },
       { text: 'Caméra',  onPress: pickFromCamera  },
       { text: 'Annuler', style: 'cancel'          },
@@ -727,7 +748,9 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
 
   // ── IMPORT DEPUIS RÉPERTOIRE ──
   const handleContactSelected = (contact: Contact) => {
-    const formatted = formatPhoneNumber(contact.phone.replace(/\D/g, ''), selectedCountry.format);
+    const parsed = parseImportedPhone(contact.phone, selectedCountry);
+    setSelectedCountry(parsed.country);
+    const formatted = formatPhoneNumber(parsed.national, parsed.country.format);
     setFormData(prev => ({
       ...prev,
       nom:       contact.name,
@@ -747,8 +770,8 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
 
   // ── SOUMISSION ──
   const handleSubmit = async () => {
-    if (!formData.nom.trim())       { Alert.alert('Erreur', 'Veuillez entrer le nom complet'); return; }
-    if (!formData.telephone.trim()) { Alert.alert('Erreur', 'Veuillez entrer le numéro de téléphone'); return; }
+    if (!formData.nom.trim())       { showAlert('Erreur', 'Veuillez entrer le nom complet'); return; }
+    if (!formData.telephone.trim()) { showAlert('Erreur', 'Veuillez entrer le numéro de téléphone'); return; }
 
     setIsLoading(true);
     try {
@@ -772,10 +795,10 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
         balance:       0,
         deletedAt:     null,
       });
-      if (!newClient) { Alert.alert('Erreur', "Impossible d'ajouter le client"); return; }
-      navigation.goBack();
+      if (!newClient) { showAlert('Erreur', "Impossible d'ajouter le client"); return; }
+      showSuccess('Client ajouté', `${formData.nom.trim()} a bien été enregistré.`, () => navigation.goBack());
     } catch {
-      Alert.alert('Erreur', "Impossible d'ajouter le client");
+      showAlert('Erreur', "Impossible d'ajouter le client");
     } finally {
       setIsLoading(false);
     }
@@ -804,22 +827,18 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
         {/* ── HEADER BLANC PREMIUM ── */}
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
-            <Ionicons name="arrow-back" size={18} color={C.textPrimary} />
+            <Ionicons name="arrow-back" size={18} color={P.text} />
           </TouchableOpacity>
-
-          <View style={{ flex: 1, marginLeft: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.kicker}>Atelier</Text>
             <Text style={styles.headerTitle}>Nouveau client</Text>
-            <Text style={styles.headerSub}>Ajoutez les informations ci-dessous</Text>
           </View>
-
-          {/* Bouton import répertoire */}
           <TouchableOpacity
-              style={styles.importBtn}
+              style={styles.goldBtn}
               onPress={() => setContactsPickerVisible(true)}
               activeOpacity={0.8}
           >
-            <Ionicons name="people-outline" size={16} color={C.purple600} />
-            <Text style={styles.importBtnText}>Répertoire</Text>
+            <Ionicons name="people-outline" size={18} color={P.gold} />
           </TouchableOpacity>
         </View>
 
@@ -843,7 +862,7 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
 
             {photo ? (
                 <TouchableOpacity style={styles.removePhoto} onPress={() => setPhoto(null)}>
-                  <Ionicons name="trash-outline" size={12} color={C.error} />
+                  <Ionicons name="trash-outline" size={12} color={P.error} />
                   <Text style={styles.removePhotoText}>Supprimer</Text>
                 </TouchableOpacity>
             ) : (
@@ -858,13 +877,13 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
               activeOpacity={0.8}
           >
             <View style={styles.importBannerIcon}>
-              <Ionicons name="person-add-outline" size={20} color={C.purple600} />
+              <Ionicons name="person-add-outline" size={20} color={P.primary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.importBannerTitle}>Importer depuis le répertoire</Text>
               <Text style={styles.importBannerSub}>Nom, numéro et photo récupérés automatiquement</Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={C.textTertiary} />
+            <Ionicons name="chevron-forward" size={16} color={P.muted} />
           </TouchableOpacity>
 
           {/* ── INFORMATIONS PERSONNELLES ── */}
@@ -889,13 +908,13 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
                 >
                   <Text style={phoneStyles.flag}>{selectedCountry.flag}</Text>
                   <Text style={phoneStyles.dial}>{selectedCountry.dial}</Text>
-                  <Ionicons name="chevron-down" size={12} color={C.textTertiary} />
+                  <Ionicons name="chevron-down" size={12} color={P.muted} />
                 </TouchableOpacity>
                 <View style={phoneStyles.sep} />
                 <TextInput
                     style={phoneStyles.input}
                     placeholder={selectedCountry.format.replace(/#/g, '0')}
-                    placeholderTextColor={C.textTertiary}
+                    placeholderTextColor={P.muted}
                     value={formData.telephone}
                     onChangeText={handlePhoneChange}
                     keyboardType="phone-pad"
@@ -913,7 +932,7 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
                 >
                   <View style={{
                     width: 36, height: 20, borderRadius: 10,
-                    backgroundColor: formData.whatsappSameAsPhone ? C.teal : C.border,
+                    backgroundColor: formData.whatsappSameAsPhone ? P.success : P.borderHard,
                     justifyContent: 'center', paddingHorizontal: 2,
                   }}>
                     <View style={{
@@ -921,26 +940,26 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
                       alignSelf: formData.whatsappSameAsPhone ? 'flex-end' : 'flex-start',
                     }} />
                   </View>
-                  <Text style={{ fontSize: 11, color: C.textSecondary }}>= téléphone</Text>
+                  <Text style={{ fontSize: 11, color: P.sub }}>= téléphone</Text>
                 </TouchableOpacity>
               </View>
               {!formData.whatsappSameAsPhone && (
                   <View style={fieldStyles.inputWrap}>
-                    <Ionicons name="logo-whatsapp" size={16} color={C.textTertiary} style={{ marginRight: 10 }} />
+                    <Ionicons name="logo-whatsapp" size={16} color={P.muted} style={{ marginRight: 10 }} />
                     <TextInput
                         style={fieldStyles.input}
                         value={formData.whatsapp}
                         onChangeText={v => update('whatsapp')(formatPhoneNumber(v, selectedCountry.format))}
                         placeholder={selectedCountry.format.replace(/#/g, '0')}
-                        placeholderTextColor={C.textTertiary}
+                        placeholderTextColor={P.muted}
                         keyboardType="phone-pad"
                     />
                   </View>
               )}
               {formData.whatsappSameAsPhone && (
                   <View style={[fieldStyles.inputWrap, { opacity: 0.6 }]}>
-                    <Ionicons name="logo-whatsapp" size={16} color={C.teal} style={{ marginRight: 10 }} />
-                    <Text style={{ fontSize: 15, color: C.textSecondary }}>
+                    <Ionicons name="logo-whatsapp" size={16} color={P.success} style={{ marginRight: 10 }} />
+                    <Text style={{ fontSize: 15, color: P.sub }}>
                       {formData.telephone ? `${selectedCountry.dial} ${formData.telephone}` : 'Même que le téléphone'}
                     </Text>
                   </View>
@@ -976,13 +995,13 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
                 activeOpacity={0.7}
             >
               <View style={[locStyles.iconWrap, formData.adresse ? locStyles.iconWrapFilled : null]}>
-                <Ionicons name="map-outline" size={18} color={formData.adresse ? C.purple600 : C.textTertiary} />
+                <Ionicons name="map-outline" size={18} color={formData.adresse ? P.primary : P.muted} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={locStyles.topLabel}>Choisir sur la carte</Text>
                 <Text style={locStyles.placeholder}>Appuyez pour géolocaliser</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color={C.textTertiary} />
+              <Ionicons name="chevron-forward" size={16} color={P.muted} />
             </TouchableOpacity>
           </SectionCard>
 
@@ -1002,7 +1021,7 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
                       <Ionicons
                           name={icon}
                           size={17}
-                          color={active ? C.purple600 : C.textTertiary}
+                          color={active ? '#fff' : P.muted}
                       />
                       <Text style={[genderStyles.label, active && genderStyles.labelActive]}>
                         {g === 'femme' ? 'Femme' : g === 'homme' ? 'Homme' : 'Autre'}
@@ -1015,21 +1034,12 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
 
           {/* ── INFORMATIONS COMPLÉMENTAIRES ── */}
           <SectionCard icon="calendar-outline" title="Informations complémentaires">
-            <Field
+            <DateField
                 label="Date de naissance"
-                icon="calendar-outline"
                 value={formData.dateNaissance}
-                onChangeText={v => {
-                  // Auto-format DD/MM/YYYY
-                  const digits = v.replace(/\D/g, '');
-                  let formatted = digits;
-                  if (digits.length > 2) formatted = digits.slice(0, 2) + '/' + digits.slice(2);
-                  if (digits.length > 4) formatted = formatted.slice(0, 5) + '/' + digits.slice(4, 8);
-                  update('dateNaissance')(formatted);
-                }}
+                onChange={(v) => update('dateNaissance')(v)}
+                output="fr"
                 placeholder="JJ/MM/AAAA"
-                keyboardType="number-pad"
-                optional
             />
           </SectionCard>
 
@@ -1045,7 +1055,7 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
                     value={formData.notesInternes}
                     onChangeText={update('notesInternes')}
                     placeholder="Préférences, particularités, rappels…"
-                    placeholderTextColor={C.textTertiary}
+                    placeholderTextColor={P.muted}
                     multiline
                     numberOfLines={3}
                 />
@@ -1067,7 +1077,7 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
             ) : (
                 <>
                   <Text style={styles.saveBtnText}>Enregistrer le client</Text>
-                  <Ionicons name="checkmark" size={18} color={C.gold} style={{ marginLeft: 8 }} />
+                  <Ionicons name="checkmark" size={18} color={P.gold} style={{ marginLeft: 8 }} />
                 </>
             )}
           </TouchableOpacity>
@@ -1077,51 +1087,55 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 // ── STYLES PRINCIPAUX ─────────────────────────────────────────────
-const phoneStyles = StyleSheet.create({
-  row:        { flexDirection: 'row', alignItems: 'center', backgroundColor: C.surface,
-    borderRadius: 12, borderWidth: 0.5, borderColor: C.border, height: 50, overflow: 'hidden' },
+const make_phoneStyles = (P: Palette) => ({
+  row:        { flexDirection: 'row', alignItems: 'center', backgroundColor: P.pageBg,
+    borderRadius: 12, borderWidth: 0.5, borderColor: P.borderHard, height: 50, overflow: 'hidden' },
   countryBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, height: '100%' },
   flag:       { fontSize: 18 },
-  dial:       { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.textPrimary },
-  sep:        { width: 0.5, height: '60%', backgroundColor: C.border },
-  input:      { flex: 1, fontSize: 15, color: C.textPrimary, paddingHorizontal: 14, height: '100%' },
+  dial:       { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+  sep:        { width: 0.5, height: '60%', backgroundColor: P.borderHard },
+  input:      { flex: 1, fontSize: 15, color: P.text, paddingHorizontal: 14, height: '100%' },
 });
 
-const locStyles = StyleSheet.create({
-  row:         { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.surface,
-    borderRadius: 12, borderWidth: 0.5, borderColor: C.border, padding: 12 },
-  rowFilled:   { backgroundColor: C.purple50, borderColor: C.purple200 },
-  iconWrap:    { width: 40, height: 40, borderRadius: 11, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' },
-  iconWrapFilled: { backgroundColor: C.purple100 },
-  topLabel:    { fontSize: 10, color: C.textTertiary, fontFamily: 'PlusJakartaSans_600SemiBold', letterSpacing: 0.3, marginBottom: 2 },
-  value:       { fontSize: 15, color: C.textPrimary, fontFamily: 'PlusJakartaSans_500Medium' },
-  placeholder: { color: C.textTertiary, fontFamily: 'PlusJakartaSans_400Regular' },
+const make_locStyles = (P: Palette) => ({
+  row:         { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: P.surface,
+    borderRadius: 12, borderWidth: 0.5, borderColor: P.borderHard, padding: 12 },
+  rowFilled:   { backgroundColor: P.primaryBg, borderColor: P.borderHard },
+  iconWrap:    { width: 40, height: 40, borderRadius: 11, backgroundColor: P.pageBg, alignItems: 'center', justifyContent: 'center' },
+  iconWrapFilled: { backgroundColor: P.primaryBg },
+  topLabel:    { fontSize: 10, color: P.muted, fontFamily: 'PlusJakartaSans_600SemiBold', letterSpacing: 0.3, marginBottom: 2 },
+  value:       { fontSize: 15, color: P.text, fontFamily: 'PlusJakartaSans_500Medium' },
+  placeholder: { color: P.muted, fontFamily: 'PlusJakartaSans_400Regular' },
 });
 
-const genderStyles = StyleSheet.create({
-  segmented: { flexDirection: 'row', backgroundColor: C.surface, borderRadius: 12, padding: 3, gap: 4 },
+const make_genderStyles = (P: Palette) => ({
+  segmented: { flexDirection: 'row', backgroundColor: P.pageBg, borderRadius: 12, padding: 3, gap: 4 },
   item:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, paddingVertical: 11, borderRadius: 10 },
-  itemActive:{ backgroundColor: C.bg,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 3, elevation: 2 },
-  label:     { fontSize: 14, color: C.textTertiary, fontFamily: 'PlusJakartaSans_500Medium' },
-  labelActive: { color: C.purple600, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  itemActive:{ backgroundColor: P.bg, borderWidth: 1, borderColor: P.goldRim },
+  label:     { fontSize: 14, color: P.muted, fontFamily: 'PlusJakartaSans_500Medium' },
+  labelActive: { color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold' },
 });
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
+const make_styles = (P: Palette) => ({
+  container: { flex: 1, backgroundColor: P.pageBg },
 
   // Header
-  header:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 14, backgroundColor: C.bg },
-  headerBtn:  { width: 38, height: 38, borderRadius: 12, borderWidth: 0.5, borderColor: C.border,
-    alignItems: 'center', justifyContent: 'center' },
-  headerTitle:{ fontSize: 17, fontFamily: 'PlusJakartaSans_700Bold', color: C.textPrimary, letterSpacing: -0.2 },
-  headerSub:  { fontSize: 12, color: C.textTertiary, marginTop: 1 },
+  header:     { flexDirection: 'row' as const, alignItems: 'flex-start' as const, paddingHorizontal: 20, paddingBottom: 14, backgroundColor: P.pageBg, gap: 12 },
+  headerBtn:  { width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
+    alignItems: 'center' as const, justifyContent: 'center' as const, marginTop: 4 },
+  goldBtn:    { width: 40, height: 40, borderRadius: 12, backgroundColor: P.bg, borderWidth: 1, borderColor: P.goldRim,
+    alignItems: 'center' as const, justifyContent: 'center' as const, marginTop: 4 },
+  kicker: {
+    fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+    letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
+  },
+  headerTitle:{ fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
+  headerSub:  { fontSize: 12, color: P.muted, marginTop: 1 },
   importBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10,
-    backgroundColor: C.purple100, paddingHorizontal: 12, paddingVertical: 8 },
-  importBtnText: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.purple600 },
-  divider:    { height: 0.5, backgroundColor: C.border },
+    backgroundColor: P.primaryBg, paddingHorizontal: 12, paddingVertical: 8 },
+  importBtnText: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
+  divider:    { height: 0.5, backgroundColor: P.borderHard },
 
   scrollContent: { paddingHorizontal: 16, paddingTop: 16 },
 
@@ -1129,30 +1143,28 @@ const styles = StyleSheet.create({
   photoSection: { alignItems: 'center', marginBottom: 16, gap: 8 },
   photoTouch:   { position: 'relative' },
   photo:        { width: 90, height: 90, borderRadius: 22 },
-  photoPlaceholder: { width: 90, height: 90, borderRadius: 22, backgroundColor: C.surface,
-    borderWidth: 1.5, borderColor: C.border, borderStyle: 'dashed',
+  photoPlaceholder: { width: 90, height: 90, borderRadius: 22, backgroundColor: P.surface,
+    borderWidth: 1.5, borderColor: P.borderHard, borderStyle: 'dashed',
     alignItems: 'center', justifyContent: 'center' },
   cameraBadge:  { position: 'absolute', right: -4, bottom: -4, width: 28, height: 28, borderRadius: 14,
-    backgroundColor: C.purple600, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2.5, borderColor: C.bg },
-  photoHint:    { fontSize: 12, color: C.textTertiary },
+    backgroundColor: P.primary, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2.5, borderColor: P.pageBg },
+  photoHint:    { fontSize: 12, color: P.muted },
   removePhoto:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  removePhotoText: { fontSize: 12, color: C.error, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  removePhotoText: { fontSize: 12, color: P.error, fontFamily: 'PlusJakartaSans_600SemiBold' },
 
   // Bannière import
-  importBanner: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: C.purple50,
-    borderRadius: 16, borderWidth: 1, borderColor: C.purple100, padding: 14, marginBottom: 12 },
-  importBannerIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: C.purple100,
+  importBanner: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: P.primaryBg,
+    borderRadius: 16, borderWidth: 1, borderColor: P.primaryBg, padding: 14, marginBottom: 12 },
+  importBannerIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: P.primaryBg,
     alignItems: 'center', justifyContent: 'center' },
-  importBannerTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: C.purple600, marginBottom: 2 },
-  importBannerSub:   { fontSize: 12, color: C.textSecondary, lineHeight: 17 },
+  importBannerTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary, marginBottom: 2 },
+  importBannerSub:   { fontSize: 12, color: P.sub, lineHeight: 17 },
 
   // Footer
   footer:     { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12,
-    backgroundColor: C.bg, borderTopWidth: 0.5, borderTopColor: C.border,
-    shadowColor: C.purple900, shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.06, shadowRadius: 10, elevation: 10 },
-  saveBtn:    { height: 54, borderRadius: 16, backgroundColor: C.purple900, flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center' },
+    backgroundColor: P.pageBg, borderTopWidth: 0.5, borderTopColor: P.borderHard },
+  saveBtn:    { height: 54, borderRadius: 16, backgroundColor: P.bg, flexDirection: 'row' as const,
+    alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1, borderColor: P.goldRim },
   saveBtnText:{ fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff', letterSpacing: 0.1 },
 });
