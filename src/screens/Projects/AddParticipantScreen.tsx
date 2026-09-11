@@ -23,6 +23,7 @@ import { useAppStore } from '@store/useAppStore';
 import { SPACING } from '@constants/theme';
 import { useThemedStyles, type Palette } from '@/src/theme';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { keyboardAvoidBehavior } from '@components/ui';
 import type { ParticipantRole } from '../../types';
 import { showAlert, showSuccess } from '@/src/context/DialogContext';
 
@@ -94,7 +95,7 @@ export const AddParticipantScreen: React.FC<Props> = ({ route, navigation }) => 
     return (
         <KeyboardAvoidingView
             style={[styles.root, { paddingTop: insets.top }]}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={keyboardAvoidBehavior}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
             <View style={styles.header}>

@@ -18,6 +18,7 @@ import {
 } from '@constants/tissuConstants';
 import { COULEURS_RAPIDES } from '@constants/realisationConstants';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { keyboardAvoidBehavior } from '@components/ui';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddTissu'>;
 
@@ -118,7 +119,7 @@ export const AddTissuScreen: React.FC<Props> = ({ route, navigation }) => {
   return (
     <KeyboardAvoidingView
       style={[styles.root, { paddingTop: insets.top }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={keyboardAvoidBehavior}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
       {/* Header */}
@@ -130,7 +131,7 @@ export const AddTissuScreen: React.FC<Props> = ({ route, navigation }) => {
         <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* Photo */}
         <Section title="Photo (optionnel)">

@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { showSuccess } from '@/src/context/DialogContext';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -63,6 +63,11 @@ export const EditRealisationScreen: React.FC<Props> = ({ route, navigation }) =>
     for (const uri of v.newPhotoUris) {
       const { publicUrl } = await uploadRealisationPhoto(uri, userId ?? '', realisationId);
       if (publicUrl) uploadedUrls.push(publicUrl);
+    }
+    if (v.newPhotoUris.length > 0 && uploadedUrls.length === 0) {
+      setIsSaving(false);
+      showAlert('Photos non envoyées', "Les images n'ont pas pu être enregistrées. Réessayez.");
+      return;
     }
     const finalPhotos = [...v.existingPhotos, ...uploadedUrls];
 

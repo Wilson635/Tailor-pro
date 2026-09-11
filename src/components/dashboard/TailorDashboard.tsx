@@ -4,7 +4,7 @@
 // Encaissements · Soldes · Dernières réalisations · Alertes
 // ==========================================
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     View,
     Text,
@@ -19,8 +19,10 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrencyShort, formatRelativeTime } from '@utils/formatters';
+import { orderEncaisse } from '@utils/finance';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { useThemedStyles, type Palette } from '@/src/theme';
+import { isCancelledOrder } from '@constants/commandeConstants';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Period = 'jour' | 'semaine' | 'mois';
@@ -139,7 +141,9 @@ export const TailorDashboard: React.FC = () => {
     const insets     = useSafeAreaInsets();
     const navigation = useNavigation<Nav>();
     const { colors: P, styles } = useThemedStyles(makeStyles);
-    const { statistics, activities, orders, clients, realisations } = useAppStore();
+    const { statistics, activities, orders, clients, realisations, loadAllRealisations } = useAppStore();
+
+    useEffect(() => { loadAllRealisations(); }, []);
 
     const [period, setPeriod] = useState<Period>('mois');
 
@@ -180,12 +184,14 @@ export const TailorDashboard: React.FC = () => {
 
     // ── KPIs financiers ─────────────────────
     const caPeriode = useMemo(() =>
-            periodOrders.reduce((s, o) => s + (o.totalPrice ?? 0), 0),
+            periodOrders
+                .filter(o => !isCancelledOrder(o.orderStatus))
+                .reduce((s, o) => s + (o.totalPrice ?? 0), 0),
         [periodOrders]
     );
 
     const encaissePeriode = useMemo(() =>
-            periodOrders.reduce((s, o) => s + Math.max((o.totalPrice ?? 0) - (o.remainingAmount ?? 0), 0), 0),
+            periodOrders.reduce((s, o) => s + orderEncaisse(o), 0),
         [periodOrders]
     );
 
@@ -248,7 +254,7 @@ export const TailorDashboard: React.FC = () => {
 
                 <View style={styles.heroTop}>
                     <View>
-                        <Text style={styles.heroLabel}>REVENUS CE MOIS</Text>
+                        <Text style={styles.heroLabel}>ENCAISSÉ CE MOIS</Text>
                         <Text style={styles.heroAmount}>
                             {formatCurrencyShort(statistics.monthlyRevenue)}
                         </Text>
@@ -262,10 +268,11 @@ export const TailorDashboard: React.FC = () => {
                     </View>
 
                     <View style={styles.heroNetCard}>
-                        <Text style={styles.heroNetLabel}>Bénéfice net</Text>
+                        <Text style={styles.heroNetLabel}>Bénéfice</Text>
                         <Text style={styles.heroNetValue}>
                             {formatCurrencyShort(statistics.netProfit)}
                         </Text>
+                        <Text style={styles.heroNetHint}>encaissé − dépenses</Text>
                     </View>
                 </View>
 
@@ -687,6 +694,7 @@ const makeStyles = (P: Palette) => ({
     heroNetCard:  { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 12, alignItems: 'flex-end' as const, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)' },
     heroNetLabel: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'PlusJakartaSans_600SemiBold', marginBottom: 4 },
     heroNetValue: { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
+    heroNetHint: { fontSize: 9, color: 'rgba(255,255,255,0.35)', marginTop: 2 },
     heroStatsRow: { flexDirection: 'row' as const, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 14, paddingVertical: 12, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.07)' },
     heroMiniStat:    { flex: 1, alignItems: 'center' as const, gap: 3 },
     heroStatDivider: { width: 0.5, backgroundColor: 'rgba(255,255,255,0.1)' },

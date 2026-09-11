@@ -7,6 +7,7 @@ import {
   startNotificationResponseListener,
   syncDeviceNotifications,
 } from '@/src/notifications/deviceNotifications';
+import { syncAccountDevice } from '@/src/services/accountDevices';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 
 export const NotificationBinder = () => {
@@ -28,6 +29,11 @@ export const NotificationBinder = () => {
     });
     return () => bindNotificationNavigator(null);
   }, [navigation]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    syncAccountDevice(profile.id, profile.email);
+  }, [profile?.id, profile?.email]);
 
   useEffect(() => {
     const uid = profile?.id;

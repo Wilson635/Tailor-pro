@@ -20,6 +20,7 @@ import { useProfile } from '@hooks/useProfile';
 import { formatCurrencyShort } from '@utils/formatters';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { useThemedStyles, type Palette } from '@/src/theme';
+import { isCancelledOrder } from '@constants/commandeConstants';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -120,7 +121,11 @@ export const ClientDashboard: React.FC = () => {
     );
 
     const activeOrders = useMemo(() =>
-            myOrders.filter(o => o.orderStatus !== 'delivered' && o.orderStatus !== 'cancelled'),
+            myOrders.filter(o =>
+                o.orderStatus !== 'delivered' &&
+                o.orderStatus !== 'livree' &&
+                !isCancelledOrder(o.orderStatus)
+            ),
         [myOrders]
     );
 
@@ -131,7 +136,6 @@ export const ClientDashboard: React.FC = () => {
 
     const nextDelivery = useMemo(() => {
         const pending = activeOrders
-            .filter(o => o.orderStatus !== 'cancelled')
             .sort((a, b) => new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime());
         return pending[0] ?? null;
     }, [activeOrders]);

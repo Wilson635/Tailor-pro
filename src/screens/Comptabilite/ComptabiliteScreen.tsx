@@ -21,6 +21,7 @@ import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatte
 import { DateField } from '@components/ui';
 import { exportExcelFile, exportPdfFile } from '@utils/exportFiles';
 import { TYPE_PAIEMENT_META, type TypePaiement } from '@constants/paiementConstants';
+import { isCancelledOrder } from '@constants/commandeConstants';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Period = 'jour' | 'semaine' | 'mois' | 'custom';
@@ -208,7 +209,7 @@ export function ComptabiliteScreen() {
     // ── Débiteurs (global, toutes périodes) ────────────────
     const debtors = useMemo(() =>
             allOrders
-                .filter(o => o.remainingAmount > 0 && o.paymentStatus !== 'paid')
+                .filter(o => !isCancelledOrder(o.orderStatus) && o.remainingAmount > 0 && o.paymentStatus !== 'paid')
                 .sort((a, b) => b.remainingAmount - a.remainingAmount),
         [allOrders]
     );
@@ -216,7 +217,7 @@ export function ComptabiliteScreen() {
 
     // ── Solde en attente sur la période ────────────────────
     const soldesPeriode = periodOrders
-        .filter(o => o.remainingAmount > 0)
+        .filter(o => !isCancelledOrder(o.orderStatus) && o.remainingAmount > 0)
         .reduce((s, o) => s + o.remainingAmount, 0);
 
     // ── Export Excel ─────────────────────────────────────────
@@ -561,7 +562,7 @@ export function ComptabiliteScreen() {
                     <View style={styles.futureBanner}>
                         <Feather name="info" size={13} color={P.primary} style={{ marginRight: 8 }} />
                         <Text style={styles.futureText}>
-                            Dépenses & bénéfices nets disponibles dans une prochaine version
+                            Un acompte est un encaissement. Le bénéfice = encaissements − dépenses (dépenses pas encore suivies). Le reste impayé n’est pas du bénéfice. Sur une commande annulée, les sommes déjà reçues restent encaissées.
                         </Text>
                     </View>
                 </ScrollView>

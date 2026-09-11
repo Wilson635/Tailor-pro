@@ -20,6 +20,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { catalogService } from '@services/supabaseService';
 import { useThemedStyles, type Palette } from '@/src/theme';
+import { keyboardAvoidBehavior } from '@components/ui';
 import type { CatalogCategory } from '../../types';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 import type { Difficulte } from '@constants/catalogConstants';
@@ -158,7 +159,7 @@ export const EditCatalogModelScreen: React.FC<Props> = ({ route, navigation }) =
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={keyboardAvoidBehavior}
     >
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>

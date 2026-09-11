@@ -9,6 +9,7 @@ import {
     View, Text, TouchableOpacity,
     ScrollView, Switch, StatusBar, TextInput,
     ActivityIndicator, Platform, Image,
+    KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,6 +25,7 @@ import { useAppStore } from '@store/useAppStore';
 import { supabase } from '@/src/lib/supabase';
 import { uploadProfilePhoto } from '@services/supabaseService';
 import { useThemedStyles, type Palette } from '@/src/theme';
+import { keyboardAvoidBehavior } from '@components/ui';
 import { t } from '@/src/i18n';
 import { formatCurrency, formatCurrencyShort } from '@utils/formatters';
 import { buildInbox } from '@/src/utils/buildInbox';
@@ -33,6 +35,17 @@ import {
     setNotificationsEnabled,
     syncDeviceNotifications,
 } from '@/src/notifications/deviceNotifications';
+import {
+    getInstallId,
+    listLoginEvents,
+    listAccountDevices,
+    recordLoginEvent,
+    revokeAccountDevice,
+    revokeOtherAccountDevices,
+    syncAccountDevice,
+    devicesTableSqlHint,
+    type AccountDevice,
+} from '@/src/services/accountDevices';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
@@ -62,7 +75,6 @@ const planMetaFor = (P: Palette): Record<string, { label: string; color: string;
 });
 
 // ── ASYNC STORAGE KEYS ────────────────────────────────────────────
-const DEVICES_KEY   = (uid: string) => `@tailorpro_devices_${uid}`;
 const HISTORY_KEY   = (uid: string) => `@tailorpro_login_history_${uid}`;
 const BIOMETRIC_KEY = (uid: string) => `@biometrics_enabled_${uid}`;
 
@@ -70,14 +82,13 @@ const BIOMETRIC_KEY = (uid: string) => `@biometrics_enabled_${uid}`;
 interface StoredDevice {
     id: string; name: string; os: string; osVersion: string;
     location: string; lastSeen: string; registeredAt: string;
+    isPrimary?: boolean; revoked?: boolean;
 }
 interface LoginEvent {
     id: string; action: string; location: string; date: string; success: boolean;
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────
-const getCurrentDeviceId = () =>
-    `${Device.modelName ?? 'unknown'}_${Device.osName ?? ''}_${Platform.OS}`.replace(/\s/g, '_');
 const getCurrentDeviceName = () =>
     Device.deviceName ?? Device.modelName ?? (Platform.OS === 'ios' ? 'iPhone' : 'Android');
 const getCurrentOs = () => {
@@ -176,6 +187,8 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     const [twoFAEnabled, setTwoFAEnabled]           = useState(false);
     const [notifEnabled, setNotifEnabled]           = useState(true);
     const [devices, setDevices]                     = useState<StoredDevice[]>([]);
+    const [currentDeviceId, setCurrentDeviceId]     = useState('');
+    const [devicesTableMissing, setDevicesTableMissing] = useState(false);
     const [loadingDevices, setLoadingDevices]       = useState(true);
     const [loginHistory, setLoginHistory]           = useState<LoginEvent[]>([]);
     const [loadingHistory, setLoadingHistory]       = useState(true);
@@ -214,32 +227,46 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         init();
     }, [profile?.id]);
 
+    const mapDevice = (d: AccountDevice): StoredDevice => ({
+        id: d.device_id,
+        name: d.name,
+        os: d.os,
+        osVersion: '',
+        location: d.is_primary ? 'Premier appareil' : '',
+        lastSeen: d.last_seen,
+        registeredAt: d.first_seen,
+        isPrimary: d.is_primary,
+        revoked: !!d.revoked_at,
+    });
+
     // ── Appareils ─────────────────────────────────────────────────
     const loadDevices = useCallback(async () => {
         if (!profile?.id) return;
         setLoadingDevices(true);
         try {
-            const raw = await AsyncStorage.getItem(DEVICES_KEY(profile.id));
-            const stored: StoredDevice[] = raw ? JSON.parse(raw) : [];
-            const currentId = getCurrentDeviceId();
-            const existing = stored.find(d => d.id === currentId);
-            const cur: StoredDevice = {
-                id: currentId, name: getCurrentDeviceName(),
-                os: getCurrentOs(), osVersion: Device.osVersion ?? '',
-                location: 'Appareil actuel', lastSeen: now(),
-                registeredAt: existing?.registeredAt ?? now(),
-            };
-            const updated = [cur, ...stored.filter(d => d.id !== currentId)];
-            await AsyncStorage.setItem(DEVICES_KEY(profile.id), JSON.stringify(updated));
-            setDevices(updated);
+            const installId = await getInstallId();
+            setCurrentDeviceId(installId);
+            let { devices: rows, tableMissing } = await listAccountDevices(profile.id);
+            if (!tableMissing && !rows.some(d => d.device_id === installId)) {
+                const synced = await syncAccountDevice(profile.id, profile.email);
+                rows = synced.devices;
+                tableMissing = synced.tableMissing;
+            }
+            setDevicesTableMissing(tableMissing);
+            setDevices(rows.map(mapDevice));
         } finally { setLoadingDevices(false); }
-    }, [profile?.id]);
+    }, [profile?.id, profile?.email]);
 
     // ── Historique ────────────────────────────────────────────────
     const loadHistory = useCallback(async () => {
         if (!profile?.id) return;
         setLoadingHistory(true);
         try {
+            const cloud = await listLoginEvents(profile.id);
+            if (cloud.length) {
+                setLoginHistory(cloud.slice(0, 10));
+                return;
+            }
             const raw = await AsyncStorage.getItem(HISTORY_KEY(profile.id));
             const stored: LoginEvent[] = raw ? JSON.parse(raw) : [];
             setLoginHistory(stored.slice(0, 10));
@@ -248,6 +275,12 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
     const recordSecurityEvent = async (action: string) => {
         if (!profile?.id) return;
+        await recordLoginEvent(profile.id, action);
+        const cloud = await listLoginEvents(profile.id);
+        if (cloud.length) {
+            setLoginHistory(cloud.slice(0, 10));
+            return;
+        }
         const raw = await AsyncStorage.getItem(HISTORY_KEY(profile.id));
         const stored: LoginEvent[] = raw ? JSON.parse(raw) : [];
         const ev: LoginEvent = {
@@ -407,11 +440,8 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                 text: 'Retirer', style: 'destructive',
                 onPress: async () => {
                     if (!profile?.id) return;
-                    const raw = await AsyncStorage.getItem(DEVICES_KEY(profile.id));
-                    const stored: StoredDevice[] = raw ? JSON.parse(raw) : [];
-                    const updated = stored.filter(d => d.id !== device.id);
-                    await AsyncStorage.setItem(DEVICES_KEY(profile.id), JSON.stringify(updated));
-                    setDevices(updated);
+                    await revokeAccountDevice(profile.id, device.id);
+                    setDevices(prev => prev.map(d => d.id === device.id ? { ...d, revoked: true } : d));
                     await recordSecurityEvent(`Appareil retiré : ${device.name}`);
                 },
             },
@@ -425,11 +455,9 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                 text: 'Confirmer', style: 'destructive',
                 onPress: async () => {
                     if (!profile?.id) return;
-                    const currentId = getCurrentDeviceId();
-                    const current = devices.find(d => d.id === currentId);
-                    const updated = current ? [current] : [];
-                    await AsyncStorage.setItem(DEVICES_KEY(profile.id), JSON.stringify(updated));
-                    setDevices(updated);
+                    const currentId = currentDeviceId || await getInstallId();
+                    await revokeOtherAccountDevices(profile.id, currentId);
+                    setDevices(prev => prev.map(d => d.id === currentId ? d : { ...d, revoked: true }));
                     await recordSecurityEvent('Tous les autres appareils déconnectés');
                 },
             },
@@ -472,7 +500,6 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         return name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase();
     };
 
-    const currentDeviceId = getCurrentDeviceId();
     const plan = profile?.plan_abonnement ?? 'gratuit';
     const planMeta = planMetaFor(P)[plan] ?? planMetaFor(P).gratuit;
 
@@ -505,9 +532,15 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                 </TouchableOpacity>
             </View>
 
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={keyboardAvoidBehavior}
+                keyboardVerticalOffset={insets.top + 56}
+            >
             <ScrollView
                 contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
             >
                 {/* ── HERO ── */}
                 <View style={styles.heroCard}>
@@ -971,12 +1004,15 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
                         <View style={styles.sectionHeaderRow}>
                             <SectionTitle title="Appareils enregistrés" />
-                            {devices.length > 1 && (
+                            {devices.filter(d => !d.revoked && d.id !== currentDeviceId).length > 0 && (
                                 <TouchableOpacity onPress={handleRevokeAllOthers}>
                                     <Text style={styles.revokeAllText}>Tout retirer</Text>
                                 </TouchableOpacity>
                             )}
                         </View>
+                        {devicesTableMissing && (
+                            <Text style={styles.emptyText}>{devicesTableSqlHint()}</Text>
+                        )}
                         <Card>
                             {loadingDevices ? (
                                 <ActivityIndicator style={{ padding: 20 }} color={P.primary} />
@@ -987,7 +1023,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                                     const isCurrent = device.id === currentDeviceId;
                                     return (
                                         <React.Fragment key={device.id}>
-                                            <View style={styles.deviceRow}>
+                                            <View style={[styles.deviceRow, device.revoked && { opacity: 0.55 }]}>
                                                 <View style={[styles.deviceIconWrap, isCurrent && styles.deviceIconWrapActive]}>
                                                     <Ionicons
                                                         name={device.os.toLowerCase().includes('ios') ? 'logo-apple' : 'logo-android'}
@@ -995,26 +1031,35 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                                                     />
                                                 </View>
                                                 <View style={styles.deviceInfo}>
-                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                                         <Text style={styles.deviceName} numberOfLines={1}>{device.name}</Text>
                                                         {isCurrent && (
                                                             <View style={styles.deviceCurrentBadge}>
                                                                 <Text style={styles.deviceCurrentText}>Cet appareil</Text>
                                                             </View>
                                                         )}
+                                                        {device.isPrimary && !isCurrent && (
+                                                            <View style={styles.deviceCurrentBadge}>
+                                                                <Text style={styles.deviceCurrentText}>Premier</Text>
+                                                            </View>
+                                                        )}
                                                     </View>
                                                     <Text style={styles.deviceSub}>{device.os}</Text>
                                                     <Text style={styles.deviceSub}>
-                                                        {isCurrent ? 'Actif maintenant' : `Vu le ${formatEventDate(device.lastSeen)}`}
+                                                        {device.revoked
+                                                            ? `Déconnecté · vu le ${formatEventDate(device.lastSeen)}`
+                                                            : isCurrent
+                                                                ? 'Actif maintenant'
+                                                                : `Vu le ${formatEventDate(device.lastSeen)}`}
                                                     </Text>
                                                 </View>
-                                                {!isCurrent ? (
+                                                {!isCurrent && !device.revoked ? (
                                                     <TouchableOpacity style={styles.deviceRevokeBtn} onPress={() => handleRevokeDevice(device)}>
                                                         <Feather name="trash-2" size={15} color={P.error} />
                                                     </TouchableOpacity>
-                                                ) : (
+                                                ) : isCurrent ? (
                                                     <View style={styles.deviceActiveIndicator} />
-                                                )}
+                                                ) : null}
                                             </View>
                                             {i < devices.length - 1 && <Divider />}
                                         </React.Fragment>
@@ -1073,6 +1118,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
                 <Text style={styles.version}>TailorPro v1.0.0 · Module 0</Text>
             </ScrollView>
+            </KeyboardAvoidingView>
         </View>
     );
 };

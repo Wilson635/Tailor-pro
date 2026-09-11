@@ -23,6 +23,7 @@ import { useAppStore } from '@store/useAppStore';
 import { formatCurrency } from '@utils/formatters';
 import { getDeviseMeta } from '@constants/currencies';
 import { getRuntimePrefs } from '@/src/preferences/runtime';
+import { keyboardAvoidBehavior } from '@components/ui';
 import {
   SPACING, FONT_SIZES,
   BORDER_RADIUS, CLOTHING_TYPE_LABELS,
@@ -414,7 +415,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   return (
       <KeyboardAvoidingView
           style={[styles.container, { paddingTop: insets.top }]}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={keyboardAvoidBehavior}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <View style={styles.headerWrap}>

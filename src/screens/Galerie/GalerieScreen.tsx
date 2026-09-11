@@ -3,7 +3,7 @@
 // Grille visuelle de toutes les photos de réalisations.
 // ──────────────────────────────────────────────────────────
 import React, {
-    useState, useMemo, useCallback,
+    useState, useMemo, useCallback, useEffect,
 } from 'react';
 import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
@@ -98,7 +98,12 @@ export function GalerieScreen() {
     const insets = useSafeAreaInsets();
     const { colors: P, styles } = useThemedStyles(makeStyles);
 
-    const { realisations, catalog, orders, updateCatalogModel, loadCatalog } = useAppStore();
+    const { realisations, catalog, orders, updateCatalogModel, loadCatalog, loadAllRealisations } = useAppStore();
+
+    useEffect(() => {
+        loadCatalog();
+        loadAllRealisations();
+    }, []);
 
     const [categorie, setCategorie] = useState<GalerieCategorie>('tout');
     const [selecting,  setSelecting]  = useState(false);

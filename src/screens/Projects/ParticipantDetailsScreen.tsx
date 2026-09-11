@@ -13,7 +13,9 @@ import {
     ActivityIndicator,
     Modal,
     TextInput,
+    KeyboardAvoidingView,
     } from 'react-native';
+import { keyboardAvoidBehavior } from '@components/ui';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -207,6 +209,7 @@ export const ParticipantDetailsScreen: React.FC<Props> = ({ route, navigation })
 
             {/* ══ MODAL PROMOTION ══ */}
             <Modal visible={promoteModal} transparent animationType="fade" onRequestClose={() => setPromoteModal(false)}>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidBehavior}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalCard}>
                         <Text style={styles.headerTitle}>Créer la fiche client</Text>
@@ -235,6 +238,7 @@ export const ParticipantDetailsScreen: React.FC<Props> = ({ route, navigation })
                         </View>
                     </View>
                 </View>
+                </KeyboardAvoidingView>
             </Modal>
         </View>
     );

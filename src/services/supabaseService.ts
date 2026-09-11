@@ -825,8 +825,12 @@ export const statisticsService = {
                 o => o.order_status === 'completed' || o.order_status === 'delivered'
             ).length;
 
-            // Impayés
-            const unpaidOrders = orders.filter(o => o.payment_status !== 'paid');
+            // Impayés : le reste d'une commande annulée n'est plus dû
+            const unpaidOrders = orders.filter(o =>
+                o.payment_status !== 'paid' &&
+                o.order_status !== 'cancelled' &&
+                o.order_status !== 'annulee'
+            );
             const unpaidInvoices = unpaidOrders.length;
             const unpaidAmount = unpaidOrders.reduce((sum, o) => sum + Number(o.remaining_amount), 0);
 
@@ -841,7 +845,9 @@ export const statisticsService = {
                 completedOrders,
                 unpaidInvoices,
                 unpaidAmount,
-                totalExpenses: 0, // à implémenter si tu ajoutes une table dépenses
+                totalExpenses: 0, // pas de suivi des dépenses pour l'instant
+                // Bénéfice = encaissements − dépenses. Sans dépenses, égal à l'encaissé du mois
+                // (acomptes inclus). Le reste à payer n'entre pas ici.
                 netProfit: monthlyRevenue,
             };
 
@@ -1243,6 +1249,15 @@ export const realisationService = {
             .order('created_at', { ascending: false });
     },
 
+    getAllForCouturier: async () => {
+        const userId = await getUserId();
+        return supabase
+            .from('realisations')
+            .select('*')
+            .eq('couturier_id', userId)
+            .order('created_at', { ascending: false });
+    },
+
     getByCommande: async (commandeId: string) => {
         const userId = await getUserId();
         return supabase
@@ -1328,18 +1343,22 @@ export const uploadRealisationPhoto = async (
     realisationId: string,
 ): Promise<{ publicUrl: string | null; error: Error | null }> => {
     try {
-        const ext      = (localUri.split('.').pop()?.toLowerCase() ?? 'jpg').split('?')[0];
-        const fileName = `${couturierId}/${realisationId}/${Date.now()}.${ext}`;
-        const response = await fetch(localUri);
-        const blob     = await response.blob();
-        const buffer   = await blob.arrayBuffer();
+        const userId = couturierId || await getUserId();
+        const ext = guessImageExt(localUri);
+        const path = `${userId}/realisations/${realisationId}_${Date.now()}.${ext}`;
+        const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const arrayBuffer = await uriToArrayBuffer(localUri);
         const { error } = await supabase.storage
-            .from('realisation-photos')
-            .upload(fileName, buffer, { contentType: `image/${ext}`, upsert: false });
-        if (error) return { publicUrl: null, error };
-        const { data } = supabase.storage.from('realisation-photos').getPublicUrl(fileName);
+            .from('catalog-photos')
+            .upload(path, arrayBuffer, { contentType, upsert: false });
+        if (error) {
+            console.error('Erreur upload photo réalisation:', error);
+            return { publicUrl: null, error };
+        }
+        const { data } = supabase.storage.from('catalog-photos').getPublicUrl(path);
         return { publicUrl: data.publicUrl, error: null };
     } catch (e) {
+        console.error('Exception upload photo réalisation:', e);
         return { publicUrl: null, error: e as Error };
     }
 };
@@ -1348,9 +1367,10 @@ export const deleteRealisationPhoto = async (
     publicUrl: string,
 ): Promise<{ error: Error | null }> => {
     try {
-        const match = publicUrl.match(/realisation-photos\/(.+)$/);
+        const match = publicUrl.match(/\/(?:catalog-photos|realisation-photos)\/(.+)$/);
         if (!match) return { error: new Error('URL invalide') };
-        const { error } = await supabase.storage.from('realisation-photos').remove([match[1]]);
+        const bucket = publicUrl.includes('realisation-photos') ? 'realisation-photos' : 'catalog-photos';
+        const { error } = await supabase.storage.from(bucket).remove([match[1]]);
         return { error: error ?? null };
     } catch (e) {
         return { error: e as Error };
@@ -1433,18 +1453,22 @@ export const uploadTissuPhoto = async (
     tissuId: string,
 ): Promise<{ publicUrl: string | null; error: Error | null }> => {
     try {
-        const ext      = (localUri.split('.').pop()?.toLowerCase() ?? 'jpg').split('?')[0];
-        const fileName = `${couturierId}/${tissuId}/${Date.now()}.${ext}`;
-        const response = await fetch(localUri);
-        const blob     = await response.blob();
-        const buffer   = await blob.arrayBuffer();
+        const userId = couturierId || await getUserId();
+        const ext = guessImageExt(localUri);
+        const path = `${userId}/tissus/${tissuId}_${Date.now()}.${ext}`;
+        const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const arrayBuffer = await uriToArrayBuffer(localUri);
         const { error } = await supabase.storage
-            .from('tissu-photos')
-            .upload(fileName, buffer, { contentType: `image/${ext}`, upsert: true });
-        if (error) return { publicUrl: null, error };
-        const { data } = supabase.storage.from('tissu-photos').getPublicUrl(fileName);
+            .from('catalog-photos')
+            .upload(path, arrayBuffer, { contentType, upsert: false });
+        if (error) {
+            console.error('Erreur upload photo tissu:', error);
+            return { publicUrl: null, error };
+        }
+        const { data } = supabase.storage.from('catalog-photos').getPublicUrl(path);
         return { publicUrl: data.publicUrl, error: null };
     } catch (e) {
+        console.error('Exception upload photo tissu:', e);
         return { publicUrl: null, error: e as Error };
     }
 };
@@ -1569,7 +1593,8 @@ export const comptabiliteService = {
             .from('orders')
             .select('id, client_id, client_name, total_price, remaining_amount, payment_status, order_status, created_at, numero_commande, advance_payment')
             .eq('couturier_id', userId)
-            .neq('order_status', 'cancelled');
+            .neq('order_status', 'cancelled')
+            .neq('order_status', 'annulee');
     },
 };
 

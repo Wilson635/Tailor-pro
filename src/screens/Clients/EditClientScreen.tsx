@@ -8,6 +8,7 @@ import {
   View, Text, ScrollView,
   TouchableOpacity, Modal,
   FlatList, TextInput, ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,7 +16,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { useAppStore } from '@store/useAppStore';
 import type { RootStackParamList } from '../../types';
-import { Avatar, DateField } from '@components/ui';
+import { Avatar, DateField, keyboardAvoidBehavior } from '@components/ui';
 import { useThemedStyles, type Palette } from '@/src/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditClient'>;
@@ -414,6 +415,11 @@ export const EditClientScreen: React.FC<Props> = ({ route, navigation }) => {
         </View>
         <View style={styles.divider} />
 
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={keyboardAvoidBehavior}
+            keyboardVerticalOffset={insets.top + 56}
+        >
         <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 110 }]}
@@ -578,6 +584,7 @@ export const EditClientScreen: React.FC<Props> = ({ route, navigation }) => {
             />
           </SectionCard>
         </ScrollView>
+        </KeyboardAvoidingView>
 
         {/* ── FOOTER ── */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 10 }]}>

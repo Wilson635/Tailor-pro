@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
-  View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
+  View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +17,7 @@ import {
   type TypePaiement, type ModePaiement,
 } from '@constants/paiementConstants';
 import { useThemedStyles, type Palette } from '@/src/theme';
-import { Avatar } from '@components/ui';
+import { Avatar, keyboardAvoidBehavior } from '@components/ui';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddPayment'>;
@@ -86,7 +86,7 @@ export const AddPaymentScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   return (
-    <KeyboardAvoidingView style={[styles.root, { paddingTop: insets.top }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={[styles.root, { paddingTop: insets.top }]} behavior={keyboardAvoidBehavior} keyboardVerticalOffset={insets.top}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={18} color={P.text} />

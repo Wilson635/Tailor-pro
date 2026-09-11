@@ -153,12 +153,17 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
     });
     if (!result.canceled) {
       setIsUploading(true);
+      let ok = 0;
       for (const asset of result.assets) {
-        await addRealisationPhoto(realisationId, clientId, asset.uri);
+        const saved = await addRealisationPhoto(realisationId, clientId, asset.uri);
+        if (saved) ok += 1;
       }
       setIsUploading(false);
-      const n = result.assets.length;
-      showSuccess(n > 1 ? 'Photos ajoutées' : 'Photo ajoutée', 'La galerie a été mise à jour.');
+      if (ok === 0) {
+        showAlert('Photo non ajoutée', "L'envoi a échoué. Vérifiez la connexion et réessayez.");
+      } else {
+        showSuccess(ok > 1 ? 'Photos ajoutées' : 'Photo ajoutée', 'La galerie a été mise à jour.');
+      }
     }
   };
 

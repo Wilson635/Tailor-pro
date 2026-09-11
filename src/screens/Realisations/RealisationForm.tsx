@@ -10,8 +10,10 @@ import React, { useCallback, useState } from 'react';
 import { showAlert } from '@/src/context/DialogContext';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
-  ActivityIndicator, Image,
+  ActivityIndicator, Image, KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { keyboardAvoidBehavior } from '@components/ui';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAppStore } from '@store/useAppStore';
@@ -187,6 +189,7 @@ const chipS = StyleSheet.create({
 // FORMULAIRE
 // ==========================================
 export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues, isSaving, submitLabel, onSubmit }) => {
+  const insets = useSafeAreaInsets();
   const { catalog, fiches, tissus } = useAppStore();
   const clientFiches = fiches[clientId] ?? [];
   const availableModels = catalog.filter(m => !m.deletedAt && m.statut === 'public');
@@ -235,8 +238,16 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
   };
 
   return (
-    <>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={keyboardAvoidBehavior}
+      keyboardVerticalOffset={insets.top + 56}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
 
         {/* ── PHOTOS — bande "planche d'atelier" ── */}
         <View style={{ marginBottom: 26 }}>
@@ -441,7 +452,7 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
               : <Text style={styles.submitText}>{submitLabel}</Text>}
         </TouchableOpacity>
       </View>
-    </>
+    </KeyboardAvoidingView>
   );
 };
 

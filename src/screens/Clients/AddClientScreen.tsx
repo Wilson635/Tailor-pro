@@ -9,6 +9,7 @@ import {
   View, Text, ScrollView,
   TouchableOpacity, Image, Modal,
   FlatList, TextInput, ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,7 +20,7 @@ import * as Location from 'expo-location';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { useAppStore } from '@store/useAppStore';
 import type { RootStackParamList } from '../../types';
-import { Avatar, DateField } from '@components/ui';
+import { Avatar, DateField, keyboardAvoidBehavior } from '@components/ui';
 import { useThemedStyles, type Palette } from '@/src/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddClient'>;
@@ -845,6 +846,11 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
         {/* ── DIVIDER ── */}
         <View style={styles.divider} />
 
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={keyboardAvoidBehavior}
+            keyboardVerticalOffset={insets.top + 56}
+        >
         <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 110 }]}
@@ -1063,6 +1069,7 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </SectionCard>
         </ScrollView>
+        </KeyboardAvoidingView>
 
         {/* ── FOOTER ── */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 10 }]}>

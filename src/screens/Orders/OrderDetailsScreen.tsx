@@ -25,11 +25,12 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { paymentService, activityService, createPaiementM8 } from '@services/supabaseService';
 import { TYPE_PAIEMENT_META, TYPES_PAIEMENT, TypePaiement } from '@constants/paiementConstants';
+import { isCancelledOrder } from '@constants/commandeConstants';
 import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
 import { getDeviseMeta } from '@constants/currencies';
 import { getRuntimePrefs } from '@/src/preferences/runtime';
-import { Avatar } from '@components/ui';
+import { Avatar, keyboardAvoidBehavior } from '@components/ui';
 import { useThemedStyles, type Palette } from '@/src/theme';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
 
@@ -176,17 +177,19 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         );
     }
 
-    // Calculs
-    const currentStatusMeta = ORDER_STATUS_META[order.orderStatus as OrderStatus] ?? ORDER_STATUS_META.pending;
+    // Calculs — le solde en base est la source de vérité (évite de compter 2× l'acompte).
+    const cancelled         = isCancelledOrder(order.orderStatus);
+    const currentStatusMeta = ORDER_STATUS_META[order.orderStatus as OrderStatus]
+        ?? (cancelled ? ORDER_STATUS_META.cancelled : ORDER_STATUS_META.pending);
     const currentPayMeta    = PAYMENT_STATUS_META[order.paymentStatus as PaymentStatus] ?? PAYMENT_STATUS_META.unpaid;
-    const totalPaid         = order.advancePayment + payments.reduce((s, p) => s + p.amount, 0);
-    const remaining         = Math.max(0, order.totalPrice - totalPaid);
+    const remaining         = Math.max(0, order.remainingAmount ?? 0);
+    const totalPaid         = Math.max(0, (order.totalPrice ?? 0) - remaining);
     const currentStepIndex  = ORDER_STATUS_FLOW.indexOf(order.orderStatus as OrderStatus);
     const urgencyMeta       = URGENCY_META[order.urgencyLevel] ?? URGENCY_META.medium;
 
     // ── Changer le statut ──
     const handleStatusChange = async (newStatus: OrderStatus, confirmed = false) => {
-        if (savingStatus) return;
+        if (savingStatus || cancelled) return;
         // Alerte livraison avec solde restant (Module 7)
         if (newStatus === 'delivered' && remaining > 0 && !confirmed) {
             showAlert(
@@ -224,9 +227,12 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     };
 
     const handleCancelOrder = () => {
+        const paidNote = order.advancePayment > 0 || remaining < order.totalPrice
+            ? 'Les sommes déjà encaissées (acompte compris) restent une recette. '
+            : '';
         showAlert(
             'Annuler la commande ?',
-            'Cette action ne peut pas être annulée.',
+            `${paidNote}Le reste à payer (${formatCurrencyShort(remaining)}) ne sera plus dû. La commande passera en lecture seule : plus de paiement, ni de changement de statut.`,
             [
                 { text: 'Non', style: 'cancel' },
                 { text: 'Oui, annuler', style: 'destructive', onPress: () => handleStatusChange('cancelled') },
@@ -236,6 +242,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 
     // ── Enregistrer un paiement ──
     const handleAddPayment = async () => {
+        if (cancelled) return;
         const amount = parseFloat(payAmount.replace(/\s/g, '').replace(',', '.'));
         if (isNaN(amount) || amount <= 0) {
             showAlert('Montant invalide', 'Entrez un montant supérieur à 0.');
@@ -366,6 +373,17 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                     contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
                     showsVerticalScrollIndicator={false}
                 >
+                    {cancelled && (
+                        <View style={styles.cancelBanner}>
+                            <Feather name="x-circle" size={16} color={P.error} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.cancelBannerTitle}>Commande annulée</Text>
+                                <Text style={styles.cancelBannerText}>
+                                    Lecture seule. Les encaissements déjà reçus sont conservés ; le solde restant n’est plus dû.
+                                </Text>
+                            </View>
+                        </View>
+                    )}
 
                     {/* ══ CARTE CLIENT ══ */}
                     <TouchableOpacity
@@ -397,7 +415,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         </View>
 
                         {/* Barre de progression */}
-                        {order.orderStatus !== 'cancelled' && (
+                        {order.orderStatus !== 'cancelled' && order.orderStatus !== 'annulee' && (
                             <View style={styles.progressWrap}>
                                 {ORDER_STATUS_FLOW.map((step, i) => {
                                     const done = i <= currentStepIndex;
@@ -422,7 +440,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         )}
 
                         {/* Boutons action */}
-                        {order.orderStatus !== 'cancelled' && order.orderStatus !== 'delivered' && (
+                        {!cancelled && order.orderStatus !== 'delivered' && order.orderStatus !== 'livree' && (
                             <View style={styles.statusActions}>
                                 {currentStepIndex < ORDER_STATUS_FLOW.length - 1 && (
                                     <TouchableOpacity
@@ -514,7 +532,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                 Statut : {String((linkedRealisation as any).statut).replace(/_/g, ' ')}
                             </Text>
                         </TouchableOpacity>
-                    ) : order ? (
+                    ) : order && !cancelled ? (
                         <TouchableOpacity
                             style={styles.card}
                             onPress={() => navigation.navigate('AddRealisation', {
@@ -552,15 +570,17 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             <FinanceLine label="Payé au total"   value={totalPaid}           sub />
                             <View style={styles.financeDivider} />
                             <View style={styles.financeRemaining}>
-                                <Text style={styles.financeRemainingLabel}>Reste à payer</Text>
-                                <Text style={[styles.financeRemainingValue, remaining === 0 && { color: P.success }]}>
+                                <Text style={styles.financeRemainingLabel}>
+                                    {cancelled ? 'Reste non dû' : 'Reste à payer'}
+                                </Text>
+                                <Text style={[styles.financeRemainingValue, (remaining === 0 || cancelled) && { color: cancelled ? P.muted : P.success }]}>
                                     {formatCurrencyShort(remaining)}
                                 </Text>
                             </View>
                         </View>
 
                         {/* Boutons paiement */}
-                        {remaining > 0 && (
+                        {remaining > 0 && !cancelled && (
                             <>
                                 <TouchableOpacity
                                     style={styles.payFullBtn}
@@ -632,7 +652,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 
             {/* ══ MODAL PAIEMENT ══ */}
             <Modal
-                visible={payModal}
+                visible={payModal && !cancelled}
                 transparent
                 animationType="slide"
                 onRequestClose={() => setPayModal(false)}
@@ -640,7 +660,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             >
                 <Pressable style={styles.overlay} onPress={() => setPayModal(false)} />
                 <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                    behavior={keyboardAvoidBehavior}
                     style={styles.sheetWrap}
                 >
                     <View style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}>
@@ -835,6 +855,18 @@ const makeStyles = (P: Palette) => ({
     // ── Scroll ──
     scroll:        { flex: 1 },
     scrollContent: { padding: SPACING.md, gap: SPACING.sm + 2 },
+    cancelBanner: {
+        flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 10,
+        backgroundColor: P.errorBg, borderRadius: 14,
+        borderWidth: 0.5, borderColor: P.error,
+        padding: 14,
+    },
+    cancelBannerTitle: {
+        fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.error, marginBottom: 2,
+    },
+    cancelBannerText: {
+        fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, lineHeight: 17,
+    },
 
     // ── Client card ──
     clientCard: {

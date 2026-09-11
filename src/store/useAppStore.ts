@@ -10,7 +10,7 @@ import {
   clientService, orderService, activityService, catalogService,
   statisticsService, measurementService, mapClient, mapOrder, mapActivity, mapCatalogModel, paymentService,
   ficheService, mapFiche,
-  realisationService, mapRealisation, uploadRealisationPhoto,
+  realisationService, mapRealisation, uploadRealisationPhoto, createPaiementM8,
   tissuService, mapTissu, uploadTissuPhoto,
   historiqueStatutService,
   projectService, mapProject, mapProjectRecap,
@@ -18,6 +18,8 @@ import {
   measurementFieldService, mapMeasurementField,
   resolveClientPhotoForSave, isRemotePhoto,
 } from '@services/supabaseService';
+import { isCancelledOrder } from '@constants/commandeConstants';
+import { expectedClientBalance } from '@/src/utils/clientBalance';
 import type {
   Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics, FicheMensuration, TypeVetement, Realisation, StatutRealisation, Tissu,
   Project, ProjectRecap, ProjectStatut, ProjectParticipant, GarmentMeasurementField, MeasurementChoiceResult,
@@ -48,6 +50,36 @@ export interface UserProfile {
   unite_mesure: string | null;
   avatar_url: string | null;
   created_at: string | null;
+}
+
+async function applyOrderCancellationEffects(
+  get: () => AppState,
+  set: (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+  order: Order,
+) {
+  const due = Math.max(0, order.remainingAmount ?? 0);
+  if (due > 0) {
+    const client = get().getClientById(order.clientId);
+    if (client) {
+      const nextBalance = Math.max(0, (client.balance ?? 0) - due);
+      await clientService.update(order.clientId, { balance: nextBalance });
+      set(state => ({
+        clients: state.clients.map(c =>
+          c.id === order.clientId ? { ...c, balance: nextBalance } : c
+        ),
+      }));
+    }
+  }
+  try {
+    await activityService.create({
+      type: 'order_completed',
+      title: 'Commande annulée',
+      subtitle: order.clientName,
+      clientId: order.clientId,
+      orderId: order.id,
+    });
+  } catch (_) {}
+  get().loadActivities();
 }
 
 // ==========================================
@@ -97,6 +129,7 @@ interface AppState {
   loadActivities: () => Promise<void>;
   loadStatistics: () => Promise<void>;
   loadAll: () => Promise<void>;
+  reconcileCancelledOrderBalances: () => Promise<void>;
 
   // ── Actions Clients (locales + sync) ──
   addClient: (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Client | null>;
@@ -129,6 +162,7 @@ interface AppState {
 
   // ── Actions Réalisations (Module 5) ──
   loadRealisations: (clientId: string) => Promise<void>;
+  loadAllRealisations: () => Promise<void>;
   addRealisation: (
       clientId: string,
       data: Omit<Realisation, 'id' | 'createdAt' | 'couturierId' | 'clientId'>,
@@ -141,7 +175,7 @@ interface AppState {
   ) => Promise<void>;
   updateRealisationStatut: (realisationId: string, clientId: string, statut: StatutRealisation) => Promise<void>;
   deleteRealisation: (realisationId: string, clientId: string) => Promise<void>;
-  addRealisationPhoto: (realisationId: string, clientId: string, localUri: string) => Promise<void>;
+  addRealisationPhoto: (realisationId: string, clientId: string, localUri: string) => Promise<boolean>;
   getRealisationById: (realisationId: string, clientId: string) => Realisation | undefined;
   getRealisationsByCommande: (commandeId: string, clientId: string) => Realisation[];
   getRealisationsByTissu: (tissuId: string) => Realisation[];
@@ -432,8 +466,29 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().loadStatistics(),
         get().loadProjects(),
       ]);
+      await get().reconcileCancelledOrderBalances();
     }
     set({ isLoading: false });
+  },
+
+  reconcileCancelledOrderBalances: async () => {
+    const { clients, orders, profile } = get();
+    if (profile?.role === 'client' || !clients.length) return;
+    const patches: { id: string; balance: number }[] = [];
+    for (const client of clients) {
+      const next = expectedClientBalance(orders, client.id);
+      if (Math.abs(next - (client.balance ?? 0)) > 0.009) {
+        patches.push({ id: client.id, balance: next });
+      }
+    }
+    if (!patches.length) return;
+    await Promise.all(patches.map((p) => clientService.update(p.id, { balance: p.balance })));
+    const byId = new Map(patches.map((p) => [p.id, p.balance]));
+    set(state => ({
+      clients: state.clients.map(c =>
+        byId.has(c.id) ? { ...c, balance: byId.get(c.id)! } : c
+      ),
+    }));
   },
 
   // ==========================================
@@ -543,6 +598,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     get().loadStatistics();
     get().loadActivities();
+
+    // L'acompte saisi à la création doit exister comme encaissement (sans retraitoucher le solde).
+    if (newOrder.advancePayment > 0) {
+      try {
+        await createPaiementM8({
+          orderId: newOrder.id,
+          clientId: newOrder.clientId,
+          amount: newOrder.advancePayment,
+          method: 'cash',
+          typePaiement: 'acompte',
+          notes: 'Acompte à la commande',
+        });
+      } catch (_e) { /* l'ordre est déjà créé ; l'encaissement pourra être resaisi */ }
+    }
+
     // Auto-créer une Réalisation liée à cette commande (Module 7)
     try {
       await get().addRealisation(newOrder.clientId, {
@@ -562,6 +632,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateOrder: async (orderId, updates) => {
+    const prev = get().orders.find(o => o.id === orderId);
     const { error } = await orderService.update(orderId, updates);
     if (error) { set({ error: error.message }); return; }
 
@@ -570,6 +641,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           o.id === orderId ? { ...o, ...updates, updatedAt: new Date() } : o
       ),
     }));
+
+    if (prev && isCancelledOrder(updates.orderStatus) && !isCancelledOrder(prev.orderStatus)) {
+      await applyOrderCancellationEffects(get, set, prev);
+    }
 
     if (updates.orderStatus === 'completed' || updates.orderStatus === 'delivered') {
       const order = get().orders.find(o => o.id === orderId);
@@ -603,6 +678,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateOrderStatut: async (orderId, newStatut, commentaire) => {
     const order = get().orders.find(o => o.id === orderId);
     if (!order) return;
+    if (isCancelledOrder(order.orderStatus)) return;
     const ancienStatut = String(order.orderStatus);
     const { error } = await orderService.update(orderId, { orderStatus: newStatut as any });
     if (error) { set({ error: error.message }); return; }
@@ -612,6 +688,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           o.id === orderId ? { ...o, orderStatus: newStatut as any, updatedAt: new Date() } : o
       ),
     }));
+    if (isCancelledOrder(newStatut)) {
+      await applyOrderCancellationEffects(get, set, order);
+    }
     get().loadStatistics();
   },
   deleteOrder: async (orderId) => {
@@ -747,6 +826,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     set(state => ({ realisations: { ...state.realisations, [clientId]: mapped } }));
   },
 
+  loadAllRealisations: async () => {
+    const { data, error } = await realisationService.getAllForCouturier();
+    if (error) { set({ error: (error as any).message }); return; }
+    const grouped: Record<string, ReturnType<typeof mapRealisation>[]> = {};
+    for (const row of data ?? []) {
+      const mapped = mapRealisation(row);
+      (grouped[mapped.clientId] ??= []).push(mapped);
+    }
+    set({ realisations: grouped });
+  },
+
   addRealisation: async (clientId, realisationData, localPhotoUris = []) => {
     const couturierId = get().userId ?? '';
     // Upload local photos to Supabase Storage first
@@ -836,9 +926,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   addRealisationPhoto: async (realisationId, clientId, localUri) => {
     const couturierId = get().userId ?? '';
     const { publicUrl, error } = await uploadRealisationPhoto(localUri, couturierId, realisationId);
-    if (error || !publicUrl) { set({ error: error?.message }); return; }
+    if (error || !publicUrl) { set({ error: error?.message ?? "Impossible d'envoyer la photo." }); return false; }
     const { data: updated } = await realisationService.addPhoto(realisationId, publicUrl);
-    if (!updated) return;
+    if (!updated) return false;
     const mapped = mapRealisation(updated as any);
     set(state => ({
       realisations: {
@@ -848,6 +938,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
       },
     }));
+    return true;
   },
 
   getRealisationById: (realisationId, clientId) =>
@@ -933,6 +1024,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       })),*/
   addPayment: async ({ orderId, projectId, clientId, amount, method, typePaiement, notes }) => {
+    if (orderId) {
+      const existing = get().orders.find(o => o.id === orderId);
+      if (existing && isCancelledOrder(existing.orderStatus)) {
+        set({ error: 'Impossible d’encaisser une commande annulée.' });
+        return null;
+      }
+    }
     // 1. Persiste dans Supabase (order_id et/ou project_id)
     const { data, error } = await paymentService.create({
       orderId,

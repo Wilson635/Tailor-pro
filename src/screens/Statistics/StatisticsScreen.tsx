@@ -16,7 +16,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrency } from '@utils/formatters';
+import { orderEncaisse } from '@utils/finance';
 import { exportExcelFile, exportPdfFile } from '@utils/exportFiles';
+import { isCancelledOrder } from '@constants/commandeConstants';
 
 const { width: W } = Dimensions.get('window');
 const CHART_W = W - 32;
@@ -141,7 +143,7 @@ export const StatisticsScreen = () => {
       return {
         label:   d.toLocaleDateString('fr-FR', { month: 'short' }),
         orders:  monthOs.length,
-        revenue: monthOs.reduce((s, o) => s + (o.totalPrice ?? 0), 0),
+        revenue: monthOs.reduce((s, o) => s + orderEncaisse(o), 0),
       };
     });
   }, [orders, monthCount]);
@@ -157,7 +159,7 @@ export const StatisticsScreen = () => {
 
   // ── CA total période ──────────────────────────────────
   const totalRevenuePeriod = useMemo(
-      () => periodOrders.reduce((s, o) => s + (o.totalPrice ?? 0), 0),
+      () => periodOrders.reduce((s, o) => s + orderEncaisse(o), 0),
       [periodOrders]
   );
 
@@ -175,8 +177,9 @@ export const StatisticsScreen = () => {
     const map = new Map<string, { name: string; total: number; count: number }>();
     orders.forEach(o => {
       const e = map.get(o.clientId);
-      if (e) { e.total += (o.totalPrice ?? 0); e.count++; }
-      else map.set(o.clientId, { name: o.clientName ?? '—', total: o.totalPrice ?? 0, count: 1 });
+      const paid = orderEncaisse(o);
+      if (e) { e.total += paid; e.count++; }
+      else map.set(o.clientId, { name: o.clientName ?? '—', total: paid, count: 1 });
     });
     return [...map.values()].sort((a, b) => b.total - a.total).slice(0, 5);
   }, [orders]);
@@ -211,10 +214,11 @@ export const StatisticsScreen = () => {
 
   // ── Répartition statuts paiements ─────────────────────
   const paiementStats = useMemo(() => {
-    const paid    = orders.filter(o => o.paymentStatus === 'paid').length;
-    const partial = orders.filter(o => o.paymentStatus === 'partial').length;
-    const unpaid  = orders.filter(o => o.paymentStatus === 'unpaid').length;
-    return { paid, partial, unpaid, total: orders.length };
+    const open    = orders.filter(o => !isCancelledOrder(o.orderStatus));
+    const paid    = open.filter(o => o.paymentStatus === 'paid').length;
+    const partial = open.filter(o => o.paymentStatus === 'partial').length;
+    const unpaid  = open.filter(o => o.paymentStatus === 'unpaid').length;
+    return { paid, partial, unpaid, total: open.length };
   }, [orders]);
 
   // ── Répartition statuts commandes ─────────────────────
@@ -268,7 +272,7 @@ export const StatisticsScreen = () => {
         { Indicateur: 'Nouveaux clients', Valeur: clientsStats.nouveaux, Detail: 'période' },
         { Indicateur: 'Clients fidèles', Valeur: clientsStats.fideles, Detail: '> 2 commandes' },
         { Indicateur: 'Commandes', Valeur: orders.length, Detail: '' },
-        { Indicateur: 'CA période', Valeur: totalRevenuePeriod, Detail: 'FCFA' },
+        { Indicateur: 'Encaissé période', Valeur: totalRevenuePeriod, Detail: 'FCFA' },
         { Indicateur: 'Meilleur mois', Valeur: bestMonth.label, Detail: `${bestMonth.revenue} FCFA` },
         ...monthlyStats.map(m => ({ Indicateur: `CA ${m.label}`, Valeur: m.revenue, Detail: `${m.orders} cmd` })),
         ...topClients.map(c => ({ Indicateur: `Client ${c.name}`, Valeur: c.total, Detail: `${c.count} cmd` })),
@@ -364,7 +368,7 @@ export const StatisticsScreen = () => {
           <View style={[s.kpiGrid, { marginTop: 10 }]}>
             <KpiCard
                 icon="trending-up-outline"
-                label="CA période"
+                label="Encaissé période"
                 value={formatCurrency(totalRevenuePeriod)}
                 sub={`${monthCount} derniers mois`}
                 color={P.success}
@@ -399,7 +403,7 @@ export const StatisticsScreen = () => {
           </View>
 
           {/* ── BarChart CA mensuel ─────────────────── */}
-          <SectionTitle style={{ marginTop: 24 }}>Chiffre d'affaires mensuel (×1 000 FCFA)</SectionTitle>
+          <SectionTitle style={{ marginTop: 24 }}>Encaissements mensuels (×1 000 FCFA)</SectionTitle>
           <View style={s.chartCard}>
             <BarChart
                 data={barDataRevenu}
@@ -438,7 +442,7 @@ export const StatisticsScreen = () => {
           {/* ── Top clients ─────────────────────────── */}
           {topClients.length > 0 && (
               <>
-                <SectionTitle style={{ marginTop: 24 }}>Top clients (par CA)</SectionTitle>
+                <SectionTitle style={{ marginTop: 24 }}>Top clients (par encaissé)</SectionTitle>
                 <View style={s.card}>
                   {topClients.map((c, i) => (
                       <View key={i}>

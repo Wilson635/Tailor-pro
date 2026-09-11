@@ -20,6 +20,7 @@ import { CLOTHING_TYPE_LABELS } from '@constants/theme';
 import {
   STATUT_COMMANDE_LABELS,
   STATUT_COMMANDE_COLORS,
+  isCancelledOrder,
 } from '@constants/commandeConstants';
 import { Avatar } from '@components/ui';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
@@ -59,9 +60,9 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
 
   const inProgressCount = orders.filter((o) => IN_PROGRESS.includes(o.orderStatus)).length;
   const unpaidTotal = orders
-    .filter((o) => o.paymentStatus !== 'paid')
+    .filter((o) => !isCancelledOrder(o.orderStatus) && o.paymentStatus !== 'paid')
     .reduce((sum, o) => sum + o.remainingAmount, 0);
-  const unpaidCount = orders.filter((o) => o.paymentStatus !== 'paid').length;
+  const unpaidCount = orders.filter((o) => !isCancelledOrder(o.orderStatus) && o.paymentStatus !== 'paid').length;
 
   const filteredOrders = useMemo(() => {
     const match = FILTERS.find((f) => f.key === activeFilter)?.match;

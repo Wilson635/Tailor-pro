@@ -9,7 +9,9 @@ import React, { useState } from 'react';
 import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { keyboardAvoidBehavior } from '@components/ui';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -124,6 +126,11 @@ export const AddMeasurementsScreen: React.FC<Props> = ({ route, navigation }) =>
         </View>
         <View style={styles.divider} />
 
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={keyboardAvoidBehavior}
+            keyboardVerticalOffset={insets.top + 56}
+        >
         <ScrollView
             contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
             showsVerticalScrollIndicator={false}
@@ -216,6 +223,7 @@ export const AddMeasurementsScreen: React.FC<Props> = ({ route, navigation }) =>
               </View>
           )}
         </ScrollView>
+        </KeyboardAvoidingView>
       </View>
   );
 };
