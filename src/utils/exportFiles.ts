@@ -83,7 +83,29 @@ export async function exportPdfFile(fileName: string, title: string, rows: Sheet
   }
 }
 
-function escapeHtml(s: string) {
+export async function shareLocalFile(uri: string, mimeType: string, dialogTitle: string) {
+  return shareFile(uri, mimeType, dialogTitle);
+}
+
+export async function shareHtmlAsPdf(fileName: string, html: string) {
+  try {
+    const Print = await import('expo-print');
+    const { uri } = await Print.printToFileAsync({ html, base64: false });
+    const safe = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+    const dest = `${FileSystem.cacheDirectory}${safe}`;
+    await FileSystem.copyAsync({ from: uri, to: dest });
+    return shareFile(dest, 'application/pdf', safe);
+  } catch {
+    if (Platform.OS === 'web') {
+      showAlert('Export PDF', 'Le PDF n’est pas disponible sur le web.');
+      return false;
+    }
+    showAlert('Erreur', 'Impossible de générer le PDF.');
+    return false;
+  }
+}
+
+export function escapeHtml(s: string) {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

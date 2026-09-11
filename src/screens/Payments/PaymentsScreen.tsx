@@ -27,6 +27,7 @@ interface PayRow {
   id: string;
   amount: number;
   method: string;
+  type?: string;
   date: string;
   notes?: string;
   orderId?: string;
@@ -62,6 +63,7 @@ export const PaymentsScreen: React.FC<Props> = ({ route, navigation }) => {
       id: p.id,
       amount: Number(p.amount),
       method: p.method ?? 'cash',
+      type: p.type ?? 'acompte',
       date: p.date ?? p.created_at,
       notes: p.notes ?? undefined,
       orderId: p.order_id,
@@ -120,7 +122,22 @@ export const PaymentsScreen: React.FC<Props> = ({ route, navigation }) => {
     const c = item.clientId ? getClientById(item.clientId) : clients.find(cl => cl.id === order?.clientId);
     const mode = MODE_PAIEMENT_META[item.method as ModePaiement];
     return (
-      <View style={styles.card}>
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.82}
+        onPress={() => navigation.navigate('Recu', {
+          amount: item.amount,
+          typePaiement: item.type ?? 'acompte',
+          modePaiement: item.method,
+          date: item.date,
+          notes: item.notes,
+          clientName: c?.nom ?? order?.clientName ?? 'Client',
+          commandeNumero: order?.numeroCommande,
+          totalAmount: order?.totalPrice ?? item.amount,
+          paidAmount: order ? Math.max(0, (order.totalPrice ?? 0) - (order.remainingAmount ?? 0)) : item.amount,
+          remaining: order?.remainingAmount ?? 0,
+        })}
+      >
         <View style={styles.iconWrap}>
           <Ionicons name="wallet-outline" size={16} color={P.gold} />
         </View>
@@ -131,7 +148,7 @@ export const PaymentsScreen: React.FC<Props> = ({ route, navigation }) => {
           </Text>
         </View>
         <Text style={styles.date}>{item.date ? formatDate(new Date(item.date)) : ''}</Text>
-      </View>
+      </TouchableOpacity>
     );
   };
 

@@ -608,7 +608,22 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             <View style={styles.historyWrap}>
                                 <Text style={styles.historyTitle}>Historique</Text>
                                 {payments.map((p, i) => (
-                                    <View key={p.id}>
+                                    <TouchableOpacity
+                                        key={p.id}
+                                        onPress={() => navigation.navigate('Recu', {
+                                            amount: p.amount,
+                                            typePaiement: (p as any).typePaiement ?? 'acompte',
+                                            modePaiement: p.paymentMethod,
+                                            date: typeof p.paymentDate === 'string' ? p.paymentDate : new Date(p.paymentDate).toISOString(),
+                                            notes: p.notes,
+                                            clientName: order.clientName,
+                                            commandeNumero: (order as any).numeroCommande,
+                                            totalAmount: order.totalPrice,
+                                            paidAmount: totalPaid,
+                                            remaining,
+                                        })}
+                                        activeOpacity={0.75}
+                                    >
                                         <View style={styles.historyRow}>
                                             <View style={[styles.historyIcon, { backgroundColor: P.successBg }]}>
                                                 <Feather
@@ -635,9 +650,10 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                                 <Text style={styles.historyDate}>{formatDate(p.paymentDate)}</Text>
                                                 {p.notes ? <Text style={styles.historyNotes}>{p.notes}</Text> : null}
                                             </View>
+                                            <Feather name="chevron-right" size={16} color={P.muted} />
                                         </View>
                                         {i < payments.length - 1 && <View style={styles.historyDivider} />}
-                                    </View>
+                                    </TouchableOpacity>
                                 ))}
                             </View>
                         ) : (

@@ -20,6 +20,7 @@ import {
 } from '@services/supabaseService';
 import { isCancelledOrder } from '@constants/commandeConstants';
 import { expectedClientBalance } from '@/src/utils/clientBalance';
+import { splitGlobalAdvance } from '@/src/utils/splitGlobalAdvance';
 import type {
   Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics, FicheMensuration, TypeVetement, Realisation, StatutRealisation, Tissu,
   Project, ProjectRecap, ProjectStatut, ProjectParticipant, GarmentMeasurementField, MeasurementChoiceResult,
@@ -1092,8 +1093,42 @@ export const useAppStore = create<AppState>((set, get) => ({
           orderId,
         });
       }
+    } else if (projectId) {
+      // Avance globale : répartie également entre les commandes actives du projet
+      const allocations = splitGlobalAdvance(get().getOrdersByProject(projectId), amount);
+      for (const { id, applied } of allocations) {
+        const order = get().orders.find(o => o.id === id);
+        if (!order || applied <= 0) continue;
+        const newRemaining = Math.max(0, (order.remainingAmount ?? 0) - applied);
+        const newPayStatus =
+            newRemaining <= 0 ? 'paid' :
+                newRemaining < order.totalPrice ? 'partial' :
+                    'unpaid';
+        const newAdvance = Math.min(order.totalPrice, (order.advancePayment ?? 0) + applied);
+        await get().updateOrder(id, {
+          remainingAmount: newRemaining,
+          paymentStatus: newPayStatus,
+          advancePayment: newAdvance,
+        });
+        const garmentClient = get().getClientById(order.clientId);
+        if (garmentClient) {
+          const nextBal = Math.max(0, (garmentClient.balance ?? 0) - applied);
+          await clientService.update(order.clientId, { balance: nextBal });
+          set(state => ({
+            clients: state.clients.map(c =>
+              c.id === order.clientId ? { ...c, balance: nextBal } : c
+            ),
+          }));
+        }
+      }
+      await activityService.create({
+        type:     'payment_received',
+        title:    'Paiement reçu (projet)',
+        subtitle: get().getProjectById(projectId)?.nom,
+        amount,
+        clientId,
+      });
     } else {
-      // Paiement au niveau du projet global (pas de vêtement précis)
       await activityService.create({
         type:     'payment_received',
         title:    'Paiement reçu (projet)',
@@ -1103,19 +1138,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     }
 
-    // 4. Met à jour la balance du client
-    const client = get().getClientById(clientId);
-    if (client) {
-      await clientService.update(clientId, {
-        balance: Math.max(0, client.balance - amount),
-      });
-      set(state => ({
-        clients: state.clients.map(c =>
-            c.id === clientId
-                ? { ...c, balance: Math.max(0, c.balance - amount) }
-                : c
-        ),
-      }));
+    // 4. Solde du payeur : seulement pour un encaissement sur une commande précise.
+    // L’avance globale a déjà été déduite des personnes du projet.
+    if (orderId) {
+      const client = get().getClientById(clientId);
+      if (client) {
+        await clientService.update(clientId, {
+          balance: Math.max(0, client.balance - amount),
+        });
+        set(state => ({
+          clients: state.clients.map(c =>
+              c.id === clientId
+                  ? { ...c, balance: Math.max(0, c.balance - amount) }
+                  : c
+          ),
+        }));
+      }
     }
 
     // 5. Rafraîchit le récap projet si concerné
