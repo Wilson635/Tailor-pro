@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, Image, Alert, Modal,
+  TouchableOpacity, Alert, Modal,
   FlatList, TextInput, ActivityIndicator, Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { useAppStore } from '@store/useAppStore';
 import type { RootStackParamList } from '../../types';
+import { Avatar } from '@components/ui';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditClient'>;
 
@@ -305,14 +306,24 @@ export const EditClientScreen: React.FC<Props> = ({ route, navigation }) => {
       { text: 'Galerie', onPress: async () => {
           const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
           if (status !== 'granted') return;
-          const r = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.7 });
-          if (!r.canceled) setPhoto(r.assets[0].uri);
+          const r = await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: true, aspect: [1, 1], quality: 0.7, base64: true,
+          });
+          if (!r.canceled && r.assets[0]) {
+            const a = r.assets[0];
+            setPhoto(a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri);
+          }
         }},
       { text: 'Caméra', onPress: async () => {
           const { status } = await ImagePicker.requestCameraPermissionsAsync();
           if (status !== 'granted') return;
-          const r = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.7 });
-          if (!r.canceled) setPhoto(r.assets[0].uri);
+          const r = await ImagePicker.launchCameraAsync({
+            allowsEditing: true, aspect: [1, 1], quality: 0.7, base64: true,
+          });
+          if (!r.canceled && r.assets[0]) {
+            const a = r.assets[0];
+            setPhoto(a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri);
+          }
         }},
       { text: 'Supprimer la photo', style: 'destructive', onPress: () => setPhoto(null) },
       { text: 'Annuler', style: 'cancel' },
@@ -338,7 +349,7 @@ export const EditClientScreen: React.FC<Props> = ({ route, navigation }) => {
           ? fullPhone
           : form.whatsapp.trim() ? `${selectedCountry.dial} ${form.whatsapp.trim()}` : null;
 
-      await updateClient(clientId, {
+      const ok = await updateClient(clientId, {
         nom:           form.nom.trim(),
         telephone:     fullPhone,
         whatsapp:      fullWa,
@@ -349,6 +360,15 @@ export const EditClientScreen: React.FC<Props> = ({ route, navigation }) => {
         photo:         photo ?? null,
         notesInternes: form.notesInternes.trim() || null,
       });
+      if (!ok) {
+        Alert.alert('Enregistrement impossible', useAppStore.getState().error ?? 'Réessayez dans un instant.');
+        return;
+      }
+      const warn = useAppStore.getState().error;
+      if (warn) {
+        Alert.alert('Enregistré', warn, [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        return;
+      }
       navigation.goBack();
     } catch {
       Alert.alert('Erreur', "Impossible de modifier le client");
@@ -413,13 +433,7 @@ export const EditClientScreen: React.FC<Props> = ({ route, navigation }) => {
           {/* ── PHOTO ── */}
           <View style={styles.photoSection}>
             <TouchableOpacity style={styles.photoTouch} onPress={handlePhotoPress} activeOpacity={0.85}>
-              {photo ? (
-                  <Image source={{ uri: photo }} style={styles.photo} />
-              ) : (
-                  <View style={styles.photoPlaceholder}>
-                    <Ionicons name="person-outline" size={34} color={C.textTertiary} />
-                  </View>
-              )}
+              <Avatar source={photo} name={form.nom} size={90} radius={22} />
               <View style={styles.cameraBadge}>
                 <Ionicons name={photo ? 'pencil' : 'camera'} size={13} color="#fff" />
               </View>

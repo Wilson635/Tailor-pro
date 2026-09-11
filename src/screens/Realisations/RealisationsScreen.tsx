@@ -1,11 +1,11 @@
 // ==========================================
-// ÉCRAN LISTE DES RÉALISATIONS — TailorPro (Module 5)
+// LISTE DES RÉALISATIONS — TailorPro
 // ==========================================
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, ActivityIndicator, RefreshControl,
+  View, Text, FlatList, TouchableOpacity,
+  Image, ActivityIndicator, RefreshControl, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,71 +13,80 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import {
   STATUT_REALISATION_LABELS, STATUT_REALISATION_COLORS, STATUT_REALISATION_LIST,
-  STATUT_REALISATION_ICONS,
 } from '@constants/realisationConstants';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 import type { Realisation, StatutRealisation } from '../../types';
-import { RC } from '@screens/Realisations/RealisationForm';
+import { useThemedStyles, type Palette } from '@/src/theme';
+import { Avatar } from '@components/ui';
+import { realisationTitle } from '@screens/Realisations/RealisationForm';
+import type { CatalogModel } from '../../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Realisations'>;
+type FilterKey = StatutRealisation | 'all';
 
-// ── CARTE RÉALISATION ─────────────────────────────────────────────────
-const RealisationCard = ({ item, onPress }: { item: Realisation; onPress: () => void }) => {
+const RealisationCard = ({
+  item,
+  styles,
+  catalog,
+  onPress,
+}: {
+  item: Realisation;
+  styles: ReturnType<typeof makeStyles>;
+  catalog: CatalogModel[];
+  onPress: () => void;
+}) => {
   const statutColor = STATUT_REALISATION_COLORS[item.statut];
   const statutLabel = STATUT_REALISATION_LABELS[item.statut];
   const hasPhoto = item.photos.length > 0;
+  const title = realisationTitle(item, catalog);
+  const sub = [item.tissuLabel, item.couleur].filter(Boolean).filter((s) => s !== title).join(' · ');
 
   return (
-      <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
-        <View style={styles.thumb}>
-          {hasPhoto ? (
-              <Image source={{ uri: item.photos[0] }} style={styles.thumbImg} resizeMode="cover" />
-          ) : (
-              <View style={[styles.thumbImg, styles.thumbPlaceholder]}>
-                <Ionicons name="shirt-outline" size={26} color={RC.textTer} />
-              </View>
-          )}
-          {item.photos.length > 1 && (
-              <View style={styles.photoCount}>
-                <Text style={styles.photoCountText}>+{item.photos.length - 1}</Text>
-              </View>
-          )}
-        </View>
-
-        <View style={styles.cardBody}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.tissuLabel ?? 'Réalisation'}</Text>
-          {item.couleur ? <Text style={styles.cardSub} numberOfLines={1}>{item.couleur}</Text> : null}
-
-          <View style={styles.cardFootRow}>
-            <View style={styles.statutRow}>
-              <View style={[styles.statutDot, { backgroundColor: statutColor }]} />
-              <Text style={[styles.statutText, { color: statutColor }]}>{statutLabel}</Text>
-            </View>
-            {item.dateLivraison && (
-                <Text style={styles.dateText}>
-                  Livraison {new Date(item.dateLivraison).toLocaleDateString('fr-FR')}
-                </Text>
-            )}
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.82}>
+      <View style={styles.thumb}>
+        {hasPhoto ? (
+          <Image source={{ uri: item.photos[0] }} style={styles.thumbImg} resizeMode="cover" />
+        ) : (
+          <View style={[styles.thumbImg, styles.thumbPlaceholder]}>
+            <Ionicons name="shirt-outline" size={22} color={statutColor} />
           </View>
-        </View>
+        )}
+        {item.photos.length > 1 && (
+          <View style={styles.photoCount}>
+            <Text style={styles.photoCountText}>+{item.photos.length - 1}</Text>
+          </View>
+        )}
+      </View>
 
-        <Ionicons name="chevron-forward" size={16} color={RC.textTer} />
-      </TouchableOpacity>
+      <View style={styles.cardBody}>
+        <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
+        {sub ? <Text style={styles.cardSub} numberOfLines={1}>{sub}</Text> : null}
+        <View style={styles.cardFootRow}>
+          <View style={[styles.statutPill, { backgroundColor: `${statutColor}18`, borderColor: `${statutColor}44` }]}>
+            <View style={[styles.statutDot, { backgroundColor: statutColor }]} />
+            <Text style={[styles.statutText, { color: statutColor }]}>{statutLabel}</Text>
+          </View>
+          {item.dateLivraison ? (
+            <Text style={styles.dateText}>
+              {new Date(item.dateLivraison).toLocaleDateString('fr-FR')}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 };
 
-// ==========================================
-// ÉCRAN PRINCIPAL
-// ==========================================
 export const RealisationsScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
+  const { colors: P, styles } = useThemedStyles(makeStyles);
   const { clientId } = route.params;
 
-  const { realisations, loadRealisations, getClientById } = useAppStore();
+  const { realisations, loadRealisations, getClientById, catalog, loadCatalog } = useAppStore();
   const client = getClientById(clientId);
   const clientReals = realisations[clientId] ?? [];
 
-  const [activeStatut, setActiveStatut] = useState<StatutRealisation | 'all'>('all');
+  const [activeStatut, setActiveStatut] = useState<FilterKey>('all');
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -88,7 +97,7 @@ export const RealisationsScreen: React.FC<Props> = ({ route, navigation }) => {
     setRefreshing(false);
   };
 
-  useEffect(() => { load(); }, [clientId]);
+  useEffect(() => { load(); loadCatalog(); }, [clientId]);
 
   const filtered = useMemo(() => {
     const base = activeStatut === 'all' ? clientReals : clientReals.filter(r => r.statut === activeStatut);
@@ -101,169 +110,206 @@ export const RealisationsScreen: React.FC<Props> = ({ route, navigation }) => {
     return counts;
   }, [clientReals]);
 
-  const FILTERS: { key: StatutRealisation | 'all'; label: string; count: number }[] = [
+  const inProgress = clientReals.filter(r => r.statut === 'en_cours' || r.statut === 'essayage' || r.statut === 'corrections').length;
+
+  const FILTERS: { key: FilterKey; label: string; count: number }[] = [
     { key: 'all', label: 'Toutes', count: countByStatut.all },
     ...STATUT_REALISATION_LIST
-        .filter(s => countByStatut[s] > 0)
-        .map(s => ({ key: s, label: STATUT_REALISATION_LABELS[s], count: countByStatut[s] })),
+      .filter(s => countByStatut[s] > 0)
+      .map(s => ({ key: s, label: STATUT_REALISATION_LABELS[s], count: countByStatut[s] })),
   ];
 
   return (
-      <View style={[styles.root, { paddingTop: insets.top }]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color={RC.text} />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Réalisations</Text>
-            {client && <Text style={styles.headerSub}>{client.nom}</Text>}
-          </View>
-          <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => navigation.navigate('AddRealisation', { clientId })}
-          >
-            <Ionicons name="add" size={22} color={RC.gold} />
-          </TouchableOpacity>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={18} color={P.text} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.kicker}>Atelier</Text>
+          <Text style={styles.headerTitle}>Réalisations</Text>
+          {client ? (
+            <View style={styles.clientRow}>
+              <Avatar source={client.photo} name={client.nom} size={18} radius={6} />
+              <Text style={styles.headerSub} numberOfLines={1}>{client.nom}</Text>
+            </View>
+          ) : null}
         </View>
-
-        {/* Filtres — onglets soulignés plutôt que pastilles colorées */}
-        <FlatList
-            horizontal
-            data={FILTERS}
-            keyExtractor={i => i.key}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filtersRow}
-            renderItem={({ item: f }) => {
-              const active = activeStatut === f.key;
-              const color = f.key === 'all' ? RC.plum : STATUT_REALISATION_COLORS[f.key as StatutRealisation];
-              return (
-                  <TouchableOpacity style={styles.filterTab} onPress={() => setActiveStatut(f.key)}>
-                    {f.key !== 'all' && (
-                        <Ionicons
-                            name={STATUT_REALISATION_ICONS[f.key as StatutRealisation] as any}
-                            size={12}
-                            color={active ? color : RC.textTer}
-                        />
-                    )}
-                    <Text style={[styles.filterText, active && { color, fontFamily: 'PlusJakartaSans_700Bold' }]}>
-                      {f.label} · {f.count}
-                    </Text>
-                    <View style={[styles.filterUnderline, active && { backgroundColor: color }]} />
-                  </TouchableOpacity>
-              );
-            }}
-        />
-
-        {/* Liste */}
-        {isLoading ? (
-            <ActivityIndicator size="large" color={RC.plum} style={{ marginTop: 60 }} />
-        ) : (
-            <FlatList
-                data={filtered}
-                keyExtractor={r => r.id}
-                contentContainerStyle={[styles.list, filtered.length === 0 && styles.listEmpty]}
-                refreshControl={
-                  <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} />
-                }
-                ListEmptyComponent={
-                  <View style={styles.empty}>
-                    <Ionicons name="shirt-outline" size={52} color={RC.textTer} />
-                    <Text style={styles.emptyTitle}>Aucune réalisation</Text>
-                    <Text style={styles.emptySub}>
-                      {activeStatut === 'all'
-                          ? 'Créez la première réalisation pour ce client.'
-                          : `Aucune réalisation au statut « ${STATUT_REALISATION_LABELS[activeStatut as StatutRealisation]} ».`}
-                    </Text>
-                    {activeStatut === 'all' && (
-                        <TouchableOpacity
-                            style={styles.emptyBtn}
-                            onPress={() => navigation.navigate('AddRealisation', { clientId })}
-                        >
-                          <Text style={styles.emptyBtnText}>Nouvelle réalisation</Text>
-                        </TouchableOpacity>
-                    )}
-                  </View>
-                }
-                renderItem={({ item }) => (
-                    <RealisationCard
-                        item={item}
-                        onPress={() => navigation.navigate('RealisationDetails', { realisationId: item.id, clientId })}
-                    />
-                )}
-            />
-        )}
-
-        {/* FAB */}
-        {!isLoading && filtered.length > 0 && (
-            <TouchableOpacity
-                style={[styles.fab, { bottom: insets.bottom + 24 }]}
-                onPress={() => navigation.navigate('AddRealisation', { clientId })}
-            >
-              <Ionicons name="add" size={26} color={RC.gold} />
-            </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => navigation.navigate('AddRealisation', { clientId })}
+        >
+          <Ionicons name="add" size={18} color={P.gold} />
+        </TouchableOpacity>
       </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chips}
+      >
+        {FILTERS.map((f) => {
+          const on = activeStatut === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key}
+              style={[styles.chip, on && styles.chipOn]}
+              onPress={() => setActiveStatut(f.key)}
+            >
+              <Text style={[styles.chipText, on && styles.chipTextOn]}>
+                {f.label} · {f.count}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {isLoading ? (
+        <ActivityIndicator size="large" color={P.primary} style={{ marginTop: 60 }} />
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={r => r.id}
+          contentContainerStyle={[styles.list, filtered.length === 0 && styles.listEmpty]}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} />
+          }
+          ListHeaderComponent={
+            clientReals.length > 0 ? (
+              <View style={styles.stats}>
+                <View style={styles.stat}>
+                  <Text style={styles.statLbl}>Pièces</Text>
+                  <Text style={styles.statVal}>{clientReals.length}</Text>
+                  <Text style={styles.statSub}>au total</Text>
+                </View>
+                <View style={[styles.stat, styles.statGold]}>
+                  <Text style={styles.statLbl}>En atelier</Text>
+                  <Text style={[styles.statVal, { color: P.gold }]}>{inProgress}</Text>
+                  <Text style={styles.statSub}>en cours / essayage</Text>
+                </View>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <View style={styles.emptyIcon}>
+                <Ionicons name="shirt-outline" size={26} color={P.gold} />
+              </View>
+              <Text style={styles.emptyTitle}>Aucune réalisation</Text>
+              <Text style={styles.emptySub}>
+                {activeStatut === 'all'
+                  ? 'Créez une pièce pour suivre confection, photos et statuts.'
+                  : `Aucune pièce au statut « ${STATUT_REALISATION_LABELS[activeStatut as StatutRealisation]} ».`}
+              </Text>
+              {activeStatut === 'all' ? (
+                <TouchableOpacity
+                  style={styles.emptyCta}
+                  onPress={() => navigation.navigate('AddRealisation', { clientId })}
+                >
+                  <Ionicons name="add" size={16} color={P.gold} />
+                  <Text style={styles.emptyCtaText}>Nouvelle réalisation</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          }
+          renderItem={({ item }) => (
+            <RealisationCard
+              item={item}
+              styles={styles}
+              catalog={catalog}
+              onPress={() => navigation.navigate('RealisationDetails', { realisationId: item.id, clientId })}
+            />
+          )}
+        />
+      )}
+    </View>
   );
 };
 
-// ==========================================
-// STYLES
-// ==========================================
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: RC.ivory },
+const makeStyles = (P: Palette) => ({
+  root: { flex: 1, backgroundColor: P.pageBg },
   header: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: RC.hairline,
+    flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 12,
+    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
   },
-  backBtn: { padding: 4, marginRight: 8 },
-  headerCenter: { flex: 1 },
-  headerTitle: { fontSize: 19, fontFamily: 'PlusJakartaSans_700Bold', color: RC.text },
-  headerSub: { fontSize: 12.5, color: RC.textSec, marginTop: 1, fontFamily: 'PlusJakartaSans_500Medium' },
-  addBtn: { padding: 7, backgroundColor: RC.ink, borderRadius: 12, marginLeft: 8 },
-
-  filtersRow: { paddingHorizontal: 16, paddingVertical: 12, gap: 20 },
-  filterTab: { alignItems: 'center', gap: 6, flexDirection: 'row' },
-  filterText: { fontSize: 13, color: RC.textSec, fontFamily: 'PlusJakartaSans_600SemiBold' },
-  filterUnderline: {
-    position: 'absolute', bottom: -8, left: 0, right: 0, height: 2, borderRadius: 1, backgroundColor: 'transparent',
+  backBtn: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+    borderWidth: 0.5, borderColor: P.borderHard, marginTop: 4,
   },
-
-  list: { paddingHorizontal: 16, paddingBottom: 100, gap: 10, paddingTop: 6 },
-  listEmpty: { flex: 1 },
-
+  kicker: {
+    fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+    letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
+  },
+  headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
+  clientRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginTop: 6 },
+  headerSub: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, flex: 1 },
+  addBtn: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: P.bg,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+    borderWidth: 1, borderColor: P.goldRim, marginTop: 4,
+  },
+  chips: { paddingHorizontal: 20, paddingBottom: 12, gap: 8 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
+  },
+  chipOn: { backgroundColor: P.bg, borderColor: P.goldRim },
+  chipText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub },
+  chipTextOn: { color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold' },
+  list: { paddingHorizontal: 20, paddingBottom: 40 },
+  listEmpty: { flexGrow: 1 },
+  stats: { flexDirection: 'row' as const, gap: 10, marginBottom: 14 },
+  stat: {
+    flex: 1, backgroundColor: P.surface, borderRadius: 16, padding: 14,
+    borderWidth: 0.5, borderColor: P.borderHard,
+  },
+  statGold: { borderColor: P.goldRim, backgroundColor: P.goldBg },
+  statLbl: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub, marginBottom: 4 },
+  statVal: { fontSize: 20, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
+  statSub: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, marginTop: 2 },
   card: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: RC.linen,
-    borderRadius: 18, padding: 12, gap: 12,
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12,
+    backgroundColor: P.surface, borderRadius: 18, padding: 12,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
-  thumb: { position: 'relative' },
-  thumbImg: { width: 68, height: 68, borderRadius: 14, backgroundColor: RC.hairline },
-  thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  thumb: { position: 'relative' as const },
+  thumbImg: { width: 64, height: 64, borderRadius: 14, backgroundColor: P.pageBg },
+  thumbPlaceholder: {
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+    backgroundColor: P.bg, borderWidth: 1, borderColor: P.goldRim,
+  },
   photoCount: {
-    position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(29,16,51,0.75)',
+    position: 'absolute' as const, bottom: 4, right: 4, backgroundColor: 'rgba(22,18,58,0.78)',
     borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1,
   },
-  photoCountText: { fontSize: 10, color: '#FFF', fontFamily: 'PlusJakartaSans_700Bold' },
-
-  cardBody: { flex: 1, gap: 3 },
-  cardTitle: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: RC.text },
-  cardSub: { fontSize: 12.5, color: RC.textSec, fontFamily: 'PlusJakartaSans_500Medium' },
-  cardFootRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
-
-  statutRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  statutDot: { width: 6, height: 6, borderRadius: 3 },
-  statutText: { fontSize: 11.5, fontFamily: 'PlusJakartaSans_700Bold' },
-  dateText: { fontSize: 11, color: RC.textTer, fontFamily: 'PlusJakartaSans_500Medium' },
-
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 10 },
-  emptyTitle: { fontSize: 17, fontFamily: 'PlusJakartaSans_700Bold', color: RC.text },
-  emptySub: { fontSize: 13.5, color: RC.textSec, textAlign: 'center', paddingHorizontal: 32, fontFamily: 'PlusJakartaSans_500Medium' },
-  emptyBtn: { marginTop: 16, backgroundColor: RC.ink, borderRadius: 14, paddingVertical: 13, paddingHorizontal: 24 },
-  emptyBtnText: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: RC.gold },
-
-  fab: {
-    position: 'absolute', right: 20, width: 54, height: 54, borderRadius: 27,
-    backgroundColor: RC.ink, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 8,
+  photoCountText: { fontSize: 10, color: '#fff', fontFamily: 'PlusJakartaSans_700Bold' },
+  cardBody: { flex: 1, gap: 4 },
+  cardTitle: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+  cardSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
+  cardFootRow: {
+    flexDirection: 'row' as const, alignItems: 'center' as const,
+    justifyContent: 'space-between' as const, marginTop: 2,
   },
+  statutPill: {
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 5,
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, borderWidth: 0.5,
+  },
+  statutDot: { width: 6, height: 6, borderRadius: 3 },
+  statutText: { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold' },
+  dateText: { fontSize: 11, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
+  empty: { alignItems: 'center' as const, paddingTop: 48, paddingHorizontal: 28 },
+  emptyIcon: {
+    width: 60, height: 60, borderRadius: 18, backgroundColor: P.bg, marginBottom: 14,
+    alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1, borderColor: P.goldRim,
+  },
+  emptyTitle: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
+  emptySub: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, textAlign: 'center' as const, marginTop: 6 },
+  emptyCta: {
+    marginTop: 18, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6,
+    backgroundColor: P.bg, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12,
+    borderWidth: 1, borderColor: P.goldRim,
+  },
+  emptyCtaText: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });

@@ -16,6 +16,7 @@ import {
   projectService, mapProject, mapProjectRecap,
   participantService, mapParticipant,
   measurementFieldService, mapMeasurementField,
+  resolveClientPhotoForSave, isRemotePhoto,
 } from '@services/supabaseService';
 import type {
   Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics, FicheMensuration, TypeVetement, Realisation, StatutRealisation, Tissu,
@@ -88,6 +89,7 @@ interface AppState {
   setAuthenticated: (status: boolean, userId?: string) => void;
   logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: Error | null }>;
 
   // ── Actions Data (Supabase) ──
   loadClients: () => Promise<void>;
@@ -98,7 +100,7 @@ interface AppState {
 
   // ── Actions Clients (locales + sync) ──
   addClient: (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Client | null>;
-  updateClient: (clientId: string, data: Partial<Client>) => Promise<void>;
+  updateClient: (clientId: string, data: Partial<Client>) => Promise<boolean>;
   deleteClient: (clientId: string) => Promise<void>;
 
   // ── Actions Orders (locales + sync) ──
@@ -341,6 +343,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  updateProfile: async (updates) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: new Error('Utilisateur non connecté') };
+
+    const { error } = await supabase.from('users').update(updates).eq('id', user.id);
+    if (error) return { error: new Error(error.message) };
+
+    const current = get().profile;
+    if (current) {
+      set({ profile: { ...current, ...updates } });
+    } else {
+      await get().fetchProfile();
+    }
+    return { error: null };
+  },
+
   // ==========================================
   // CHARGEMENT DONNÉES (SUPABASE)
   // ==========================================
@@ -423,10 +441,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ==========================================
 
   addClient: async (clientData) => {
-    const { data, error } = await clientService.create(clientData);
+    const userId = get().profile?.id ?? get().userId ?? '';
+    const { data, error } = await clientService.create({
+      ...clientData,
+      photo: isRemotePhoto(clientData.photo) ? clientData.photo : null,
+    });
     if (error || !data) { set({ error: error?.message }); return null; }
 
-    const newClient = mapClient(data);
+    let newClient = mapClient(data);
+    if (clientData.photo && !isRemotePhoto(clientData.photo)) {
+      const photo = await resolveClientPhotoForSave(clientData.photo, userId || newClient.couturierId, newClient.id);
+      if (photo) {
+        const { data: updated } = await clientService.update(newClient.id, { photo });
+        newClient = updated ? mapClient(updated) : { ...newClient, photo };
+      }
+    }
+
     set(state => ({ clients: [newClient, ...state.clients] }));
 
     await activityService.create({
@@ -442,14 +472,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateClient: async (clientId, updates) => {
-    const { error } = await clientService.update(clientId, updates);
-    if (error) { set({ error: error.message }); return; }
+    const userId = get().profile?.id ?? get().userId ?? get().clients.find(c => c.id === clientId)?.couturierId ?? '';
+    const next: Partial<Client> = { ...updates };
+    let photoFailed = false;
+    if (updates.photo !== undefined) {
+      const resolved = await resolveClientPhotoForSave(updates.photo, userId, clientId);
+      if (updates.photo && !resolved) {
+        photoFailed = true;
+        delete next.photo;
+      } else {
+        next.photo = resolved;
+      }
+    }
+    const { data, error } = await clientService.update(clientId, next);
+    if (error || !data) {
+      set({ error: error?.message ?? 'Impossible de modifier le client' });
+      return false;
+    }
 
+    const mapped = mapClient(data);
     set(state => ({
-      clients: state.clients.map(c =>
-          c.id === clientId ? { ...c, ...updates, updatedAt: new Date() } : c
-      ),
+      clients: state.clients.map(c => (c.id === clientId ? mapped : c)),
+      error: photoFailed ? "Fiche enregistrée, mais la photo n'a pas pu être envoyée." : null,
     }));
+    return true;
   },
 
   deleteClient: async (clientId) => {

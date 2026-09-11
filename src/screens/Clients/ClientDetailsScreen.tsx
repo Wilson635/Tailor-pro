@@ -2,7 +2,7 @@
 // ÉCRAN DÉTAILS CLIENT - TailorPro (Redesign)
 // ==========================================
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,8 +23,25 @@ import {
   FONT_SIZES,
   BORDER_RADIUS,
   PAYMENT_STATUS_LABELS,
+  CLOTHING_TYPE_LABELS,
 } from '@constants/theme';
-import {RootStackParamList} from "@/src/navigation/AppNavigator";
+import {
+  STATUT_COMMANDE_LABELS,
+  STATUT_COMMANDE_COLORS,
+} from '@constants/commandeConstants';
+import {
+  TYPE_VETEMENT_LABELS,
+  TYPE_VETEMENT_ICONS,
+  TYPE_VETEMENT_COLORS,
+  MESURES_TEMPLATES,
+} from '@constants/mensurationConstants';
+import {
+  STATUT_REALISATION_LABELS,
+  STATUT_REALISATION_COLORS,
+} from '@constants/realisationConstants';
+import { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { Avatar } from '@components/ui';
+import type { FicheMensuration, Realisation } from '../../types';
 
 // ==========================================
 // TYPES
@@ -34,16 +51,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ClientDetails'>;
 
 // ==========================================
 // HELPERS
-// ==========================================
-
-const getInitials = (name: string): string => {
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-};
-
-// ==========================================
-// SOUS-COMPOSANTS
 // ==========================================
 
 const ActionButton = ({
@@ -121,20 +128,56 @@ const PaymentPill = ({ status }: { status: string }) => {
 // BLOC MESURES (compact résumé cliquable)
 // ==========================================
 
-const MeasurementSummaryItem = ({
-                                  label,
-                                  value,
-                                }: {
+const MESURE_LABELS: Record<string, string> = Object.values(MESURES_TEMPLATES)
+  .flat()
+  .reduce((acc, field) => {
+    acc[field.key] = field.label;
+    return acc;
+  }, {} as Record<string, string>);
+
+const mesureEntries = (fiche: FicheMensuration) =>
+  Object.entries(fiche.mesures ?? {})
+    .filter(([, v]) => Number.isFinite(v) && v > 0)
+    .slice(0, 6);
+
+const latestFichesByType = (fiches: FicheMensuration[]) => {
+  const byType = new Map<string, FicheMensuration>();
+  for (const fiche of fiches) {
+    const current = byType.get(fiche.typeVetement);
+    if (!current) {
+      byType.set(fiche.typeVetement, fiche);
+      continue;
+    }
+    if (fiche.isActive && !current.isActive) {
+      byType.set(fiche.typeVetement, fiche);
+      continue;
+    }
+    if (fiche.isActive === current.isActive && new Date(fiche.datePrise) > new Date(current.datePrise)) {
+      byType.set(fiche.typeVetement, fiche);
+    }
+  }
+  return Array.from(byType.values());
+};
+
+const typeLabel = (type: string) =>
+  TYPE_VETEMENT_LABELS[type] ?? (type === 'global' ? 'Mesures générales' : type);
+
+const MeasurementRow = ({
+  label,
+  value,
+  unit,
+}: {
   label: string;
-  value?: number;
+  value: number;
+  unit: string;
 }) => (
-    <View style={styles.measureSummaryItem}>
-      <Text style={styles.measureSummaryValue}>
-        {value ? `${value}` : '-'}
-        {!!value && <Text style={styles.measureSummaryUnit}> cm</Text>}
-      </Text>
-      <Text style={styles.measureSummaryLabel}>{label}</Text>
-    </View>
+  <View style={styles.mesureRow}>
+    <Text style={styles.mesureRowLabel} numberOfLines={1}>{label}</Text>
+    <Text style={styles.mesureRowValue}>
+      {value}
+      <Text style={styles.mesureRowUnit}> {unit}</Text>
+    </Text>
+  </View>
 );
 
 // ==========================================
@@ -150,16 +193,30 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     getOrdersByClient,
     getMeasurementsByClient,
     loadMeasurements,
+    loadFiches,
+    loadRealisations,
+    fiches,
+    realisations,
   } = useAppStore();
 
   const client = getClientById(clientId);
   const orders = getOrdersByClient(clientId);
   const measurements = getMeasurementsByClient(clientId);
+  const clientFiches = fiches[clientId] ?? [];
+  const clientReals: Realisation[] = realisations[clientId] ?? [];
 
-  // Charge les mesures depuis Supabase au montage de l'écran
   useEffect(() => {
     loadMeasurements(clientId);
+    loadFiches(clientId);
+    loadRealisations(clientId);
   }, [clientId]);
+
+  const fichePreviews = useMemo(() => latestFichesByType(clientFiches), [clientFiches]);
+  const hasFiches = fichePreviews.length > 0;
+  const hasLegacyMesures = !!(
+    measurements &&
+    (measurements.chestCircumference || measurements.waistCircumference || measurements.hipCircumference || measurements.shoulderWidth)
+  );
 
   if (!client) {
     return (
@@ -181,11 +238,6 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
   const lastOrder = sortedOrders[0] ?? null;
-  const recentOrders = sortedOrders.slice(0, 3);
-
-  const clientModelsPhotos: string[] = [
-    ...new Set(orders.flatMap(order => order.inspirationPhotos ?? [])),
-  ];
 
   const handleCall = () =>
       Linking.openURL(`tel:${client.telephone.replace(/\s/g, '')}`);
@@ -197,24 +249,8 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       Linking.openURL(`sms:${client.telephone.replace(/\s/g, '')}`);
   const handleDirections = () =>
       Linking.openURL(
-          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.adresse)}`
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.adresse ?? '')}`
       );
-
-  const orderStatusColor: Record<string, string> = {
-    pending:     '#F59E0B',
-    in_progress: '#3B82F6',
-    completed:   '#10B981',
-    delivered:   COLORS.primary,
-    cancelled:   '#EF4444',
-  };
-
-  const orderStatusLabel: Record<string, string> = {
-    pending:     'En attente',
-    in_progress: 'En cours',
-    completed:   'Terminée',
-    delivered:   'Livrée',
-    cancelled:   'Annulée',
-  };
 
   return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -226,7 +262,7 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.headerTitle}>Détails client</Text>
           <TouchableOpacity
               style={styles.headerBtn}
-              onPress={() => navigation.navigate('EditClient', {})}
+              onPress={() => navigation.navigate('EditClient', { clientId: client.id })}
           >
             <Ionicons name="create-outline" size={20} color="#fff" />
           </TouchableOpacity>
@@ -239,9 +275,7 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         >
           {/* ── Hero ── */}
           <View style={styles.hero}>
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>{getInitials(client.nom)}</Text>
-            </View>
+            <Avatar source={client.photo} name={client.nom} size={80} radius={24} />
             <Text style={styles.heroName}>{client.nom}</Text>
             {client.isFavorite && (
                 <View style={styles.heroBadge}>
@@ -293,8 +327,66 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
 
             {/* ── BLOC MESURES ── */}
-            {measurements ? (
-                // Client a des mesures → bloc résumé cliquable
+            {hasFiches ? (
+                <View style={styles.measureCard}>
+                  <TouchableOpacity
+                      style={styles.measureCardHead}
+                      onPress={() => navigation.navigate('Measurements', { clientId })}
+                      activeOpacity={0.75}
+                  >
+                    <View style={styles.measureCardTitle}>
+                      <View style={styles.measureIconBadge}>
+                        <Ionicons name="body-outline" size={16} color={COLORS.primary} />
+                      </View>
+                      <Text style={styles.sectionTitle}>Mensurations</Text>
+                    </View>
+                    <Text style={styles.sectionLink}>Voir tout</Text>
+                  </TouchableOpacity>
+                  {fichePreviews.map((fiche, idx) => {
+                    const preview = mesureEntries(fiche);
+                    const unit = fiche.unite === 'pouces' ? 'in' : 'cm';
+                    const col = TYPE_VETEMENT_COLORS[fiche.typeVetement] ?? TYPE_VETEMENT_COLORS.autre;
+                    return (
+                      <TouchableOpacity
+                          key={fiche.id}
+                          style={[
+                            styles.ficheBlock,
+                            idx === fichePreviews.length - 1 && { borderBottomWidth: 0 },
+                          ]}
+                          onPress={() => navigation.navigate('FicheDetails', { ficheId: fiche.id, clientId })}
+                          activeOpacity={0.75}
+                      >
+                        <View style={styles.ficheTypeRow}>
+                          <View style={[styles.ficheEmojiWrap, { backgroundColor: col.bg, borderColor: col.border }]}>
+                            <Text style={styles.ficheEmoji}>{TYPE_VETEMENT_ICONS[fiche.typeVetement] ?? '📐'}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.ficheType}>{typeLabel(fiche.typeVetement)}</Text>
+                            <Text style={styles.measureDate}>
+                              {preview.length} champ{preview.length !== 1 ? 's' : ''} · {formatDate(fiche.datePrise)}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color={COLORS.gray400} />
+                        </View>
+                        {preview.length > 0 ? (
+                          <View style={styles.mesureList}>
+                            {preview.map(([key, value]) => (
+                              <MeasurementRow
+                                  key={key}
+                                  label={MESURE_LABELS[key] ?? key.replace(/_/g, ' ')}
+                                  value={value}
+                                  unit={unit}
+                              />
+                            ))}
+                          </View>
+                        ) : (
+                          <Text style={styles.ficheEmptyHint}>Ouvrir pour voir le détail</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+            ) : hasLegacyMesures ? (
                 <TouchableOpacity
                     style={styles.measureCard}
                     onPress={() => navigation.navigate('Measurements', { clientId })}
@@ -306,24 +398,25 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         <Ionicons name="body-outline" size={16} color={COLORS.primary} />
                       </View>
                       <Text style={styles.sectionTitle}>Mesures</Text>
-                      {measurements.recordedAt && (
-                          <Text style={styles.measureDate}>
-                            · {formatDate(measurements.recordedAt)}
-                          </Text>
-                      )}
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={COLORS.gray400} />
                   </View>
-
-                  <View style={styles.measureSummaryGrid}>
-                    <MeasurementSummaryItem label="Poitrine"  value={measurements.chestCircumference} />
-                    <MeasurementSummaryItem label="Taille"    value={measurements.waistCircumference} />
-                    <MeasurementSummaryItem label="Hanches"   value={measurements.hipCircumference}   />
-                    <MeasurementSummaryItem label="Épaules"   value={measurements.shoulderWidth}      />
+                  <View style={styles.mesureList}>
+                    {!!measurements?.chestCircumference && (
+                      <MeasurementRow label="Poitrine" value={measurements.chestCircumference} unit="cm" />
+                    )}
+                    {!!measurements?.waistCircumference && (
+                      <MeasurementRow label="Taille" value={measurements.waistCircumference} unit="cm" />
+                    )}
+                    {!!measurements?.hipCircumference && (
+                      <MeasurementRow label="Hanches" value={measurements.hipCircumference} unit="cm" />
+                    )}
+                    {!!measurements?.shoulderWidth && (
+                      <MeasurementRow label="Épaules" value={measurements.shoulderWidth} unit="cm" />
+                    )}
                   </View>
                 </TouchableOpacity>
             ) : (
-                // Client sans mesures → bouton d'ajout
                 <TouchableOpacity
                     style={styles.measureEmptyCard}
                     onPress={() => navigation.navigate('AddMeasurements', { clientId })}
@@ -346,23 +439,22 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 </TouchableOpacity>
             )}
 
-            {/* ── Commandes récentes ── */}
-            {recentOrders.length > 0 && (
+            {/* ── Commandes ── */}
+            {sortedOrders.length > 0 && (
                 <View style={styles.sectionCard}>
                   <View style={styles.sectionHead}>
-                    <Text style={styles.sectionTitle}>Commandes récentes</Text>
-                    <TouchableOpacity>
-                      <Text style={styles.sectionLink}>Voir toutes</Text>
-                    </TouchableOpacity>
+                    <Text style={styles.sectionTitle}>
+                      Commandes ({sortedOrders.length})
+                    </Text>
                   </View>
-                  {recentOrders.map((order, idx) => (
+                  {sortedOrders.map((order, idx) => (
                       <TouchableOpacity
                           key={order.id}
                           style={[
                             styles.orderItem,
-                            idx === recentOrders.length - 1 && { borderBottomWidth: 0 },
+                            idx === sortedOrders.length - 1 && { borderBottomWidth: 0 },
                           ]}
-                          onPress={() => {}}
+                          onPress={() => navigation.navigate('OrderDetails', { orderId: order.id })}
                           activeOpacity={0.7}
                       >
                         <View
@@ -370,19 +462,25 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                               styles.orderDot,
                               {
                                 backgroundColor:
-                                    orderStatusColor[order.orderStatus] ?? COLORS.gray400,
+                                    STATUT_COMMANDE_COLORS[order.orderStatus] ?? COLORS.gray400,
                               },
                             ]}
                         />
                         <View style={styles.orderInfo}>
                           <Text style={styles.orderName} numberOfLines={1}>
-                            {order.description || `Commande #${order.id.slice(0, 5)}`}
+                            {order.numeroCommande
+                              ? order.numeroCommande
+                              : (CLOTHING_TYPE_LABELS[order.clothingType] ?? order.clothingType)}
                           </Text>
                           <Text style={styles.orderMeta}>
-                            {formatDate(order.createdAt)} ·{' '}
-                            {orderStatusLabel[order.orderStatus] ?? order.orderStatus}
+                            {CLOTHING_TYPE_LABELS[order.clothingType] ?? order.clothingType}
+                            {' · '}
+                            {formatDate(order.createdAt)}
+                            {' · '}
+                            {STATUT_COMMANDE_LABELS[order.orderStatus] ?? order.orderStatus}
                           </Text>
                         </View>
+                        <Ionicons name="chevron-forward" size={16} color={COLORS.gray400} />
                         <Text style={styles.orderAmt}>
                           {formatCurrency(order.totalPrice)}
                         </Text>
@@ -429,37 +527,64 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             <View style={styles.sectionCard}>
               <View style={styles.sectionHead}>
                 <Text style={styles.sectionTitle}>
-                  Modèles réalisés ({clientModelsPhotos.length})
+                  Modèles réalisés ({clientReals.length})
                 </Text>
-                {clientModelsPhotos.length > 0 && (
-                    <TouchableOpacity>
+                {clientReals.length > 0 && (
+                    <TouchableOpacity onPress={() => navigation.navigate('Realisations', { clientId })}>
                       <Text style={styles.sectionLink}>Voir tous</Text>
                     </TouchableOpacity>
                 )}
               </View>
 
-              {clientModelsPhotos.length === 0 ? (
-                  <View style={styles.emptyPhotosContainer}>
+              {clientReals.length === 0 ? (
+                  <TouchableOpacity
+                      style={styles.emptyPhotosContainer}
+                      onPress={() => navigation.navigate('AddRealisation', { clientId })}
+                      activeOpacity={0.8}
+                  >
                     <Ionicons name="images-outline" size={28} color={COLORS.gray300} />
                     <Text style={styles.emptyPhotosText}>
-                      Aucune photo enregistrée pour ce client.
+                      Aucune réalisation enregistrée pour ce client.
                     </Text>
-                  </View>
+                    <Text style={styles.sectionLink}>Ajouter une réalisation</Text>
+                  </TouchableOpacity>
               ) : (
                   <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.photosGrid}
                   >
-                    {clientModelsPhotos.map((uri, i) => (
-                        <TouchableOpacity key={i} style={styles.photoThumb} activeOpacity={0.8}>
-                          <Image
-                              source={{ uri }}
-                              style={styles.photoImg}
-                              resizeMode="cover"
-                          />
+                    {clientReals.map((item) => {
+                      const photo = item.photos[0];
+                      const statutColor = STATUT_REALISATION_COLORS[item.statut] ?? COLORS.gray400;
+                      return (
+                        <TouchableOpacity
+                            key={item.id}
+                            style={styles.photoThumb}
+                            activeOpacity={0.8}
+                            onPress={() => navigation.navigate('RealisationDetails', {
+                              realisationId: item.id,
+                              clientId,
+                            })}
+                        >
+                          {photo ? (
+                            <Image source={{ uri: photo }} style={styles.photoImg} resizeMode="cover" />
+                          ) : (
+                            <View style={[styles.photoImg, styles.realPlaceholder]}>
+                              <Ionicons name="shirt-outline" size={26} color={COLORS.gray400} />
+                            </View>
+                          )}
+                          <View style={styles.realCaption}>
+                            <Text style={styles.realCaptionTitle} numberOfLines={1}>
+                              {item.tissuLabel || 'Réalisation'}
+                            </Text>
+                            <Text style={[styles.realCaptionStatut, { color: statutColor }]} numberOfLines={1}>
+                              {STATUT_REALISATION_LABELS[item.statut] ?? item.statut}
+                            </Text>
+                          </View>
                         </TouchableOpacity>
-                    ))}
+                      );
+                    })}
                   </ScrollView>
               )}
             </View>
@@ -692,31 +817,64 @@ const styles = StyleSheet.create({
   measureDate: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.gray400,
+    marginTop: 2,
   },
-  measureSummaryGrid: {
+  ficheBlock: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 12,
+  },
+  ficheTypeRow: {
     flexDirection: 'row',
-    paddingVertical: SPACING.md,
-  },
-  measureSummaryItem: {
-    flex: 1,
     alignItems: 'center',
-    gap: 2,
-    borderRightWidth: 0.5,
-    borderRightColor: COLORS.border,
+    gap: 10,
+    marginBottom: 8,
   },
-  measureSummaryValue: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
+  ficheEmojiWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ficheEmoji: { fontSize: 18 },
+  ficheType: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: 'PlusJakartaSans_700Bold',
     color: COLORS.text,
   },
-  measureSummaryUnit: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: 'PlusJakartaSans_400Regular',
+  mesureList: {
+    paddingLeft: 50,
+    gap: 6,
+  },
+  mesureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  mesureRowLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: COLORS.textSecondary,
+  },
+  mesureRowValue: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: COLORS.text,
+  },
+  mesureRowUnit: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: COLORS.gray400,
   },
-  measureSummaryLabel: {
-    fontSize: 10,
+  ficheEmptyHint: {
+    fontSize: 11,
     color: COLORS.textSecondary,
+    paddingLeft: 50,
   },
 
   // ── Bloc mesures (client sans mesures) ──
@@ -864,6 +1022,30 @@ const styles = StyleSheet.create({
   photoImg: {
     width: '100%',
     height: '100%',
+  },
+  realPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.gray100,
+  },
+  realCaption: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(22,18,58,0.72)',
+  },
+  realCaptionTitle: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: '#fff',
+  },
+  realCaptionStatut: {
+    fontSize: 10,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    marginTop: 1,
   },
   emptyPhotosContainer: {
     padding: SPACING.xl,

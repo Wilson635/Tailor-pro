@@ -22,6 +22,7 @@ import { useAppStore } from '@store/useAppStore';
 import { formatCurrency, formatCurrencyShort, formatRelativeTime } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { usePalette } from '@/src/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Period = 'jour' | 'semaine' | 'mois';
@@ -161,6 +162,7 @@ const StatPill = ({
 export const TailorDashboard: React.FC = () => {
     const insets     = useSafeAreaInsets();
     const navigation = useNavigation<Nav>();
+    const colors     = usePalette();
     const { statistics, activities, orders, clients, realisations } = useAppStore();
 
     const [period, setPeriod] = useState<Period>('mois');
@@ -258,7 +260,7 @@ export const TailorDashboard: React.FC = () => {
     // ──────────────────────────────────────────
     return (
         <ScrollView
-            style={styles.scroll}
+            style={[styles.scroll, { backgroundColor: colors.pageBg }]}
             contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 110 }]}
             showsVerticalScrollIndicator={false}
         >

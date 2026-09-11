@@ -27,24 +27,10 @@ import { ClientDashboard } from '@components/dashboard/ClientDashboard';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { nativeDriver } from '@utils/animation';
-
-// ── Palette ──
-const P = {
-  bg:       '#16123A',        // Indigo sombre (avatar, bouton dark)
-  primary:  '#6C3EB8',        // Violet principal
-  surface:  '#FFFFFF',
-  pageBg:   '#F5F4FB',        // Fond très légèrement violet
-  topBg:    '#FFFFFF',
-  text:     '#1A1033',
-  sub:      '#7C6FA8',
-  border:   'rgba(108,62,184,0.10)',
-  gold:     '#D4AF37',
-  goldBg:   'rgba(212,175,55,0.10)',
-  goldRim:  'rgba(212,175,55,0.30)',
-  error:    '#EF4444',
-  errorBg:  'rgba(239,68,68,0.10)',
-  success:  '#16A34A',
-};
+import { useThemedStyles, type Palette } from '@/src/theme';
+import { usePreferences } from '@/src/context/PreferencesContext';
+import { t } from '@/src/i18n';
+import { formatLongDate } from '@utils/formatters';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
@@ -54,15 +40,9 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
 const getGreeting = () => {
   const h = new Date().getHours();
-  if (h < 12) return 'Bonjour';
-  if (h < 18) return 'Bon après-midi';
-  return 'Bonsoir';
-};
-
-const getFormattedDate = () => {
-  return new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long', day: 'numeric', month: 'long',
-  });
+  if (h < 12) return t('greet.morning');
+  if (h < 18) return t('greet.afternoon');
+  return t('greet.evening');
 };
 
 // ──────────────────────────────────────────
@@ -73,6 +53,8 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { profile, loading } = useProfile();
   const logout = useAppStore((s) => s.logout);
+  const { colors: P, styles, isDark } = useThemedStyles(makeDashStyles);
+  usePreferences();
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [logoutModal, setLogoutModal] = useState(false);
@@ -115,7 +97,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
       <>
-        <StatusBar barStyle="dark-content" backgroundColor={P.topBg} />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={P.topBg} />
 
         <View style={[styles.container, { paddingTop: insets.top }]}>
 
@@ -130,7 +112,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
             {/* Ligne 1 : date + salutation | actions */}
             <View style={styles.topRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.topDate}>{getFormattedDate()}</Text>
+                <Text style={styles.topDate}>{formatLongDate()}</Text>
                 <Text style={styles.greeting}>
                   {getGreeting()}, <Text style={styles.greetingName}>{profile?.display_name?.split(' ')[0] ?? 'là'} 👋</Text>
                 </Text>
@@ -271,7 +253,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
 // STYLES
 // ==========================================
 
-const styles = StyleSheet.create({
+const makeDashStyles = (P: Palette) => ({
   container: { flex: 1, backgroundColor: P.pageBg },
   loader:    { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: P.pageBg },
 
@@ -290,7 +272,7 @@ const styles = StyleSheet.create({
     left: -40,
     right: -40,
     height: 64,
-    backgroundColor: '#F1EEFB',
+    backgroundColor: P.primaryBg,
     borderBottomLeftRadius: 999,
     borderBottomRightRadius: 999,
     opacity: 0.6,
@@ -385,9 +367,9 @@ const styles = StyleSheet.create({
   menuCard: {
     position: 'absolute',
     width: 256,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: P.surface,
     borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+    borderWidth: 1, borderColor: P.border,
     overflow: 'hidden',
     ...Platform.select({
       ios:     { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 24 },
@@ -426,7 +408,7 @@ const styles = StyleSheet.create({
     padding: SPACING.xl,
   },
   alertCard: {
-    backgroundColor: '#fff',
+    backgroundColor: P.surface,
     width: '100%', maxWidth: 320,
     borderRadius: 24,
     padding: SPACING.xl,

@@ -19,6 +19,7 @@ import * as Location from 'expo-location';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { useAppStore } from '@store/useAppStore';
 import type { RootStackParamList } from '../../types';
+import { Avatar } from '@components/ui';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddClient'>;
 
@@ -704,18 +705,24 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
     if (status !== 'granted') return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, aspect: [1, 1], quality: 0.7,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7, base64: true,
     });
-    if (!result.canceled) setPhoto(result.assets[0].uri);
+    if (!result.canceled && result.assets[0]) {
+      const a = result.assets[0];
+      setPhoto(a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri);
+    }
   };
 
   const pickFromCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') return;
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true, aspect: [1, 1], quality: 0.7,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7, base64: true,
     });
-    if (!result.canceled) setPhoto(result.assets[0].uri);
+    if (!result.canceled && result.assets[0]) {
+      const a = result.assets[0];
+      setPhoto(a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri);
+    }
   };
 
   // ── IMPORT DEPUIS RÉPERTOIRE ──
@@ -828,13 +835,7 @@ export const AddClientScreen: React.FC<Props> = ({ navigation }) => {
           {/* ── PHOTO ── */}
           <View style={styles.photoSection}>
             <TouchableOpacity style={styles.photoTouch} onPress={handlePhotoPress} activeOpacity={0.85}>
-              {photo ? (
-                  <Image source={{ uri: photo }} style={styles.photo} />
-              ) : (
-                  <View style={styles.photoPlaceholder}>
-                    <Ionicons name="person-outline" size={34} color={C.textTertiary} />
-                  </View>
-              )}
+              <Avatar source={photo} name={formData.nom} size={90} radius={22} />
               <View style={styles.cameraBadge}>
                 <Ionicons name={photo ? 'pencil' : 'camera'} size={13} color="#fff" />
               </View>

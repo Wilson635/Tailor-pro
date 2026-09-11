@@ -2,7 +2,7 @@
 // ÉCRAN DÉTAILS RÉALISATION — TailorPro (Module 5)
 // ==========================================
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Image, Alert, FlatList, Dimensions, ActivityIndicator,
@@ -18,7 +18,7 @@ import {
 } from '@constants/realisationConstants';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 import type { StatutRealisation } from '../../types';
-import { RC } from '@screens/Realisations/RealisationForm';
+import { RC, realisationTitle } from '@screens/Realisations/RealisationForm';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'RealisationDetails'>;
 
@@ -86,8 +86,9 @@ const tp = StyleSheet.create({
   nextBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: RC.ink, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.28)',
   },
-  nextBtnText: { color: RC.gold, fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold' },
+  nextBtnText: { color: '#fff', fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold' },
 });
 
 const MetaRow = ({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) => (
@@ -114,12 +115,14 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
 
   const {
     getRealisationById, updateRealisationStatut, deleteRealisation,
-    addRealisationPhoto, updateRealisation,
+    addRealisationPhoto, updateRealisation, catalog, loadCatalog,
   } = useAppStore();
   const realisation = getRealisationById(realisationId, clientId);
 
   const [photoIdx, setPhotoIdx] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => { loadCatalog(); }, []);
 
   if (!realisation) {
     return (
@@ -135,6 +138,8 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
 
   const { photos, statut } = realisation;
   const statutColor = STATUT_REALISATION_COLORS[statut];
+  const title = realisationTitle(realisation, catalog);
+  const modele = realisation.modeleId ? catalog.find(m => m.id === realisation.modeleId) : undefined;
 
   const handleAddPhoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -213,14 +218,14 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
                   <Ionicons name="shirt-outline" size={56} color={RC.textTer} />
                   <Text style={styles.galleryPlaceholderText}>Aucune photo pour l'instant</Text>
                   <TouchableOpacity style={styles.emptyAddBtn} onPress={handleAddPhoto}>
-                    <Ionicons name="camera-outline" size={15} color={RC.gold} />
+                    <Ionicons name="camera-outline" size={15} color="#fff" />
                     <Text style={styles.emptyAddBtnText}>Ajouter une photo</Text>
                   </TouchableOpacity>
                 </View>
             )}
 
             {/* Boutons flottants sur l'image */}
-            <View style={[styles.floatRow, { top: insets.top + 8 }]}>
+            <View style={[styles.floatRow, { top: 12 }]}>
               <TouchableOpacity style={styles.floatBtn} onPress={() => navigation.goBack()}>
                 <Ionicons name="arrow-back" size={19} color="#FFF" />
               </TouchableOpacity>
@@ -251,7 +256,7 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
                   <View style={[styles.statutPill, { backgroundColor: statutColor }]}>
                     <Text style={styles.statutPillText}>{STATUT_REALISATION_LABELS[statut]}</Text>
                   </View>
-                  <Text style={styles.heroTitle} numberOfLines={1}>{realisation.tissuLabel ?? 'Réalisation'}</Text>
+                  <Text style={styles.heroTitle} numberOfLines={1}>{title}</Text>
                   {realisation.couleur ? <Text style={styles.heroSub}>{realisation.couleur}</Text> : null}
                 </View>
             )}
@@ -260,7 +265,7 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
           <View style={styles.body}>
             {photos.length === 0 && (
                 <View>
-                  <Text style={styles.plainTitle}>{realisation.tissuLabel ?? 'Réalisation'}</Text>
+                  <Text style={styles.plainTitle}>{title}</Text>
                   {realisation.couleur ? <Text style={styles.plainSub}>{realisation.couleur}</Text> : null}
                 </View>
             )}
@@ -288,6 +293,7 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
 
             {/* Détails */}
             <View style={styles.card}>
+              {modele && <MetaRow icon="albums-outline" label="Modèle" value={modele.nom} />}
               {realisation.tissuLabel && <MetaRow icon="layers-outline" label="Tissu" value={realisation.tissuLabel} />}
               {realisation.couleur && <MetaRow icon="color-palette-outline" label="Couleur" value={realisation.couleur} />}
               {realisation.accessoires.length > 0 && (
@@ -342,8 +348,9 @@ const styles = StyleSheet.create({
   emptyAddBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: RC.ink, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.28)',
   },
-  emptyAddBtnText: { color: RC.gold, fontSize: 12.5, fontFamily: 'PlusJakartaSans_700Bold' },
+  emptyAddBtnText: { color: '#fff', fontSize: 12.5, fontFamily: 'PlusJakartaSans_700Bold' },
 
   dots: { position: 'absolute', bottom: 16, alignSelf: 'center', flexDirection: 'row', gap: 6 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
@@ -372,7 +379,10 @@ const styles = StyleSheet.create({
   plainTitle: { fontSize: 22, color: RC.text, fontFamily: 'PlusJakartaSans_700Bold' },
   plainSub: { fontSize: 14, color: RC.textSec, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 2 },
 
-  card: { backgroundColor: RC.linen, borderRadius: 18, padding: 16 },
+  card: {
+    backgroundColor: RC.linen, borderRadius: 18, padding: 16,
+    borderWidth: 0.5, borderColor: RC.hairline,
+  },
 
   thumbSm: { width: 56, height: 56, borderRadius: 10 },
   thumbRemove: {
@@ -384,10 +394,11 @@ const styles = StyleSheet.create({
   noteBar: { width: 3, borderRadius: 2, backgroundColor: RC.gold },
   noteText: { flex: 1, fontSize: 14, color: RC.text, lineHeight: 21, fontFamily: 'PlusJakartaSans_500Medium' },
 
-  footer: { borderTopWidth: 1, borderTopColor: RC.hairline, padding: 16, backgroundColor: RC.ivory },
+  footer: { borderTopWidth: 0.5, borderTopColor: RC.hairline, padding: 16, backgroundColor: RC.ivory },
   footerBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: RC.ink, borderRadius: 16, paddingVertical: 15,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.28)',
   },
-  footerBtnText: { fontSize: 15.5, fontFamily: 'PlusJakartaSans_700Bold', color: RC.gold },
+  footerBtnText: { fontSize: 15.5, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });

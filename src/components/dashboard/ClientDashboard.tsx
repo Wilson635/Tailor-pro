@@ -21,6 +21,7 @@ import { useProfile } from '@hooks/useProfile';
 import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
+import { usePalette } from '@/src/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -135,6 +136,7 @@ const ps = StyleSheet.create({
 export const ClientDashboard: React.FC = () => {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<Nav>();
+    const colors = usePalette();
     const { profile } = useProfile();
     const { orders, measurements } = useAppStore();
 
@@ -166,7 +168,7 @@ export const ClientDashboard: React.FC = () => {
 
     return (
         <ScrollView
-            style={styles.scroll}
+            style={[styles.scroll, { backgroundColor: colors.pageBg }]}
             contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 110 }]}
             showsVerticalScrollIndicator={false}
         >

@@ -21,33 +21,16 @@ import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { useProfile } from '@hooks/useProfile';
 import { useAppStore } from '@store/useAppStore';
 import { supabase } from '@/src/lib/supabase';
+import { usePalette, useTheme } from '@/src/theme';
+import { lightPalette } from '@/src/theme/palette';
+import { usePreferences } from '@/src/context/PreferencesContext';
+import { t } from '@/src/i18n';
 import { formatCurrency, formatCurrencyShort } from '@utils/formatters';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
 // ── PALETTE ──────────────────────────────────────────────────────
-const P = {
-    bg:         '#16123A',
-    primary:    '#6C3EB8',
-    primaryBg:  'rgba(108,62,184,0.08)',
-    primaryMid: 'rgba(108,62,184,0.15)',
-    pageBg:     '#F5F4FB',
-    surface:    '#FFFFFF',
-    text:       '#1A1033',
-    sub:        '#7C6FA8',
-    muted:      'rgba(124,111,168,0.55)',
-    border:     'rgba(108,62,184,0.10)',
-    borderHard: 'rgba(108,62,184,0.18)',
-    gold:       '#D4AF37',
-    goldBg:     'rgba(212,175,55,0.10)',
-    goldRim:    'rgba(212,175,55,0.28)',
-    success:    '#16A34A',
-    successBg:  'rgba(22,163,74,0.10)',
-    error:      '#EF4444',
-    errorBg:    'rgba(239,68,68,0.10)',
-    warning:    '#D97706',
-    warningBg:  'rgba(217,119,6,0.10)',
-};
+const P = lightPalette;
 
 // ── CONSTANTES ───────────────────────────────────────────────────
 const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
@@ -172,6 +155,9 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
     const { profile, updateProfile, refetch } = useProfile();
     const { statistics, orders, clients } = useAppStore();
+    const theme = usePalette();
+    const { isDark } = useTheme();
+    const { langue, devise, uniteMesure } = usePreferences();
 
     const [activeTab, setActiveTab] = useState<'profil' | 'securite' | 'atelier'>('profil');
     const [isEditing, setIsEditing] = useState(false);
@@ -484,8 +470,8 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
     // ── RENDER ────────────────────────────────────────────────────
     return (
-        <View style={[styles.container, { paddingTop: insets.top }]}>
-            <StatusBar barStyle="dark-content" backgroundColor={P.pageBg} />
+        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.pageBg }]}>
+            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.pageBg} />
 
             {/* ── HEADER ── */}
             <View style={styles.header}>
@@ -924,11 +910,11 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                             <Divider />
                             <SettingRow
                                 icon="settings-outline" iconBg={P.goldBg} iconColor={P.gold}
-                                title="Devise, langue & unités"
+                                title={t('profile.prefs')}
                                 subtitle={[
-                                    profile?.devise ?? 'XAF',
-                                    profile?.langue === 'en' ? 'English' : 'Français',
-                                    profile?.unite_mesure ?? 'cm',
+                                    devise,
+                                    langue === 'en' ? t('settings.langEn') : t('settings.langFr'),
+                                    uniteMesure,
                                 ].join(' · ')}
                                 onPress={() => navigation.navigate('Settings')}
                             />

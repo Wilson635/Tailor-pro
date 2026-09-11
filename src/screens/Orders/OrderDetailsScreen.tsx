@@ -28,6 +28,9 @@ import { paymentService, activityService, createPaiementM8 } from '@services/sup
 import { TYPE_PAIEMENT_META, TYPES_PAIEMENT, TypePaiement } from '@constants/paiementConstants';
 import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
+import { getDeviseMeta } from '@constants/currencies';
+import { getRuntimePrefs } from '@/src/preferences/runtime';
+import { Avatar } from '@components/ui';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderDetails'>;
@@ -131,7 +134,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const { orderId } = route.params;
     const insets = useSafeAreaInsets();
 
-    const { orders, updateOrder, loadStatistics, loadActivities, realisations, loadRealisations, getProjectById, getParticipantsByProject, loadProjects, loadParticipants } = useAppStore();
+    const { orders, updateOrder, loadStatistics, loadActivities, realisations, loadRealisations, getProjectById, getParticipantsByProject, loadProjects, loadParticipants, getClientById } = useAppStore();
     const order = orders.find(o => o.id === orderId);
     // Réalisation liée à cette commande (Module 7)
     const linkedRealisation = order
@@ -347,13 +350,16 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                     <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
                         <Feather name="arrow-left" size={20} color={P.text} />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Détails commande</Text>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.kicker}>Atelier</Text>
+                        <Text style={styles.headerTitle}>Commande</Text>
+                    </View>
                     <TouchableOpacity
                         style={styles.clientBtn}
                         onPress={() => navigation.navigate('ClientDetails', { clientId: order.clientId })}
                     >
                         <Feather name="user" size={16} color={P.primary} />
-                        <Text style={styles.clientBtnText}>Fiche client</Text>
+                        <Text style={styles.clientBtnText}>Fiche</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -385,11 +391,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         onPress={() => navigation.navigate('ClientDetails', { clientId: order.clientId })}
                         activeOpacity={0.7}
                     >
-                        <View style={styles.clientAvatar}>
-                            <Text style={styles.clientAvatarText}>
-                                {order.clientName.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase()}
-                            </Text>
-                        </View>
+                        <Avatar source={getClientById(order.clientId)?.photo} name={order.clientName} size={42} />
                         <View style={{ flex: 1 }}>
                             <Text style={styles.clientName}>{order.clientName}</Text>
                             <Text style={styles.clientSub}>Voir la fiche client</Text>
@@ -447,7 +449,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                         disabled={savingStatus}
                                         activeOpacity={0.85}
                                     >
-                                        <Feather name="arrow-right-circle" size={15} color="#fff" />
+                                        <Feather name="arrow-right-circle" size={15} color={P.gold} />
                                         <Text style={styles.advanceBtnText}>
                                             Passer à : {ORDER_STATUS_META[ORDER_STATUS_FLOW[currentStepIndex + 1]].label}
                                         </Text>
@@ -583,7 +585,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                     onPress={() => { setPayAmount(remaining.toString()); setPayModal(true); }}
                                     activeOpacity={0.85}
                                 >
-                                    <Feather name="check-circle" size={15} color="#fff" />
+                                    <Feather name="check-circle" size={15} color={P.gold} />
                                     <Text style={styles.payFullBtnText}>Encaisser le solde — {formatCurrencyShort(remaining)}</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
@@ -698,7 +700,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                 autoFocus
                             />
                             <View style={styles.amountRight}>
-                                <Text style={styles.amountCurrency}>FCFA</Text>
+                                <Text style={styles.amountCurrency}>{getDeviseMeta(getRuntimePrefs().currency).symbol}</Text>
                                 {remaining > 0 && (
                                     <TouchableOpacity
                                         style={styles.allBtn}
@@ -749,7 +751,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             {savingPay
                                 ? <ActivityIndicator color="#fff" size="small" />
                                 : <>
-                                    <Feather name="check" size={15} color="#fff" />
+                                    <Feather name="check" size={15} color={P.gold} />
                                     <Text style={styles.submitBtnText}>Confirmer le paiement</Text>
                                 </>
                             }
@@ -820,20 +822,22 @@ const styles = StyleSheet.create({
 
     // ── Header ──
     header: {
-        backgroundColor: P.surface,
+        backgroundColor: P.pageBg,
         flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: SPACING.md, paddingVertical: 12,
-        borderBottomWidth: 0.5,
-        borderBottomColor: P.borderHard,
-        gap: 8,
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
+        gap: 12,
     },
     backBtn: {
-        width: 36, height: 36, borderRadius: 10,
-        backgroundColor: P.pageBg,
+        width: 38, height: 38, borderRadius: 12,
+        backgroundColor: P.surface,
         borderWidth: 0.5, borderColor: P.borderHard,
         alignItems: 'center', justifyContent: 'center',
     },
-    headerTitle: { flex: 1, fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text, textAlign: 'center' },
+    kicker: {
+        fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: P.gold,
+        letterSpacing: 1.2, textTransform: 'uppercase',
+    },
+    headerTitle: { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
 
     // ── Fil d'Ariane projet ──
     projectBreadcrumb: {
@@ -862,7 +866,7 @@ const styles = StyleSheet.create({
     // ── Client card ──
     clientCard: {
         backgroundColor: P.surface,
-        borderRadius: 14,
+        borderRadius: 18,
         borderWidth: 0.5, borderColor: P.borderHard,
         flexDirection: 'row', alignItems: 'center',
         padding: SPACING.md, gap: SPACING.sm,
@@ -879,7 +883,7 @@ const styles = StyleSheet.create({
     // ── Card ──
     card: {
         backgroundColor: P.surface,
-        borderRadius: 14,
+        borderRadius: 18,
         borderWidth: 0.5, borderColor: P.borderHard,
         padding: SPACING.md,
     },
@@ -910,8 +914,9 @@ const styles = StyleSheet.create({
     statusActions: { gap: 8 },
     advanceBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 7,
-        backgroundColor: P.primary, borderRadius: 12,
+        backgroundColor: P.bg, borderRadius: 14,
         paddingVertical: 13, paddingHorizontal: 16, justifyContent: 'center',
+        borderWidth: 1, borderColor: P.goldRim,
     },
     advanceBtnText: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
     cancelBtn: {
@@ -946,9 +951,10 @@ const styles = StyleSheet.create({
 
     payFullBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 7,
-        backgroundColor: P.success, borderRadius: 12,
+        backgroundColor: P.bg, borderRadius: 14,
         paddingVertical: 13, paddingHorizontal: 16, justifyContent: 'center',
         marginBottom: 7,
+        borderWidth: 1, borderColor: P.goldRim,
     },
     payFullBtnText: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
     payPartialBtn: {
@@ -1024,8 +1030,9 @@ const styles = StyleSheet.create({
 
     submitBtn: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-        backgroundColor: P.success, borderRadius: 14,
+        backgroundColor: P.bg, borderRadius: 16,
         paddingVertical: 15,
+        borderWidth: 1, borderColor: P.goldRim,
     },
     submitBtnText: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });

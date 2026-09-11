@@ -7,7 +7,7 @@
 // Chaque fonction retourne { data, error }.
 
 import { supabase } from '@/src/lib/supabase';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy'; // SDK 54 : API string-based (readAsStringAsync, EncodingType) déplacée ici
 import { decode } from 'base64-arraybuffer';
 import type { Client, Order, Measurements, Payment, Statistics, CatalogModel, FicheMensuration, TypeVetement } from '../types';
 
@@ -72,7 +72,7 @@ export const clientService = {
     update: async (clientId: string, updates: Partial<Client>) => {
         const payload: Record<string, any> = { updated_at: new Date().toISOString() };
         if (updates.nom            !== undefined) payload.nom            = updates.nom;
-        if (updates.telephone      !== undefined) payload.phone          = updates.telephone;
+        if (updates.telephone      !== undefined) payload.telephone      = updates.telephone;
         if (updates.whatsapp       !== undefined) payload.whatsapp       = updates.whatsapp;
         if (updates.email          !== undefined) payload.email          = updates.email;
         if (updates.adresse        !== undefined) payload.adresse        = updates.adresse;
@@ -104,6 +104,73 @@ export const clientService = {
             .eq('id', clientId);
         return { error };
     },
+};
+
+export const isRemotePhoto = (uri?: string | null) =>
+    !!uri && (uri.startsWith('http://') || uri.startsWith('https://'));
+
+const guessImageExt = (localUri: string) => {
+    if (localUri.startsWith('data:image/png')) return 'png';
+    if (localUri.startsWith('data:image/webp')) return 'webp';
+    const raw = (localUri.split('.').pop()?.toLowerCase() ?? 'jpg').split('?')[0];
+    const ext = raw.replace(/[^a-z0-9]/g, '');
+    if (ext === 'jpeg' || ext === 'jpg' || ext === 'png' || ext === 'webp' || ext === 'heic') return ext === 'jpeg' ? 'jpg' : ext;
+    return 'jpg';
+};
+
+const uriToArrayBuffer = async (localUri: string): Promise<ArrayBuffer> => {
+    if (localUri.startsWith('data:')) {
+        const b64 = localUri.split(',')[1] ?? '';
+        return decode(b64);
+    }
+    try {
+        const base64 = await FileSystem.readAsStringAsync(localUri, {
+            encoding: FileSystem.EncodingType.Base64,
+        });
+        return decode(base64);
+    } catch {
+        const response = await fetch(localUri);
+        return await response.arrayBuffer();
+    }
+};
+
+/** Upload d’une photo client vers `catalog-photos` (bucket existant, RLS uid en 1er dossier). */
+export const uploadClientPhoto = async (
+    localUri: string,
+    couturierId: string,
+    clientId: string,
+): Promise<{ publicUrl: string | null; error: Error | null }> => {
+    try {
+        const userId = couturierId || await getUserId();
+        const ext = guessImageExt(localUri);
+        const path = `${userId}/clients/${clientId}_${Date.now()}.${ext}`;
+        const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const arrayBuffer = await uriToArrayBuffer(localUri);
+
+        const { error } = await supabase.storage
+            .from('catalog-photos')
+            .upload(path, arrayBuffer, { contentType, upsert: false });
+        if (error) {
+            console.error('Erreur upload photo client:', error);
+            return { publicUrl: null, error };
+        }
+        const { data } = supabase.storage.from('catalog-photos').getPublicUrl(path);
+        return { publicUrl: data.publicUrl, error: null };
+    } catch (e) {
+        console.error('Exception upload photo client:', e);
+        return { publicUrl: null, error: e as Error };
+    }
+};
+
+export const resolveClientPhotoForSave = async (
+    photo: string | null | undefined,
+    couturierId: string,
+    clientId: string,
+): Promise<string | null> => {
+    if (!photo) return null;
+    if (isRemotePhoto(photo)) return photo.split('?')[0];
+    const { publicUrl } = await uploadClientPhoto(photo, couturierId, clientId);
+    return publicUrl;
 };
 
 // ==========================================
@@ -352,13 +419,29 @@ export const measurementService = {
 // FICHES DE MENSURATION (Module 3)
 // ==========================================
 
+const parseMesures = (raw: unknown): Record<string, number> => {
+    if (!raw) return {};
+    try {
+        const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (!obj || typeof obj !== 'object') return {};
+        const out: Record<string, number> = {};
+        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+            const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+            if (Number.isFinite(n)) out[k] = n;
+        }
+        return out;
+    } catch {
+        return {};
+    }
+};
+
 export const mapFiche = (row: Record<string, unknown>): FicheMensuration => ({
     id:           row.id as string,
     clientId:     row.client_id as string,
     couturierId:  row.couturier_id as string,
     typeVetement: row.type_vetement as TypeVetement,
     datePrise:    new Date(row.date_prise as string),
-    mesures:      (row.mesures ?? {}) as Record<string, number>,
+    mesures:      parseMesures(row.mesures),
     unite:        row.unite as 'cm' | 'pouces',
     notes:        row.notes as string | undefined,
     isActive:     row.is_active as boolean,
@@ -1002,13 +1085,13 @@ export const mapClient = (row: any): Client => ({
     id:            row.id,
     couturierId:   row.couturier_id ?? row.user_id ?? '',
     nom:           row.nom ?? row.full_name ?? '',
-    telephone:     row.telephone ?? '',
+    telephone:     row.telephone ?? row.phone ?? '',
     whatsapp:      row.whatsapp ?? null,
     email:         row.email ?? null,
     adresse:       row.adresse ?? row.neighborhood ?? null,
     sexe:          row.sexe ?? row.gender ?? 'femme',
     dateNaissance: row.date_naissance ? new Date(row.date_naissance) : null,
-    photo:         row.photo_url ?? null,
+    photo:         row.photo_url ?? row.photo ?? row.avatar_url ?? null,
     notesInternes: row.notes_internes ?? null,
     isFavorite:    row.is_favorite ?? false,
     balance:       Number(row.balance ?? 0),

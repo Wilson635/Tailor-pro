@@ -2,7 +2,7 @@
 // ÉCRAN MODIFICATION RÉALISATION — TailorPro (Module 5)
 // ==========================================
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,9 +18,15 @@ export const EditRealisationScreen: React.FC<Props> = ({ route, navigation }) =>
   const insets = useSafeAreaInsets();
   const { realisationId, clientId } = route.params;
 
-  const { getRealisationById, updateRealisation, userId } = useAppStore();
+  const { getRealisationById, updateRealisation, userId, loadFiches, loadCatalog, loadTissus } = useAppStore();
   const realisation = getRealisationById(realisationId, clientId);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    loadFiches(clientId);
+    loadCatalog();
+    loadTissus();
+  }, [clientId]);
 
   if (!realisation) {
     return (
@@ -79,10 +85,12 @@ export const EditRealisationScreen: React.FC<Props> = ({ route, navigation }) =>
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Ionicons name="close" size={22} color={RC.text} />
+            <Ionicons name="arrow-back" size={18} color={RC.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Modifier la réalisation</Text>
-          <View style={{ width: 36 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.kicker}>Atelier</Text>
+            <Text style={styles.headerTitle}>Modifier</Text>
+          </View>
         </View>
 
         <RealisationForm
@@ -106,9 +114,17 @@ function isoToDisplay(iso?: string): string {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: RC.ivory },
   header: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: RC.hairline, backgroundColor: RC.ivory,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 20, paddingVertical: 12, backgroundColor: RC.ivory,
   },
-  backBtn: { padding: 4, marginRight: 8 },
-  headerTitle: { flex: 1, fontSize: 17, fontFamily: 'PlusJakartaSans_700Bold', color: RC.text, textAlign: 'center' },
+  backBtn: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: RC.linen,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 0.5, borderColor: RC.hairline,
+  },
+  kicker: {
+    fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: RC.gold,
+    letterSpacing: 1.2, textTransform: 'uppercase',
+  },
+  headerTitle: { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: RC.text },
 });

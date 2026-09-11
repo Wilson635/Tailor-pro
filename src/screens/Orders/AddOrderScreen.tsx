@@ -22,11 +22,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrency } from '@utils/formatters';
+import { getDeviseMeta } from '@constants/currencies';
+import { getRuntimePrefs } from '@/src/preferences/runtime';
 import {
   COLORS, SPACING, FONT_SIZES,
   BORDER_RADIUS, CLOTHING_TYPE_LABELS,
 } from '@constants/theme';
 import type { ClothingType, RootStackParamList, UrgencyLevel } from '../../types';
+import { Avatar } from '@components/ui';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from "@/src/lib/supabase";
@@ -63,12 +66,6 @@ const URGENCY_OPTIONS: { key: UrgencyLevel; label: string; bg: string; color: st
   { key: 'medium', label: 'Moyen',   bg: '#FEF3C7', color: '#92400E', dot: '#F59E0B' },
   { key: 'high',   label: 'Urgent',  bg: '#FEE2E2', color: '#991B1B', dot: '#EF4444' },
 ];
-
-const getInitials = (name: string): string => {
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-};
 
 const getPaymentStatus = (total: number, advance: number) => {
   if (total === 0) return { label: 'Non payé', bg: '#FEE2E2', color: '#991B1B' };
@@ -141,6 +138,7 @@ const StyledInput = ({
 export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
+  const currencySymbol = getDeviseMeta(getRuntimePrefs().currency).symbol;
   const { addOrder, getClientById, clients, participants, promoteParticipant, loadProjectRecap, applyMeasurementChoice } = useAppStore();
 
   const preselectedClientId = route.params?.clientId ?? '';
@@ -418,17 +416,13 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        {/* ── Header courbé ── */}
         <View style={styles.headerWrap}>
-          <View style={styles.headerRow}>
-            <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
-              <Ionicons name="arrow-back" size={20} color="#fff" />
-            </TouchableOpacity>
-            <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={styles.headerTitle}>Nouvelle commande</Text>
-              <Text style={styles.headerSubtitle}>Créer une nouvelle pièce</Text>
-            </View>
-            <View style={[styles.headerBtn, { opacity: 0 }]} />
+          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={18} color={COLORS.text} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerKicker}>Atelier</Text>
+            <Text style={styles.headerTitle}>Nouvelle commande</Text>
           </View>
         </View>
 
@@ -448,9 +442,11 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                   subtitle="Commande groupée / Projet"
               >
                 <View style={styles.clientRow}>
-                  <View style={styles.clientAvatar}>
-                    <Text style={styles.clientAvatarText}>{getInitials(participant.nom)}</Text>
-                  </View>
+                  <Avatar
+                    source={participant.clientId ? getClientById(participant.clientId)?.photo : undefined}
+                    name={participant.nom}
+                    size={42}
+                  />
                   <View style={styles.clientInfo}>
                     <Text style={styles.clientName}>{participant.nom}</Text>
                     <View style={styles.clientSubRow}>
@@ -474,9 +470,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                 >
                   {selectedClient ? (
                       <>
-                        <View style={styles.clientAvatar}>
-                          <Text style={styles.clientAvatarText}>{getInitials(selectedClient.nom)}</Text>
-                        </View>
+                        <Avatar source={selectedClient.photo} name={selectedClient.nom} size={42} />
                         <View style={styles.clientInfo}>
                           <Text style={styles.clientName}>{selectedClient.nom}</Text>
                           <View style={styles.clientSubRow}>
@@ -710,7 +704,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                     value={totalPrice}
                     onChangeText={setTotalPrice}
                     keyboardType="numeric"
-                    suffix="FCFA"
+                    suffix={currencySymbol}
                 />
               </View>
               <View style={[styles.field, { flex: 1 }]}>
@@ -720,7 +714,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                     value={advancePayment}
                     onChangeText={setAdvancePayment}
                     keyboardType="numeric"
-                    suffix="FCFA"
+                    suffix={currencySymbol}
                 />
               </View>
             </View>
@@ -755,7 +749,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
               disabled={isLoading}
               activeOpacity={0.85}
           >
-            <Ionicons name={isLoading ? 'reload-outline' : 'checkmark-circle'} size={22} color="#fff" />
+            <Ionicons name={isLoading ? 'reload-outline' : 'checkmark'} size={20} color="#D4AF37" />
             <Text style={styles.submitText}>
               {isLoading ? 'Enregistrement...' : 'Enregistrer la commande'}
             </Text>
@@ -847,11 +841,7 @@ export const AddOrderScreen: React.FC<Props> = ({ route, navigation }) => {
                           activeOpacity={0.7}
                       >
                         {/* Avatar */}
-                        <View style={[styles.modalAvatar, isSelected && styles.modalAvatarActive]}>
-                          <Text style={[styles.modalAvatarText, isSelected && styles.modalAvatarTextActive]}>
-                            {getInitials(item.nom)}
-                          </Text>
-                        </View>
+                        <Avatar source={item.photo} name={item.nom} size={46} />
 
                         {/* Infos */}
                         <View style={styles.modalClientInfo}>
@@ -912,53 +902,41 @@ const styles = StyleSheet.create({
 
   // ── Header ──
   headerWrap: {
-    backgroundColor: COLORS.primary,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-    paddingBottom: SPACING.lg,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+    backgroundColor: COLORS.background,
   },
   headerBtn: {
-    width: 38, height: 38, borderRadius: BORDER_RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: COLORS.white,
+    borderWidth: 0.5,
+    borderColor: 'rgba(108,62,184,0.15)',
     alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: FONT_SIZES.lg, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#fff',
+  headerKicker: {
+    fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: '#D4AF37',
+    letterSpacing: 1.2, textTransform: 'uppercase',
   },
-  headerSubtitle: {
-    fontSize: FONT_SIZES.xs, color: 'rgba(255,255,255,0.75)', marginTop: 2,
+  headerTitle: {
+    fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: COLORS.text,
   },
 
   scroll: { flex: 1 },
   scrollContent: {
     padding: SPACING.lg,
     gap: SPACING.md,
-    marginTop: -SPACING.md,
   },
 
   // ── Card ──
   card: {
     backgroundColor: COLORS.white,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 0.5,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(108,62,184,0.15)',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   cardHead: {
     flexDirection: 'row',
@@ -1135,26 +1113,19 @@ const styles = StyleSheet.create({
   // ── Footer flottant ──
   footer: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    backgroundColor: COLORS.background,
     paddingHorizontal: SPACING.lg, paddingTop: SPACING.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: -4 },
-    elevation: 12,
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(108,62,184,0.10)',
   },
   submitBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: COLORS.primary,
-    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: '#16123A',
+    borderRadius: 16,
     paddingVertical: SPACING.md + 2,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.28)',
   },
   submitText: { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#fff' },
 

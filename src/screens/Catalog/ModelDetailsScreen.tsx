@@ -1,5 +1,5 @@
 // ==========================================
-// ÉCRAN DÉTAILS DU MODÈLE - TailorPro
+// DÉTAIL MODÈLE — TailorPro
 // ==========================================
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -15,45 +15,30 @@ import {
   Animated,
   Alert,
   ActivityIndicator,
+  StatusBar,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrencyShort } from '@utils/formatters';
-import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '@constants/theme';
-import { CATALOG_CATEGORY_LABELS } from '@constants/catalogConstants';
+import { nativeDriver } from '@utils/animation';
+import { useThemedStyles, type Palette } from '@/src/theme';
+import { CATALOG_CATEGORY_LABELS, DIFFICULTE_LABELS } from '@constants/catalogConstants';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ModelDetails'>;
 
 const { width, height } = Dimensions.get('window');
-const HERO_HEIGHT = height * 0.45;
-
-const DIFFICULTE_META: Record<string, { label: string; color: string; bg: string }> = {
-  facile:    { label: 'Facile',    color: '#16A34A', bg: '#F0FDF4' },
-  moyen:     { label: 'Moyen',     color: '#D97706', bg: '#FFFBEB' },
-  difficile: { label: 'Difficile', color: '#DC2626', bg: '#FEF2F2' },
-};
-
-// ==========================================
-// SOUS-COMPOSANT : puce (tissu / accessoire)
-// ==========================================
-
-const Chip = ({ label }: { label: string }) => (
-    <View style={styles.chip}>
-      <Text style={styles.chipText}>{label}</Text>
-    </View>
-);
-
-// ==========================================
-// ÉCRAN PRINCIPAL
-// ==========================================
+const HERO_H = height * 0.48;
 
 export const ModelDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
+  const { colors: P, styles } = useThemedStyles(makeStyles);
   const { modelId } = route.params;
-
   const {
     getModelById,
     toggleCatalogFavorite,
@@ -63,490 +48,320 @@ export const ModelDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   } = useAppStore();
 
   const model = getModelById(modelId);
-
-  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [photoIndex, setPhotoIndex] = useState(0);
   const [isActing, setIsActing] = useState(false);
-
-  // ── Animations ──
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(24)).current;
-  const heartScale = useRef(new Animated.Value(1)).current;
-  const backBtnScale = useRef(new Animated.Value(1)).current;
-  const editScale = useRef(new Animated.Value(1)).current;
-  const duplicateScale = useRef(new Animated.Value(1)).current;
-  const deleteScale = useRef(new Animated.Value(1)).current;
-  const shareScale = useRef(new Animated.Value(1)).current;
-
-  const pressIn = (val: Animated.Value) =>
-      Animated.spring(val, { toValue: 0.94, useNativeDriver: true, speed: 50 }).start();
-  const pressOut = (val: Animated.Value) =>
-      Animated.spring(val, { toValue: 1, useNativeDriver: true, speed: 24, bounciness: 8 }).start();
+  const heart = useRef(new Animated.Value(1)).current;
+  const sheet = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 420, useNativeDriver: true }),
-    ]).start();
+    Animated.timing(sheet, {
+      toValue: 1,
+      duration: 420,
+      useNativeDriver: nativeDriver,
+    }).start();
   }, [modelId]);
 
   if (!model) {
     return (
-        <View style={[styles.container, styles.center, { paddingTop: insets.top }]}>
-          <Ionicons name="alert-circle-outline" size={40} color={COLORS.gray300} />
-          <Text style={styles.notFoundText}>Modèle introuvable</Text>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 12 }}>
-            <Text style={{ color: COLORS.primary, fontWeight: '600' }}>Retour</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.container, styles.center, { paddingTop: insets.top }]}>
+        <Ionicons name="alert-circle-outline" size={36} color={P.sub} />
+        <Text style={styles.notFound}>Modèle introuvable</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
+          <Text style={styles.backLinkText}>Retour au catalogue</Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
-  const photos = model.photos.length > 0 ? model.photos : [];
-  const difficulte = DIFFICULTE_META[model.difficulte] ?? DIFFICULTE_META.moyen;
+  const photos = model.photos;
+  const onHeroScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const i = Math.round(e.nativeEvent.contentOffset.x / width);
+    if (i !== photoIndex) setPhotoIndex(i);
+  };
 
-  // ── Partager ──
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Découvrez ce modèle: ${model.nom} - ${formatCurrencyShort(model.prixIndicatif)}`,
+        message: `Découvrez ce modèle : ${model.nom}${model.prixIndicatif > 0 ? ` — ${formatCurrencyShort(model.prixIndicatif)}` : ''}`,
         title: model.nom,
       });
-    } catch (error) {
-      console.log('Error sharing:', error);
-    }
+    } catch { /* ignore */ }
   };
 
-  // ── Favori (avec petit rebond) ──
-  const handleToggleFavorite = () => {
+  const handleFavorite = () => {
     Animated.sequence([
-      Animated.spring(heartScale, { toValue: 1.35, useNativeDriver: true, speed: 30, bounciness: 14 }),
-      Animated.spring(heartScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 10 }),
+      Animated.spring(heart, { toValue: 1.3, useNativeDriver: nativeDriver, speed: 28, bounciness: 12 }),
+      Animated.spring(heart, { toValue: 1, useNativeDriver: nativeDriver, speed: 18 }),
     ]).start();
     toggleCatalogFavorite(model.id);
   };
 
-  // ── Dupliquer ──
   const handleDuplicate = async () => {
     setIsActing(true);
     const copy = await duplicateCatalogModel(model.id);
     setIsActing(false);
-    if (copy) {
-      navigation.replace('ModelDetails', { modelId: copy.id });
-    }
+    if (copy) navigation.replace('ModelDetails', { modelId: copy.id });
   };
 
-  // ── Supprimer (archiver) ──
   const handleDelete = () => {
-    Alert.alert(
-        'Supprimer ce modèle ?',
-        'Il sera retiré de votre catalogue. Cette action est irréversible.',
-        [
-          { text: 'Annuler', style: 'cancel' },
-          {
-            text: 'Supprimer',
-            style: 'destructive',
-            onPress: async () => {
-              setIsActing(true);
-              await archiveCatalogModel(model.id);
-              setIsActing(false);
-              navigation.goBack();
-            },
-          },
-        ]
-    );
+    Alert.alert('Retirer ce modèle ?', 'Il disparaîtra du catalogue. L’historique des commandes reste intact.', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Retirer',
+        style: 'destructive',
+        onPress: async () => {
+          setIsActing(true);
+          await archiveCatalogModel(model.id);
+          setIsActing(false);
+          navigation.goBack();
+        },
+      },
+    ]);
   };
-
-  // ── Header overlay qui apparaît au scroll ──
-  const headerBgOpacity = scrollY.interpolate({
-    inputRange: [HERO_HEIGHT - 140, HERO_HEIGHT - 60],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
-
-  // ── Parallax / zoom de l'image héro ──
-  const heroScale = scrollY.interpolate({
-    inputRange: [-150, 0],
-    outputRange: [1.35, 1],
-    extrapolateRight: 'clamp',
-  });
-  const heroTranslate = scrollY.interpolate({
-    inputRange: [0, HERO_HEIGHT],
-    outputRange: [0, -HERO_HEIGHT * 0.3],
-    extrapolate: 'clamp',
-  });
 
   return (
-      <View style={styles.container}>
-        {/* ── Header flottant animé (apparaît au scroll) ── */}
-        <Animated.View
-            style={[
-              styles.floatingHeader,
-              { paddingTop: insets.top + 6, opacity: headerBgOpacity },
-            ]}
-            pointerEvents="none"
-        >
-          <View style={styles.floatingHeaderBg} />
-        </Animated.View>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
 
-        <View style={[styles.headerButtonsRow, { paddingTop: insets.top + SPACING.sm }]}>
-          <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              onPressIn={() => pressIn(backBtnScale)}
-              onPressOut={() => pressOut(backBtnScale)}
-              activeOpacity={1}
+      <View style={styles.hero}>
+        {photos.length > 0 ? (
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={onHeroScroll}
+            scrollEventThrottle={16}
           >
-            <Animated.View style={[styles.headerButton, { transform: [{ scale: backBtnScale }] }]}>
-              <Ionicons name="chevron-back" size={22} color={COLORS.text} />
-            </Animated.View>
+            {photos.map((uri, i) => (
+              <Image key={`${uri}-${i}`} source={{ uri }} style={styles.heroImage} />
+            ))}
+          </ScrollView>
+        ) : (
+          <View style={[styles.heroImage, styles.heroEmpty]}>
+            <Ionicons name="shirt-outline" size={48} color={P.gold} />
+          </View>
+        )}
+        <LinearGradient
+          colors={['rgba(14,11,20,0.35)', 'transparent', 'rgba(14,11,20,0.55)']}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+
+        <View style={[styles.heroBar, { paddingTop: insets.top + 6 }]}>
+          <TouchableOpacity style={styles.roundBtn} onPress={() => navigation.goBack()} activeOpacity={0.85}>
+            <Ionicons name="chevron-back" size={20} color="#fff" />
           </TouchableOpacity>
-
-          <Animated.Text
-              style={[styles.floatingTitle, { opacity: headerBgOpacity }]}
-              numberOfLines={1}
-          >
-            {model.nom}
-          </Animated.Text>
-
-          <TouchableOpacity style={styles.headerButton} onPress={handleToggleFavorite} activeOpacity={0.8}>
-            <Animated.View style={{ transform: [{ scale: heartScale }] }}>
-              <Ionicons
-                  name={model.isFavorite ? 'heart' : 'heart-outline'}
-                  size={22}
-                  color={model.isFavorite ? COLORS.error : COLORS.text}
-              />
+          <TouchableOpacity style={styles.roundBtn} onPress={handleFavorite} activeOpacity={0.85}>
+            <Animated.View style={{ transform: [{ scale: heart }] }}>
+              <Ionicons name={model.isFavorite ? 'heart' : 'heart-outline'} size={18} color={model.isFavorite ? P.gold : '#fff'} />
             </Animated.View>
           </TouchableOpacity>
         </View>
 
-        <Animated.ScrollView
-            style={styles.content}
-            showsVerticalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onScroll={Animated.event(
-                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-                { useNativeDriver: true }
-            )}
-        >
-          {/* ── Image héro avec effet parallax ── */}
-          <View style={styles.heroContainer}>
-            {photos.length > 0 ? (
-                <Animated.Image
-                    source={{ uri: photos[activePhotoIndex] }}
-                    style={[
-                      styles.heroImage,
-                      { transform: [{ scale: heroScale }, { translateY: heroTranslate }] },
-                    ]}
-                />
-            ) : (
-                <View style={[styles.heroImage, styles.heroPlaceholder]}>
-                  <Ionicons name="image-outline" size={48} color={COLORS.gray300} />
-                  <Text style={styles.heroPlaceholderText}>Aucune photo</Text>
-                </View>
-            )}
-
-            {/* Dots indicateurs */}
-            {photos.length > 1 && (
-                <View style={styles.dotsRow}>
-                  {photos.map((_, i) => (
-                      <View key={i} style={[styles.dot, i === activePhotoIndex && styles.dotActive]} />
-                  ))}
-                </View>
-            )}
+        {photos.length > 1 && (
+          <View style={styles.dots}>
+            {photos.map((_, i) => (
+              <View key={i} style={[styles.dot, i === photoIndex && styles.dotOn]} />
+            ))}
           </View>
+        )}
+      </View>
 
-          {/* Miniatures */}
-          {photos.length > 1 && (
-              <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.thumbnailContent}
-              >
-                {photos.map((photo, index) => (
-                    <TouchableOpacity
-                        key={index}
-                        style={[styles.thumbnail, activePhotoIndex === index && styles.thumbnailActive]}
-                        onPress={() => setActivePhotoIndex(index)}
-                        activeOpacity={0.85}
-                    >
-                      <Image source={{ uri: photo }} style={styles.thumbnailImage} />
-                    </TouchableOpacity>
-                ))}
-              </ScrollView>
-          )}
+      <Animated.View
+        style={[
+          styles.sheet,
+          {
+            opacity: sheet,
+            transform: [{ translateY: sheet.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
+          },
+        ]}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 108 }}
+        >
+          <View style={styles.sheetHandle} />
 
-          {/* ── Contenu animé (fade + slide) ── */}
-          <Animated.View
-              style={[
-                styles.contentContainer,
-                { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-              ]}
-          >
-            <View style={styles.titleRow}>
-              <Text style={styles.modelName}>{model.nom}</Text>
-              <View style={styles.categoryBadge}>
-                <Text style={styles.categoryBadgeText}>
+          <View style={styles.titleBlock}>
+            <View style={styles.pills}>
+              <View style={styles.goldPill}>
+                <Text style={styles.goldPillText}>
                   {CATALOG_CATEGORY_LABELS[model.categorie] ?? model.categorie}
                 </Text>
               </View>
-            </View>
-
-            <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>Prix indicatif</Text>
-              <Text style={styles.priceValue}>
-                {model.prixIndicatif > 0 ? formatCurrencyShort(model.prixIndicatif) : '—'}
-              </Text>
-            </View>
-
-            {/* ── Badges info rapide ── */}
-            <View style={styles.metaRow}>
-              <View style={[styles.metaBadge, { backgroundColor: difficulte.bg }]}>
-                <Ionicons name="speedometer-outline" size={14} color={difficulte.color} />
-                <Text style={[styles.metaBadgeText, { color: difficulte.color }]}>{difficulte.label}</Text>
+              <View style={styles.softPill}>
+                <Text style={styles.softPillText}>{DIFFICULTE_LABELS[model.difficulte] ?? model.difficulte}</Text>
               </View>
-
-              {model.tempsMoyenRealisation != null && (
-                  <View style={styles.metaBadge}>
-                    <Ionicons name="time-outline" size={14} color={COLORS.gray500} />
-                    <Text style={styles.metaBadgeText}>
-                      {model.tempsMoyenRealisation} jour{model.tempsMoyenRealisation > 1 ? 's' : ''}
-                    </Text>
-                  </View>
-              )}
-
-              <TouchableOpacity
-                  style={styles.metaBadge}
-                  onPress={() => toggleCatalogStatut(model.id)}
-                  activeOpacity={0.7}
-              >
-                <Ionicons
-                    name={model.statut === 'public' ? 'globe-outline' : 'lock-closed-outline'}
-                    size={14}
-                    color={COLORS.gray500}
-                />
-                <Text style={styles.metaBadgeText}>
-                  {model.statut === 'public' ? 'Public' : 'Privé'}
-                </Text>
-              </TouchableOpacity>
             </View>
+            <Text style={styles.name}>{model.nom}</Text>
+            <Text style={styles.price}>
+              {model.prixIndicatif > 0 ? formatCurrencyShort(model.prixIndicatif) : 'Prix sur devis'}
+            </Text>
+          </View>
 
-            {model.description && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Description</Text>
-                  <Text style={styles.description}>{model.description}</Text>
-                </View>
+          <View style={styles.stats}>
+            {model.tempsMoyenRealisation != null && (
+              <View style={styles.stat}>
+                <Ionicons name="time-outline" size={16} color={P.gold} />
+                <Text style={styles.statVal}>{model.tempsMoyenRealisation} j</Text>
+                <Text style={styles.statLbl}>Réalisation</Text>
+              </View>
             )}
-
-            {model.tissusRecommandes.length > 0 && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Tissus recommandés</Text>
-                  <View style={styles.chipsRow}>
-                    {model.tissusRecommandes.map((t, i) => <Chip key={i} label={t} />)}
-                  </View>
-                </View>
-            )}
-
-            {model.accessoiresNecessaires.length > 0 && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Accessoires nécessaires</Text>
-                  <View style={styles.chipsRow}>
-                    {model.accessoiresNecessaires.map((a, i) => <Chip key={i} label={a} />)}
-                  </View>
-                </View>
-            )}
-
-            {/* ── Actions secondaires ── */}
-            <View style={styles.actionsGrid}>
-              <TouchableOpacity
-                  onPress={() => navigation.navigate('EditCatalogModel', { modelId: model.id })}
-                  onPressIn={() => pressIn(editScale)}
-                  onPressOut={() => pressOut(editScale)}
-                  activeOpacity={1}
-                  style={{ flex: 1 }}
-              >
-                <Animated.View style={[styles.actionCard, { transform: [{ scale: editScale }] }]}>
-                  <Ionicons name="create-outline" size={20} color={COLORS.primary} />
-                  <Text style={styles.actionCardLabel}>Modifier</Text>
-                </Animated.View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                  onPress={handleDuplicate}
-                  onPressIn={() => pressIn(duplicateScale)}
-                  onPressOut={() => pressOut(duplicateScale)}
-                  activeOpacity={1}
-                  disabled={isActing}
-                  style={{ flex: 1 }}
-              >
-                <Animated.View style={[styles.actionCard, { transform: [{ scale: duplicateScale }] }]}>
-                  <Ionicons name="copy-outline" size={20} color={COLORS.primary} />
-                  <Text style={styles.actionCardLabel}>Dupliquer</Text>
-                </Animated.View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                  onPress={handleDelete}
-                  onPressIn={() => pressIn(deleteScale)}
-                  onPressOut={() => pressOut(deleteScale)}
-                  activeOpacity={1}
-                  disabled={isActing}
-                  style={{ flex: 1 }}
-              >
-                <Animated.View style={[styles.actionCard, styles.actionCardDanger, { transform: [{ scale: deleteScale }] }]}>
-                  <Ionicons name="trash-outline" size={20} color={COLORS.error} />
-                  <Text style={[styles.actionCardLabel, { color: COLORS.error }]}>Supprimer</Text>
-                </Animated.View>
-              </TouchableOpacity>
+            <TouchableOpacity style={styles.stat} onPress={() => toggleCatalogStatut(model.id)}>
+              <Ionicons name={model.statut === 'public' ? 'globe-outline' : 'lock-closed-outline'} size={16} color={P.gold} />
+              <Text style={styles.statVal}>{model.statut === 'public' ? 'Public' : 'Privé'}</Text>
+              <Text style={styles.statLbl}>Visibilité</Text>
+            </TouchableOpacity>
+            <View style={styles.stat}>
+              <Ionicons name="images-outline" size={16} color={P.gold} />
+              <Text style={styles.statVal}>{photos.length}</Text>
+              <Text style={styles.statLbl}>Photos</Text>
             </View>
+          </View>
 
-            <View style={{ height: 100 }} />
-          </Animated.View>
-        </Animated.ScrollView>
+          {model.description ? (
+            <View style={styles.block}>
+              <Text style={styles.blockTitle}>Description</Text>
+              <Text style={styles.body}>{model.description}</Text>
+            </View>
+          ) : null}
 
-        {/* ── Footer ── */}
-        <View style={[styles.footer, { paddingBottom: insets.bottom + SPACING.md }]}>
-          {isActing ? (
-              <ActivityIndicator color={COLORS.primary} style={{ flex: 1 }} />
-          ) : (
-              <TouchableOpacity
-                  onPress={handleShare}
-                  onPressIn={() => pressIn(shareScale)}
-                  onPressOut={() => pressOut(shareScale)}
-                  activeOpacity={1}
-                  style={{ flex: 1 }}
-              >
-                <Animated.View style={[styles.shareButton, { transform: [{ scale: shareScale }] }]}>
-                  <Ionicons name="share-outline" size={20} color={COLORS.primary} />
-                  <Text style={styles.shareButtonText}>Partager ce modèle</Text>
-                </Animated.View>
-              </TouchableOpacity>
+          {model.tissusRecommandes.length > 0 && (
+            <View style={styles.block}>
+              <Text style={styles.blockTitle}>Tissus recommandés</Text>
+              <View style={styles.chips}>
+                {model.tissusRecommandes.map((t, i) => (
+                  <View key={i} style={styles.chip}><Text style={styles.chipText}>{t}</Text></View>
+                ))}
+              </View>
+            </View>
           )}
-        </View>
+
+          {model.accessoiresNecessaires.length > 0 && (
+            <View style={styles.block}>
+              <Text style={styles.blockTitle}>Accessoires</Text>
+              <View style={styles.chips}>
+                {model.accessoiresNecessaires.map((a, i) => (
+                  <View key={i} style={styles.chip}><Text style={styles.chipText}>{a}</Text></View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.actions}>
+            <TouchableOpacity style={styles.action} onPress={() => navigation.navigate('EditCatalogModel', { modelId: model.id })}>
+              <Ionicons name="create-outline" size={18} color={P.primary} />
+              <Text style={styles.actionText}>Modifier</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.action} onPress={handleDuplicate} disabled={isActing}>
+              <Ionicons name="copy-outline" size={18} color={P.primary} />
+              <Text style={styles.actionText}>Dupliquer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.action} onPress={handleDelete} disabled={isActing}>
+              <Ionicons name="trash-outline" size={18} color={P.error} />
+              <Text style={[styles.actionText, { color: P.error }]}>Retirer</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </Animated.View>
+
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 10 }]}>
+        {isActing ? (
+          <ActivityIndicator color={P.gold} />
+        ) : (
+          <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.88}>
+            <Ionicons name="share-outline" size={18} color={P.gold} />
+            <Text style={styles.shareText}>Partager ce modèle</Text>
+          </TouchableOpacity>
+        )}
       </View>
+    </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.white,
+const makeStyles = (P: Palette) => ({
+  container: { flex: 1, backgroundColor: P.pageBg },
+  center: { alignItems: 'center' as const, justifyContent: 'center' as const, gap: 10 },
+  notFound: { fontSize: 15, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
+  backLink: { marginTop: 8 },
+  backLinkText: { color: P.primary, fontFamily: 'PlusJakartaSans_700Bold' },
+  hero: { height: HERO_H, backgroundColor: P.bg },
+  heroImage: { width, height: HERO_H },
+  heroEmpty: { alignItems: 'center' as const, justifyContent: 'center' as const },
+  heroBar: {
+    position: 'absolute' as const, top: 0, left: 0, right: 0,
+    flexDirection: 'row' as const, justifyContent: 'space-between' as const,
+    paddingHorizontal: 16,
   },
-  center: { alignItems: 'center', justifyContent: 'center' },
-  notFoundText: { fontSize: 15, color: COLORS.gray500, marginTop: 8 },
-
-  // ── Header flottant ──
-  floatingHeader: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
-    height: 90,
+  roundBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(14,11,20,0.42)',
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+    borderWidth: 0.5, borderColor: 'rgba(212,175,55,0.28)',
   },
-  floatingHeaderBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 0.5,
-    borderBottomColor: COLORS.gray100,
+  dots: {
+    position: 'absolute' as const, bottom: 28, left: 0, right: 0,
+    flexDirection: 'row' as const, justifyContent: 'center' as const, gap: 6,
   },
-  headerButtonsRow: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 6,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.35)' },
+  dotOn: { width: 16, backgroundColor: '#D4AF37' },
+  sheet: {
+    flex: 1, marginTop: -22, backgroundColor: P.pageBg,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 8,
   },
-  floatingTitle: {
-    flex: 1, textAlign: 'center', fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text, marginHorizontal: SPACING.sm,
+  sheetHandle: {
+    alignSelf: 'center' as const, width: 36, height: 4, borderRadius: 2,
+    backgroundColor: P.borderHard, marginBottom: 16,
   },
-  headerButton: {
-    width: 40, height: 40, borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.white, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+  titleBlock: { marginBottom: 18 },
+  pills: { flexDirection: 'row' as const, gap: 8, marginBottom: 10 },
+  goldPill: {
+    backgroundColor: P.goldBg, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 0.5, borderColor: P.goldRim,
   },
-
-  // ── Héro / photos ──
-  heroContainer: { height: HERO_HEIGHT, overflow: 'hidden', backgroundColor: COLORS.gray100 },
-  heroImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  heroPlaceholder: { alignItems: 'center', justifyContent: 'center', gap: 8 },
-  heroPlaceholderText: { fontSize: FONT_SIZES.sm, color: COLORS.gray400 },
-  dotsRow: {
-    position: 'absolute', bottom: SPACING.md, left: 0, right: 0,
-    flexDirection: 'row', justifyContent: 'center', gap: 6,
+  goldPillText: { fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', color: P.gold, letterSpacing: 0.3 },
+  softPill: {
+    backgroundColor: P.primaryBg, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
-  dotActive: { backgroundColor: '#fff', width: 18 },
-
-  thumbnailContent: {
-    paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, gap: SPACING.sm,
+  softPillText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
+  name: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.5 },
+  price: { fontSize: 18, fontFamily: 'PlusJakartaSans_700Bold', color: P.gold, marginTop: 6 },
+  stats: {
+    flexDirection: 'row' as const, backgroundColor: P.surface, borderRadius: 16,
+    borderWidth: 0.5, borderColor: P.borderHard, paddingVertical: 14, marginBottom: 20,
   },
-  thumbnail: {
-    width: 56, height: 56, borderRadius: BORDER_RADIUS.md, overflow: 'hidden',
-    borderWidth: 2, borderColor: 'transparent',
+  stat: { flex: 1, alignItems: 'center' as const, gap: 4 },
+  statVal: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+  statLbl: { fontSize: 10, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub },
+  block: { marginBottom: 20 },
+  blockTitle: {
+    fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', color: P.sub,
+    letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 10,
   },
-  thumbnailActive: { borderColor: COLORS.primary },
-  thumbnailImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-
-  // ── Contenu ──
-  content: { flex: 1 },
-  contentContainer: { padding: SPACING.lg },
-  titleRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: SPACING.md, gap: SPACING.sm,
-  },
-  modelName: {
-    fontSize: FONT_SIZES.xxl, fontWeight: FONT_WEIGHTS.bold, color: COLORS.text, flex: 1,
-  },
-  categoryBadge: {
-    backgroundColor: COLORS.secondary, borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  categoryBadgeText: { fontSize: 11, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.primary },
-
-  priceRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: SPACING.md, borderTopWidth: 1, borderBottomWidth: 1,
-    borderColor: COLORS.gray100, marginBottom: SPACING.md,
-  },
-  priceLabel: { fontSize: FONT_SIZES.sm, color: COLORS.gray500 },
-  priceValue: { fontSize: FONT_SIZES.xl, fontWeight: FONT_WEIGHTS.bold, color: COLORS.primary },
-
-  // ── Meta badges ──
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: SPACING.lg },
-  metaBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: COLORS.gray100, borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: 10, paddingVertical: 6,
-  },
-  metaBadgeText: { fontSize: 12, fontWeight: FONT_WEIGHTS.medium, color: COLORS.gray600 },
-
-  section: { marginBottom: SPACING.lg },
-  sectionTitle: {
-    fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text, marginBottom: SPACING.sm,
-  },
-  description: { fontSize: FONT_SIZES.md, color: COLORS.gray600, lineHeight: 22 },
-
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  body: { fontSize: 14, fontFamily: 'PlusJakartaSans_500Medium', color: P.text, lineHeight: 22 },
+  chips: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
   chip: {
-    backgroundColor: COLORS.secondary, borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: 12, paddingVertical: 7,
+    backgroundColor: P.surface, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
-  chipText: { fontSize: 12.5, color: COLORS.primary, fontWeight: FONT_WEIGHTS.medium },
-
-  // ── Actions ──
-  actionsGrid: { flexDirection: 'row', gap: 10, marginTop: SPACING.sm },
-  actionCard: {
-    flex: 1, backgroundColor: COLORS.gray100, borderRadius: BORDER_RADIUS.lg,
-    paddingVertical: 14, alignItems: 'center', gap: 6,
+  chipText: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
+  actions: { flexDirection: 'row' as const, gap: 8, marginTop: 4 },
+  action: {
+    flex: 1, backgroundColor: P.surface, borderRadius: 14, paddingVertical: 14,
+    alignItems: 'center' as const, gap: 6, borderWidth: 0.5, borderColor: P.borderHard,
   },
-  actionCardDanger: { backgroundColor: '#FFF5F5' },
-  actionCardLabel: { fontSize: 12, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.text },
-
-  // ── Footer ──
+  actionText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
   footer: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingTop: SPACING.md,
-    borderTopWidth: 1, borderTopColor: COLORS.gray100, backgroundColor: COLORS.white,
+    position: 'absolute' as const, left: 0, right: 0, bottom: 0,
+    paddingHorizontal: 20, paddingTop: 12,
+    backgroundColor: P.pageBg, borderTopWidth: 0.5, borderTopColor: P.border,
   },
-  shareButton: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs,
-    paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1, borderColor: COLORS.primary,
+  shareBtn: {
+    height: 52, borderRadius: 16, backgroundColor: P.bg,
+    flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8,
+    borderWidth: 1, borderColor: P.goldRim,
   },
-  shareButtonText: { fontSize: FONT_SIZES.md, color: COLORS.primary, fontWeight: FONT_WEIGHTS.semibold },
+  shareText: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });

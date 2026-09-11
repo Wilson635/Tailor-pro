@@ -7,6 +7,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS } from '../../constants/theme';
+import { usePalette } from '@/src/theme';
 
 interface HeaderProps {
   title: string;
@@ -31,13 +32,13 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const isPrimary = variant === 'primary';
+  const colors = usePalette();
 
   return (
     <View
       style={[
         styles.container,
-        { paddingTop: insets.top + SPACING.sm },
-        isPrimary && styles.primaryContainer,
+        { paddingTop: insets.top + SPACING.sm, backgroundColor: isPrimary ? colors.primary : colors.surface },
       ]}
     >
       <View style={styles.leftSection}>
@@ -50,17 +51,18 @@ export const Header: React.FC<HeaderProps> = ({
             <Ionicons
               name="chevron-back"
               size={24}
-              color={isPrimary ? COLORS.white : COLORS.text}
+              color={isPrimary ? '#FFFFFF' : colors.text}
             />
           </TouchableOpacity>
         )}
       </View>
 
-      <Text
-        style={[
-          styles.title,
-          isPrimary && styles.primaryTitle,
-        ]}
+          <Text
+            style={[
+              styles.title,
+              { color: colors.text },
+              isPrimary && { color: '#fff' },
+            ]}
         numberOfLines={1}
       >
         {title}
@@ -76,7 +78,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Ionicons
               name={rightIcon2}
               size={22}
-              color={isPrimary ? COLORS.white : COLORS.text}
+              color={isPrimary ? '#FFFFFF' : colors.text}
             />
           </TouchableOpacity>
         )}
@@ -89,7 +91,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Ionicons
               name={rightIcon}
               size={22}
-              color={isPrimary ? COLORS.white : COLORS.text}
+              color={isPrimary ? '#FFFFFF' : colors.text}
             />
           </TouchableOpacity>
         )}
