@@ -84,8 +84,8 @@ export function ClientPaiementsScreen() {
                     numeroCommande: (order as any).numeroCommande,
                     amount:        Number(p.amount),
                     type:          (p.type ?? 'acompte') as TypePaiement,
-                    paymentMethod: (p.payment_method ?? 'cash') as ModePaiement,
-                    paymentDate:   p.payment_date,
+                    paymentMethod: (p.method ?? p.payment_method ?? 'cash') as ModePaiement,
+                    paymentDate:   p.date ?? p.payment_date,
                     notes:         p.notes ?? undefined,
                     orderTotal:    order.totalPrice ?? 0,
                 });
@@ -108,7 +108,26 @@ export function ClientPaiementsScreen() {
         const typeMeta = TYPE_PAIEMENT_META[item.type] ?? TYPE_PAIEMENT_META.acompte;
         const modeMeta = MODE_PAIEMENT_META[item.paymentMethod] ?? MODE_PAIEMENT_META.cash;
         return (
-            <View style={styles.row}>
+            <TouchableOpacity
+                style={styles.row}
+                activeOpacity={0.8}
+                onPress={() => {
+                    const order = orders.find(o => o.id === item.orderId);
+                    const paid = Math.max(0, (order?.totalPrice ?? item.orderTotal) - (order?.remainingAmount ?? 0));
+                    navigation.navigate('Recu', {
+                        amount: item.amount,
+                        typePaiement: item.type,
+                        modePaiement: item.paymentMethod,
+                        date: item.paymentDate,
+                        notes: item.notes,
+                        clientName: client?.nom ?? 'Client',
+                        commandeNumero: item.numeroCommande,
+                        totalAmount: item.orderTotal,
+                        paidAmount: paid,
+                        remaining: order?.remainingAmount ?? Math.max(0, item.orderTotal - paid),
+                    });
+                }}
+            >
                 {/* Type badge + icône */}
                 <View style={[styles.rowIcon, { backgroundColor: typeMeta.bgColor }]}>
                     <Feather name={typeMeta.icon} size={15} color={typeMeta.color} />
@@ -136,7 +155,8 @@ export function ClientPaiementsScreen() {
                         <Text style={styles.rowNotes}>{item.notes}</Text>
                     ) : null}
                 </View>
-            </View>
+                <Feather name="chevron-right" size={16} color={P.sub} />
+            </TouchableOpacity>
         );
     };
 
@@ -233,8 +253,7 @@ const styles = StyleSheet.create({
         padding: 14,
         flexDirection: 'row',
         alignItems: 'flex-start',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+        borderWidth: 0.5, borderColor: P.borderHard,
     },
     rowIcon: {
         width: 38, height: 38, borderRadius: 19,

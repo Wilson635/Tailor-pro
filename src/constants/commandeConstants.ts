@@ -88,6 +88,11 @@ export const STATUT_TRANSITIONS: Record<string, string[]> = {
   cancelled:      [],
 };
 
+export const CANCELLED_ORDER_STATUSES = ['cancelled', 'annulee'] as const;
+
+export const isCancelledOrder = (status?: string | null) =>
+  !!status && (CANCELLED_ORDER_STATUSES as readonly string[]).includes(status);
+
 /** Statuts "livraison terminale" qui déclenchent l'alerte solde restant */
 export const STATUTS_LIVRAISON = new Set(['livree', 'delivered']);
 

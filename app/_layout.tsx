@@ -20,6 +20,19 @@ import AppNavigator from '../src/navigation/AppNavigator';
 import { COLORS } from '@constants/theme';
 import { useAppStore } from '@store/useAppStore';
 import { ToastProvider } from '@/src/context/ToastContext';
+import { DialogProvider } from '@/src/context/DialogContext';
+import { PreferencesProvider } from '@/src/context/PreferencesContext';
+import { useTheme } from '@/src/theme';
+
+function ThemedApp({ session }: { session: Session | null }) {
+    const { isDark } = useTheme();
+    return (
+        <>
+            <StatusBar style={isDark ? 'light' : (session ? 'dark' : 'light')} />
+            <AppNavigator session={session} />
+        </>
+    );
+}
 
 export default function App() {
     const [session, setSession] = useState<Session | null>(null);
@@ -36,14 +49,12 @@ export default function App() {
     const loadAll = useAppStore(s => s.loadAll);
 
     useEffect(() => {
-        // Récupérer la session existante au démarrage
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
             setIsLoading(false);
             if (session?.user) loadAll();
         });
 
-        // Observer les changements d'auth (Login / Logout / Register)
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             (_event, session) => {
                 setSession(session);
@@ -55,7 +66,6 @@ export default function App() {
         return () => subscription.unsubscribe();
     }, []);
 
-    // Écran de chargement en attendant Supabase ET la police Plus Jakarta Sans
     if (isLoading || !fontsLoaded) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
@@ -64,14 +74,16 @@ export default function App() {
         );
     }
 
-    // Le navigateur prend désormais le contrôle complet selon l'état de "session"
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <SafeAreaProvider>
-                <ToastProvider>
-                    <StatusBar style={session ? "dark" : "light"} />
-                    <AppNavigator session={session} />
-                </ToastProvider>
+                <PreferencesProvider>
+                    <ToastProvider>
+                        <DialogProvider>
+                            <ThemedApp session={session} />
+                        </DialogProvider>
+                    </ToastProvider>
+                </PreferencesProvider>
             </SafeAreaProvider>
         </GestureHandlerRootView>
     );

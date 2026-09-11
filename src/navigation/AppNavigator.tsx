@@ -54,6 +54,7 @@ import {
     CatalogScreen,
     ModelDetailsScreen,
     StatisticsScreen,
+    NotificationsScreen,
 } from '../screens';
 
 // ── Nouveaux écrans catalogue ──
@@ -76,6 +77,10 @@ import { EditClientScreen } from '@screens/Clients/EditClientScreen';
 import { SettingsScreen } from '@screens/Settings/SettingsScreen';
 import {OrderDetailsScreen} from "@screens/Orders/OrderDetailsScreen";
 import { nativeDriver } from '@utils/animation';
+import { NotificationBinder } from '@/src/notifications/NotificationBinder';
+import { usePreferences } from '@/src/context/PreferencesContext';
+import { useThemedStyles, type Palette } from '@/src/theme';
+import { t } from '@/src/i18n';
 
 // ── Écrans Projets / Commandes groupées (Module 13) ──
 import { ProjectListScreen } from '@screens/Projects/ProjectListScreen';
@@ -88,23 +93,122 @@ import { AddParticipantScreen } from '@screens/Projects/AddParticipantScreen';
 // PALETTE
 // ==========================================
 
-const PALETTE = {
-    bg:      '#0E0B14',
-    surface: '#1A1528',
-    border:  '#2E2845',
-    text:    '#FFFFFF',
-    sub:     'rgba(255,255,255,0.5)',
-    muted:   '#8A8594',
-    gold:    '#D4AF37',
-    goldBg:  'rgba(212,175,55,0.12)',
-    goldRim: 'rgba(212,175,55,0.25)',
-    purple:  '#2E0057',
-    success: '#4ADE80',
-    error:   '#EF4444',
-    warning: '#F59E0B',
-    navBg:   '#FFFFFF',
-    navBorder: 'rgba(0,0,0,0.07)',
-};
+const makeNavStyles = (P: Palette) => ({
+    loader: {
+        flex: 1,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
+        backgroundColor: P.pageBg,
+    },
+    tabBar: {
+        backgroundColor: P.navBg,
+        borderTopWidth: 1,
+        borderTopColor: P.navBorder,
+        height: Platform.OS === 'ios' ? 88 : 72,
+        paddingTop: 8,
+        elevation: 0,
+    },
+    tabIconWrap: {
+        width: 44,
+        height: 32,
+        borderRadius: 10,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    },
+    tabIconWrapActive: {
+        backgroundColor: P.goldBg,
+    },
+    badge: {
+        position: 'absolute' as const,
+        top: 4,
+        right: 6,
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: P.gold,
+        borderWidth: 1.5,
+        borderColor: P.navBg,
+    },
+    tabLabel: {
+        fontSize: 10,
+        fontFamily: 'PlusJakartaSans_500Medium',
+        letterSpacing: 0.2,
+        color: P.muted,
+        marginTop: 2,
+    },
+    tabLabelActive: {
+        color: P.gold,
+    },
+    plusTabWrap: {
+        flex: 1,
+        alignItems: 'center' as const,
+        justifyContent: 'flex-end' as const,
+        paddingBottom: 2,
+    },
+    plusBtn: {
+        width: 48,
+        height: 48,
+        borderRadius: 15,
+        backgroundColor: P.bg,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        marginTop: -20,
+        borderWidth: 1,
+        borderColor: P.goldRim,
+    },
+    plusBtnOpen: {
+        backgroundColor: P.surface,
+        borderColor: P.gold,
+    },
+    plusLabel: {
+        fontSize: 10,
+        fontFamily: 'PlusJakartaSans_500Medium',
+        letterSpacing: 0.2,
+        color: P.muted,
+        marginTop: 5,
+    },
+    menuOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: P.overlay,
+    },
+    menuContainer: {
+        position: 'absolute' as const,
+        bottom: 100,
+        left: 0,
+        right: 0,
+        flexDirection: 'row' as const,
+        flexWrap: 'wrap' as const,
+        justifyContent: 'center' as const,
+        alignItems: 'flex-start' as const,
+        rowGap: 20,
+        columnGap: 16,
+        paddingHorizontal: 24,
+    },
+    menuItemWrap: {
+        width: 72,
+    },
+    menuItem: {
+        alignItems: 'center' as const,
+        gap: 6,
+    },
+    menuIconBox: {
+        width: 52,
+        height: 52,
+        borderRadius: 16,
+        backgroundColor: P.bg,
+        borderWidth: 1,
+        borderColor: P.goldRim,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    },
+    menuLabel: {
+        fontSize: 10,
+        fontFamily: 'PlusJakartaSans_500Medium',
+        color: P.text,
+        letterSpacing: 0.2,
+        textAlign: 'center' as const,
+    },
+});
 
 // ==========================================
 // TYPAGES
@@ -120,7 +224,7 @@ export type RootStackParamList = {
     AddMeasurements: { clientId: string; typeVetement?: string };
     FicheDetails: { ficheId: string; clientId: string };
     CompareFiches: { ficheId1: string; ficheId2: string; clientId: string };
-    Payments: { clientId: string };
+    Payments: { clientId?: string };
     AddPayment: { clientId: string; orderId?: string };
     AddOrder: { clientId?: string };
     OrderDetails: { orderId: string };
@@ -169,6 +273,7 @@ export type RootStackParamList = {
     BiometricAuth: undefined;
     Profile: undefined;
     Settings: undefined;
+    Notifications: undefined;
 };
 
 export type TailorTabParamList = {
@@ -209,6 +314,7 @@ interface PlusMenuProps {
 
 const PlusMenu: React.FC<PlusMenuProps> = ({ visible, onClose, items }) => {
     const anim = useRef(new Animated.Value(0)).current;
+    const { colors, styles } = useThemedStyles(makeNavStyles);
 
     React.useEffect(() => {
         Animated.spring(anim, {
@@ -224,7 +330,7 @@ const PlusMenu: React.FC<PlusMenuProps> = ({ visible, onClose, items }) => {
     return (
         <Modal transparent animationType="none" visible={visible} onRequestClose={onClose}>
             <Pressable style={styles.menuOverlay} onPress={onClose}>
-                <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+                <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
             </Pressable>
 
             <View style={styles.menuContainer} pointerEvents="box-none">
@@ -252,7 +358,7 @@ const PlusMenu: React.FC<PlusMenuProps> = ({ visible, onClose, items }) => {
                                 activeOpacity={0.75}
                             >
                                 <View style={styles.menuIconBox}>
-                                    <Feather name={item.icon} size={20} color={PALETTE.gold} />
+                                    <Feather name={item.icon} size={20} color={colors.gold} />
                                 </View>
                                 <Text style={styles.menuLabel}>{item.label}</Text>
                             </TouchableOpacity>
@@ -274,17 +380,20 @@ interface TabIconProps {
     badge?: boolean;
 }
 
-const TabIcon: React.FC<TabIconProps> = ({ name, focused, badge }) => (
+const TabIcon: React.FC<TabIconProps> = ({ name, focused, badge }) => {
+    const { colors, styles } = useThemedStyles(makeNavStyles);
+    return (
     <View style={[styles.tabIconWrap, focused && styles.tabIconWrapActive]}>
         <Feather
             name={name}
             size={21}
-            color={focused ? PALETTE.gold : PALETTE.muted}
+            color={focused ? colors.gold : colors.muted}
             strokeWidth={focused ? 2 : 1.6}
         />
         {badge && <View style={styles.badge} />}
     </View>
-);
+    );
+};
 
 // ==========================================
 // BOUTON PLUS CUSTOM (tab bar button)
@@ -297,6 +406,7 @@ interface PlusTabButtonProps {
 
 const PlusTabButton: React.FC<PlusTabButtonProps> = ({ onPress, isOpen }) => {
     const rotate = useRef(new Animated.Value(0)).current;
+    const { colors, styles } = useThemedStyles(makeNavStyles);
 
     React.useEffect(() => {
         Animated.spring(rotate, {
@@ -320,10 +430,10 @@ const PlusTabButton: React.FC<PlusTabButtonProps> = ({ onPress, isOpen }) => {
         >
             <View style={[styles.plusBtn, isOpen && styles.plusBtnOpen]}>
                 <Animated.View style={{ transform: [{ rotate: rotateInterp }] }}>
-                    <Feather name="plus" size={22} color={PALETTE.gold} strokeWidth={2.2} />
+                    <Feather name="plus" size={22} color={colors.gold} strokeWidth={2.2} />
                 </Animated.View>
             </View>
-            <Text style={styles.plusLabel}>Plus</Text>
+            <Text style={styles.plusLabel}>{t('nav.plus')}</Text>
         </TouchableOpacity>
     );
 };
@@ -332,11 +442,14 @@ const PlusTabButton: React.FC<PlusTabButtonProps> = ({ onPress, isOpen }) => {
 // LABEL D'ONGLET
 // ==========================================
 
-const TabLabel = ({ label, focused }: { label: string; focused: boolean }) => (
+const TabLabel = ({ label, focused }: { label: string; focused: boolean }) => {
+    const { styles } = useThemedStyles(makeNavStyles);
+    return (
     <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
         {label}
     </Text>
-);
+    );
+};
 
 // ==========================================
 // 1. NAVIGATOR COUTURIER (5 onglets)
@@ -345,53 +458,55 @@ const TabLabel = ({ label, focused }: { label: string; focused: boolean }) => (
 const TailorTabNavigator = ({ navigation }: any) => {
     const [plusOpen, setPlusOpen] = useState(false);
     const insets = useSafeAreaInsets();
+    const { colors, styles } = useThemedStyles(makeNavStyles);
+    usePreferences();
 
     const plusItems: PlusMenuItem[] = [
         {
             key: 'projects',
-            label: 'Projets',
+            label: t('nav.projects'),
             icon: 'users',
             onPress: () => { setPlusOpen(false); navigation.navigate('ProjectList'); },
         },
         {
             key: 'comptabilite',
-            label: 'Comptabilité',
+            label: t('nav.accounting'),
             icon: 'trending-up',
             onPress: () => { setPlusOpen(false); navigation.navigate('Comptabilite'); },
         },
         {
             key: 'statistics',
-            label: 'Statistiques',
+            label: t('nav.statistics'),
             icon: 'bar-chart-2',
             onPress: () => { setPlusOpen(false); navigation.navigate('Statistics'); },
         },
         {
             key: 'galerie',
-            label: 'Galerie',
+            label: t('nav.gallery'),
             icon: 'image',
             onPress: () => { setPlusOpen(false); navigation.navigate('Galerie'); },
         },
         {
             key: 'recherche',
-            label: 'Recherche',
+            label: t('nav.search'),
             icon: 'search',
             onPress: () => { setPlusOpen(false); navigation.navigate('Recherche'); },
         },
         {
             key: 'payments',
-            label: 'Paiements',
+            label: t('nav.payments'),
             icon: 'credit-card',
             onPress: () => { setPlusOpen(false); navigation.navigate('Payments', { clientId: '' }); },
         },
         {
             key: 'profile',
-            label: 'Profil',
+            label: t('nav.profile'),
             icon: 'user',
             onPress: () => { setPlusOpen(false); navigation.navigate('Profile'); },
         },
         {
             key: 'settings',
-            label: 'Réglages',
+            label: t('nav.settings'),
             icon: 'settings',
             onPress: () => { setPlusOpen(false); navigation.navigate('Settings'); },
         },
@@ -399,6 +514,7 @@ const TailorTabNavigator = ({ navigation }: any) => {
 
     return (
         <>
+            <NotificationBinder />
             <TailorTab.Navigator
                 screenOptions={{
                     headerShown: false,
@@ -406,8 +522,8 @@ const TailorTabNavigator = ({ navigation }: any) => {
                         styles.tabBar,
                         { paddingBottom: insets.bottom > 0 ? insets.bottom : 12 },
                     ],
-                    tabBarActiveTintColor: PALETTE.gold,
-                    tabBarInactiveTintColor: PALETTE.muted,
+                    tabBarActiveTintColor: colors.gold,
+                    tabBarInactiveTintColor: colors.muted,
                     tabBarShowLabel: true,
                 }}
             >
@@ -416,7 +532,7 @@ const TailorTabNavigator = ({ navigation }: any) => {
                     component={DashboardScreen}
                     options={{
                         tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
-                        tabBarLabel: ({ focused }) => <TabLabel label="Accueil" focused={focused} />,
+                        tabBarLabel: ({ focused }) => <TabLabel label={t('nav.home')} focused={focused} />,
                     }}
                 />
                 <TailorTab.Screen
@@ -424,7 +540,7 @@ const TailorTabNavigator = ({ navigation }: any) => {
                     component={ClientsListScreen}
                     options={{
                         tabBarIcon: ({ focused }) => <TabIcon name="users" focused={focused} />,
-                        tabBarLabel: ({ focused }) => <TabLabel label="Clients" focused={focused} />,
+                        tabBarLabel: ({ focused }) => <TabLabel label={t('nav.clients')} focused={focused} />,
                     }}
                 />
 
@@ -448,7 +564,7 @@ const TailorTabNavigator = ({ navigation }: any) => {
                     component={OrdersListScreen}
                     options={{
                         tabBarIcon: ({ focused }) => <TabIcon name="shopping-bag" focused={focused} />,
-                        tabBarLabel: ({ focused }) => <TabLabel label="Commandes" focused={focused} />,
+                        tabBarLabel: ({ focused }) => <TabLabel label={t('nav.orders')} focused={focused} />,
                     }}
                 />
                 <TailorTab.Screen
@@ -456,7 +572,7 @@ const TailorTabNavigator = ({ navigation }: any) => {
                     component={CatalogScreen}
                     options={{
                         tabBarIcon: ({ focused }) => <TabIcon name="grid" focused={focused} />,
-                        tabBarLabel: ({ focused }) => <TabLabel label="Catalogue" focused={focused} />,
+                        tabBarLabel: ({ focused }) => <TabLabel label={t('nav.catalog')} focused={focused} />,
                     }}
                 />
             </TailorTab.Navigator>
@@ -478,17 +594,21 @@ const ClientTabNavigator = ({ navigation }: any) => {
     const { profile } = useProfile();
     const myId = profile?.id ?? '';
     const insets = useSafeAreaInsets();
+    const { colors, styles } = useThemedStyles(makeNavStyles);
+    usePreferences();
 
     return (
-        <ClientTab.Navigator
+        <>
+            <NotificationBinder />
+            <ClientTab.Navigator
             screenOptions={{
                 headerShown: false,
                 tabBarStyle: [
                     styles.tabBar,
                     { paddingBottom: insets.bottom > 0 ? insets.bottom : 12 },
                 ],
-                tabBarActiveTintColor: PALETTE.gold,
-                tabBarInactiveTintColor: PALETTE.muted,
+                tabBarActiveTintColor: colors.gold,
+                tabBarInactiveTintColor: colors.muted,
             }}
         >
             <ClientTab.Screen
@@ -496,7 +616,7 @@ const ClientTabNavigator = ({ navigation }: any) => {
                 component={DashboardScreen}
                 options={{
                     tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
-                    tabBarLabel: ({ focused }) => <TabLabel label="Accueil" focused={focused} />,
+                    tabBarLabel: ({ focused }) => <TabLabel label={t('nav.home')} focused={focused} />,
                 }}
             />
             <ClientTab.Screen
@@ -504,7 +624,7 @@ const ClientTabNavigator = ({ navigation }: any) => {
                 component={ClientOrdersScreen}
                 options={{
                     tabBarIcon: ({ focused }) => <TabIcon name="shopping-bag" focused={focused} />,
-                    tabBarLabel: ({ focused }) => <TabLabel label="Commandes" focused={focused} />,
+                    tabBarLabel: ({ focused }) => <TabLabel label={t('nav.orders')} focused={focused} />,
                 }}
             />
             <ClientTab.Screen
@@ -512,7 +632,7 @@ const ClientTabNavigator = ({ navigation }: any) => {
                 component={CatalogScreen}
                 options={{
                     tabBarIcon: ({ focused }) => <TabIcon name="grid" focused={focused} />,
-                    tabBarLabel: ({ focused }) => <TabLabel label="Catalogue" focused={focused} />,
+                    tabBarLabel: ({ focused }) => <TabLabel label={t('nav.catalog')} focused={focused} />,
                 }}
             />
             <ClientTab.Screen
@@ -521,10 +641,11 @@ const ClientTabNavigator = ({ navigation }: any) => {
                 initialParams={{ clientId: myId }}
                 options={{
                     tabBarIcon: ({ focused }) => <TabIcon name="scissors" focused={focused} />,
-                    tabBarLabel: ({ focused }) => <TabLabel label="Mesures" focused={focused} />,
+                    tabBarLabel: ({ focused }) => <TabLabel label={t('nav.measurements')} focused={focused} />,
                 }}
             />
-        </ClientTab.Navigator>
+            </ClientTab.Navigator>
+        </>
     );
 };
 
@@ -538,11 +659,13 @@ interface AppNavigatorProps {
 
 const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
     const { profile, loading } = useProfile();
+    const { colors, styles } = useThemedStyles(makeNavStyles);
+    usePreferences();
 
     if (session && loading) {
         return (
             <View style={styles.loader}>
-                <ActivityIndicator size="large" color={PALETTE.gold} />
+                <ActivityIndicator size="large" color={colors.gold} />
             </View>
         );
     }
@@ -606,6 +729,7 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
 
                     {/* ── Divers ── */}
                     <Stack.Screen name="Statistics"      component={StatisticsScreen} />
+                    <Stack.Screen name="Notifications"   component={NotificationsScreen} />
                     <Stack.Screen name="Profile"         component={ProfileScreen} />
                     <Stack.Screen name="Settings"        component={SettingsScreen} />
                 </>
@@ -627,156 +751,3 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
 };
 
 export default AppNavigator;
-
-// ==========================================
-// STYLES
-// ==========================================
-
-const styles = StyleSheet.create({
-
-    // ── Loader ──
-    loader: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: PALETTE.bg,
-    },
-
-    // ── Tab bar ──
-    tabBar: {
-        backgroundColor: PALETTE.navBg,
-        borderTopWidth: 1,
-        borderTopColor: PALETTE.navBorder,
-        height: Platform.OS === 'ios' ? 88 : 72,
-        paddingTop: 8,
-        elevation: 0,
-    },
-
-    // ── Icône onglet ──
-    tabIconWrap: {
-        width: 44,
-        height: 32,
-        borderRadius: 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    tabIconWrapActive: {
-        backgroundColor: PALETTE.goldBg,
-    },
-
-    // ── Badge ──
-    badge: {
-        position: 'absolute',
-        top: 4,
-        right: 6,
-        width: 7,
-        height: 7,
-        borderRadius: 4,
-        backgroundColor: PALETTE.gold,
-        borderWidth: 1.5,
-        borderColor: PALETTE.navBg,
-    },
-
-    // ── Label onglet ──
-    tabLabel: {
-        fontSize: 10,
-        fontFamily: 'PlusJakartaSans_500Medium',
-        letterSpacing: 0.2,
-        color: PALETTE.muted,
-        marginTop: 2,
-    },
-    tabLabelActive: {
-        color: PALETTE.gold,
-    },
-
-    // ── Bouton Plus ──
-    plusTabWrap: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        paddingBottom: 2,
-    },
-    plusBtn: {
-        width: 48,
-        height: 48,
-        borderRadius: 15,
-        backgroundColor: PALETTE.bg,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginTop: -20,
-        ...Platform.select({
-            ios: {
-                shadowColor: PALETTE.bg,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 12,
-            },
-            android: { elevation: 8 },
-        }),
-        borderWidth: 1,
-        borderColor: PALETTE.goldRim,
-    },
-    plusBtnOpen: {
-        backgroundColor: PALETTE.surface,
-        borderColor: PALETTE.gold,
-    },
-    plusLabel: {
-        fontSize: 10,
-        fontFamily: 'PlusJakartaSans_500Medium',
-        letterSpacing: 0.2,
-        color: PALETTE.muted,
-        marginTop: 5,
-    },
-
-    // ── Menu directionnel ──
-    menuOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(255,255,255,0.55)',
-    },
-    menuContainer: {
-        position: 'absolute',
-        bottom: 100,
-        left: 0,
-        right: 0,
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'center',
-        alignItems: 'flex-start',
-        rowGap: 20,
-        columnGap: 16,
-        paddingHorizontal: 24,
-    },
-    menuItemWrap: {
-        width: 72,
-    },
-    menuItem: {
-        alignItems: 'center',
-        gap: 6,
-    },
-    menuIconBox: {
-        width: 52,
-        height: 52,
-        borderRadius: 16,
-        backgroundColor: PALETTE.bg,
-        borderWidth: 1,
-        borderColor: PALETTE.goldRim,
-        alignItems: 'center',
-        justifyContent: 'center',
-        ...Platform.select({
-            ios: {
-                shadowColor: PALETTE.bg,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.2,
-                shadowRadius: 10,
-            },
-            android: { elevation: 6 },
-        }),
-    },
-    menuLabel: {
-        fontSize: 10,
-        fontFamily: 'PlusJakartaSans_500Medium',
-        color: PALETTE.bg,
-        letterSpacing: 0.2,
-        textAlign: 'center',
-    },
-});

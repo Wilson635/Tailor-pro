@@ -6,20 +6,13 @@
 // ==========================================
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
+import { useThemedStyles, type Palette } from '@/src/theme';
 import { ficheService, mapFiche } from '@services/supabaseService';
 import { DynamicMeasurementForm } from './DynamicMeasurementForm';
 import type { FicheMensuration, MeasurementChoiceResult, TypeVetement } from '../../types';
-
-const P = {
-    primary: '#6C3EB8', pageBg: '#F5F4FB', surface: '#FFFFFF',
-    text: '#1A1033', sub: '#7C6FA8',
-    border: 'rgba(108,62,184,0.10)', borderHard: 'rgba(108,62,184,0.15)',
-    gold: '#D4AF37', goldBg: 'rgba(212,175,55,0.10)',
-    success: '#16A34A', successBg: 'rgba(22,163,74,0.10)',
-};
 
 interface Props {
     visible: boolean;
@@ -34,6 +27,7 @@ interface Props {
 type ViewState = 'loading' | 'propose' | 'preview' | 'new_form';
 
 export const MeasurementPickerModal: React.FC<Props> = ({ visible, clientId, typeVetement, onClose, onChoice }) => {
+    const { colors: P, styles } = useThemedStyles(makeStyles);
     const [view, setView] = useState<ViewState>('loading');
     const [existingFiche, setExistingFiche] = useState<FicheMensuration | null>(null);
 
@@ -162,9 +156,9 @@ export const MeasurementPickerModal: React.FC<Props> = ({ visible, clientId, typ
     );
 };
 
-const styles = StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: 'rgba(26,16,51,0.5)', justifyContent: 'center', padding: 20 },
-    card: { backgroundColor: P.surface, borderRadius: 20, padding: 18 },
+const makeStyles = (P: Palette) => ({
+    overlay: { flex: 1, backgroundColor: P.overlay, justifyContent: 'center', padding: 20 },
+    card: { backgroundColor: P.surface, borderRadius: 20, padding: 18, borderWidth: 0.5, borderColor: P.borderHard },
     headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
     title: { fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
 
@@ -178,7 +172,8 @@ const styles = StyleSheet.create({
 
     primaryBtn: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-        backgroundColor: P.primary, borderRadius: 10, paddingVertical: 13,
+        backgroundColor: P.bg, borderRadius: 16, paddingVertical: 13,
+        borderWidth: 1, borderColor: P.goldRim,
     },
     primaryBtnText: { color: '#fff', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5 },
 

@@ -4,12 +4,12 @@
 // liste débiteurs et export Excel.
 // ──────────────────────────────────────────────────────────
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { showAlert } from '@/src/context/DialogContext';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    ActivityIndicator, RefreshControl, TextInput, Share,
-    Alert, Platform,
+    View, Text, ScrollView, TouchableOpacity,
+    ActivityIndicator, RefreshControl,
 } from 'react-native';
-import * as XLSX from 'xlsx';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -18,26 +18,10 @@ import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAppStore } from '@store/useAppStore';
 import { comptabiliteService } from '@services/supabaseService';
 import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
-import { TYPE_PAIEMENT_META, TypePaiement } from '@constants/paiementConstants';
-
-// ── Palette ──────────────────────────────────────────────
-const P = {
-    bg:        '#16123A',
-    primary:   '#6C3EB8',
-    pageBg:    '#F5F4FB',
-    surface:   '#FFFFFF',
-    text:      '#1A1033',
-    sub:       '#7C6FA8',
-    border:    'rgba(108,62,184,0.10)',
-    gold:      '#D4AF37',
-    goldBg:    'rgba(212,175,55,0.10)',
-    success:   '#059669',
-    successBg: 'rgba(5,150,105,0.10)',
-    warning:   '#D97706',
-    warningBg: 'rgba(217,119,6,0.10)',
-    error:     '#DC2626',
-    errorBg:   'rgba(220,38,38,0.10)',
-};
+import { DateField } from '@components/ui';
+import { exportExcelFile, exportPdfFile } from '@utils/exportFiles';
+import { TYPE_PAIEMENT_META, type TypePaiement } from '@constants/paiementConstants';
+import { isCancelledOrder } from '@constants/commandeConstants';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Period = 'jour' | 'semaine' | 'mois' | 'custom';
@@ -88,28 +72,29 @@ const KpiCard = ({
                  }: {
     icon: string; label: string; value: string; sub?: string;
     color: string; bgColor: string;
-}) => (
-    <View style={[kpiStyles.card, { borderLeftColor: color }]}>
-        <View style={[kpiStyles.iconWrap, { backgroundColor: bgColor }]}>
-            <Feather name={icon as any} size={16} color={color} />
+}) => {
+    const { styles: kpi } = useThemedStyles(makeKpiStyles);
+    return (
+        <View style={[kpi.card, { borderLeftColor: color }]}>
+            <View style={[kpi.iconWrap, { backgroundColor: bgColor }]}>
+                <Feather name={icon as any} size={16} color={color} />
+            </View>
+            <Text style={kpi.value}>{value}</Text>
+            <Text style={kpi.label}>{label}</Text>
+            {sub ? <Text style={kpi.sub}>{sub}</Text> : null}
         </View>
-        <Text style={kpiStyles.value}>{value}</Text>
-        <Text style={kpiStyles.label}>{label}</Text>
-        {sub ? <Text style={kpiStyles.sub}>{sub}</Text> : null}
-    </View>
-);
+    );
+};
 
-const kpiStyles = StyleSheet.create({
+const makeKpiStyles = (P: Palette) => ({
     card: {
-        flex: 1, backgroundColor: P.surface, borderRadius: 12, padding: 14,
-        borderLeftWidth: 3,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+        flex: 1, backgroundColor: P.surface, borderRadius: 16, padding: 14,
+        borderLeftWidth: 3, borderWidth: 0.5, borderColor: P.borderHard,
     },
-    iconWrap: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+    iconWrap: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center' as const, alignItems: 'center' as const, marginBottom: 8 },
     value:    { fontSize: 17, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text },
-    label:    { fontSize: 11, color: P.sub, marginTop: 2 },
-    sub:      { fontSize: 10, color: P.sub, marginTop: 1, fontStyle: 'italic' },
+    label:    { fontSize: 11, color: P.sub, marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium' },
+    sub:      { fontSize: 10, color: P.sub, marginTop: 1, fontStyle: 'italic' as const },
 });
 
 // ──────────────────────────────────────────────────────────
@@ -117,6 +102,7 @@ const kpiStyles = StyleSheet.create({
 // ──────────────────────────────────────────────────────────
 export function ComptabiliteScreen() {
     const navigation = useNavigation<Nav>();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
     const { orders: storeOrders, clients } = useAppStore();
 
     const [allPayments, setAllPayments] = useState<PaymentRow[]>([]);
@@ -146,8 +132,8 @@ export function ComptabiliteScreen() {
                 orderId:       p.order_id,
                 amount:        Number(p.amount),
                 type:          p.type ?? 'acompte',
-                paymentMethod: p.payment_method ?? 'cash',
-                paymentDate:   p.payment_date,
+                paymentMethod: p.method ?? p.payment_method ?? 'cash',
+                paymentDate:   p.date ?? p.payment_date ?? p.created_at,
                 notes:         p.notes ?? undefined,
             })));
         }
@@ -197,8 +183,9 @@ export function ComptabiliteScreen() {
     const periodPayments = useMemo(() => {
         if (!dateRange) return [];
         return allPayments.filter(p => {
+            if (!p.paymentDate) return false;
             const d = new Date(p.paymentDate);
-            return d >= dateRange.from && d <= dateRange.to;
+            return !isNaN(d.getTime()) && d >= dateRange.from && d <= dateRange.to;
         });
     }, [allPayments, dateRange]);
 
@@ -222,7 +209,7 @@ export function ComptabiliteScreen() {
     // ── Débiteurs (global, toutes périodes) ────────────────
     const debtors = useMemo(() =>
             allOrders
-                .filter(o => o.remainingAmount > 0 && o.paymentStatus !== 'paid')
+                .filter(o => !isCancelledOrder(o.orderStatus) && o.remainingAmount > 0 && o.paymentStatus !== 'paid')
                 .sort((a, b) => b.remainingAmount - a.remainingAmount),
         [allOrders]
     );
@@ -230,52 +217,56 @@ export function ComptabiliteScreen() {
 
     // ── Solde en attente sur la période ────────────────────
     const soldesPeriode = periodOrders
-        .filter(o => o.remainingAmount > 0)
+        .filter(o => !isCancelledOrder(o.orderStatus) && o.remainingAmount > 0)
         .reduce((s, o) => s + o.remainingAmount, 0);
 
     // ── Export Excel ─────────────────────────────────────────
-    const exportExcel = async (type: 'paiements' | 'debiteurs') => {
+    const exportExcel = async (type: 'paiements' | 'debiteurs', kind: 'xlsx' | 'pdf' = 'xlsx') => {
         setExporting(true);
         try {
-            let data: any[] = [];
+            let data: Record<string, string | number>[] = [];
             let fileName = '';
+            let title = '';
 
             if (type === 'paiements') {
                 data = periodPayments.map(p => {
                     const typeMeta = TYPE_PAIEMENT_META[p.type as TypePaiement];
                     return {
-                        'Date': new Date(p.paymentDate).toLocaleDateString('fr-FR'),
-                        'Montant (FCFA)': p.amount,
-                        'Type': typeMeta?.label ?? p.type,
-                        'Mode': p.paymentMethod,
-                        'Notes': (p.notes ?? '').replace(/,/g, ';'),
+                        Date: new Date(p.paymentDate).toLocaleDateString('fr-FR'),
+                        Montant: p.amount,
+                        Type: typeMeta?.label ?? p.type,
+                        Mode: p.paymentMethod,
+                        Notes: p.notes ?? '',
                     };
                 });
-                fileName = `TailorPro_Encaissements_${periodLabel.toLowerCase().replace(/\s/g,'_')}.xlsx`;
+                fileName = `TailorPro_Encaissements_${periodLabel.toLowerCase().replace(/\s/g, '_')}`;
+                title = `Encaissements — ${periodLabel}`;
             } else {
                 data = debtors.map(d => ({
-                    'Client': d.clientName.replace(/,/g, ' '),
-                    'N° Commande': d.numeroCommande ?? '—',
-                    'Montant dû (FCFA)': d.remainingAmount,
-                    'Statut paiement': d.paymentStatus,
+                    Client: d.clientName,
+                    Commande: d.numeroCommande ?? '—',
+                    'Montant dû': d.remainingAmount,
+                    Statut: d.paymentStatus,
                 }));
-                fileName = 'TailorPro_Debiteurs.xlsx';
+                fileName = 'TailorPro_Debiteurs';
+                title = 'Débiteurs';
             }
 
-            const ws = XLSX.utils.json_to_sheet(data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, type === 'paiements' ? 'Encaissements' : 'Débiteurs');
-            const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-
-            const base64 = btoa(String.fromCharCode(...new Uint8Array(excelBuffer)));
-            const uri = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${base64}`;
-
-            await Share.share({ message: uri, title: fileName });
-        } catch (e) {
-            Alert.alert('Erreur', 'Impossible d\'exporter les données.');
+            if (kind === 'pdf') await exportPdfFile(fileName, title, data);
+            else await exportExcelFile(fileName, data, type === 'paiements' ? 'Encaissements' : 'Débiteurs');
+        } catch {
+            showAlert('Erreur', "Impossible d'exporter les données.");
         } finally {
             setExporting(false);
         }
+    };
+
+    const askExport = (type: 'paiements' | 'debiteurs') => {
+        showAlert('Exporter', 'Choisissez un format', [
+            { text: 'Excel', onPress: () => exportExcel(type, 'xlsx') },
+            { text: 'PDF', onPress: () => exportExcel(type, 'pdf') },
+            { text: 'Annuler', style: 'cancel' },
+        ]);
     };
 
     // ── Label période ──────────────────────────────────────
@@ -284,7 +275,12 @@ export function ComptabiliteScreen() {
             case 'jour':    return "Aujourd'hui";
             case 'semaine': return 'Cette semaine';
             case 'mois':    return 'Ce mois';
-            case 'custom':  return `${customFrom} → ${customTo}`;
+            case 'custom': {
+                const f = parseDateStr(customFrom);
+                const t = parseDateStr(customTo);
+                if (!f || !t) return 'Période personnalisée';
+                return `${f.toLocaleDateString('fr-FR')} → ${t.toLocaleDateString('fr-FR')}`;
+            }
         }
     }, [period, customFrom, customTo]);
 
@@ -304,28 +300,29 @@ export function ComptabiliteScreen() {
             {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-                    <Feather name="arrow-left" size={20} color="#fff" />
+                    <Feather name="arrow-left" size={18} color={P.text} />
                 </TouchableOpacity>
                 <View style={{ flex: 1 }}>
+                    <Text style={styles.kicker}>Atelier</Text>
                     <Text style={styles.headerTitle}>Comptabilité</Text>
                     <Text style={styles.headerSub}>{periodLabel}</Text>
                 </View>
                 <TouchableOpacity
                     style={[styles.exportBtn, exporting && { opacity: 0.6 }]}
-                    onPress={() => Alert.alert(
+                    onPress={() => showAlert(
                         'Exporter',
                         'Choisir le type d\'export',
                         [
-                            { text: 'Encaissements (Excel)', onPress: () => exportExcel('paiements') },
-                            { text: 'Débiteurs (Excel)',      onPress: () => exportExcel('debiteurs') },
+                            { text: 'Encaissements', onPress: () => askExport('paiements') },
+                            { text: 'Débiteurs',      onPress: () => askExport('debiteurs') },
                             { text: 'Annuler', style: 'cancel' },
                         ]
                     )}
                     disabled={exporting}
                 >
                     {exporting
-                        ? <ActivityIndicator size="small" color="#fff" />
-                        : <Feather name="download" size={18} color="#fff" />
+                        ? <ActivityIndicator size="small" color={P.gold} />
+                        : <Feather name="download" size={18} color={P.gold} />
                     }
                 </TouchableOpacity>
             </View>
@@ -349,21 +346,12 @@ export function ComptabiliteScreen() {
             {/* Champs dates custom */}
             {period === 'custom' && (
                 <View style={styles.customDates}>
-                    <TextInput
-                        style={styles.dateInput}
-                        placeholder="AAAA-MM-JJ"
-                        placeholderTextColor={P.sub}
-                        value={customFrom}
-                        onChangeText={setCustomFrom}
-                    />
-                    <Feather name="arrow-right" size={14} color={P.sub} style={{ marginHorizontal: 8 }} />
-                    <TextInput
-                        style={styles.dateInput}
-                        placeholder="AAAA-MM-JJ"
-                        placeholderTextColor={P.sub}
-                        value={customTo}
-                        onChangeText={setCustomTo}
-                    />
+                    <View style={{ flex: 1 }}>
+                        <DateField value={customFrom} onChange={setCustomFrom} output="iso" placeholder="Date de début" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <DateField value={customTo} onChange={setCustomTo} output="iso" placeholder="Date de fin" />
+                    </View>
                 </View>
             )}
 
@@ -393,7 +381,7 @@ export function ComptabiliteScreen() {
                             label="Commandes créées"
                             value={String(nbCommandes)}
                             color={P.primary}
-                            bgColor="rgba(108,62,184,0.10)"
+                            bgColor={P.primaryBg}
                         />
                     </View>
                     <View style={[styles.kpiRow, { marginTop: 12 }]}>
@@ -551,7 +539,7 @@ export function ComptabiliteScreen() {
                     <View style={styles.exportRow}>
                         <TouchableOpacity
                             style={styles.exportQuickBtn}
-                            onPress={() => exportExcel('paiements')}
+                            onPress={() => askExport('paiements')}
                             disabled={periodPayments.length === 0 || exporting}
                             activeOpacity={0.8}
                         >
@@ -561,7 +549,7 @@ export function ComptabiliteScreen() {
                         <View style={{ width: 10 }} />
                         <TouchableOpacity
                             style={styles.exportQuickBtn}
-                            onPress={() => exportExcel('debiteurs')}
+                            onPress={() => askExport('debiteurs')}
                             disabled={debtors.length === 0 || exporting}
                             activeOpacity={0.8}
                         >
@@ -574,7 +562,7 @@ export function ComptabiliteScreen() {
                     <View style={styles.futureBanner}>
                         <Feather name="info" size={13} color={P.primary} style={{ marginRight: 8 }} />
                         <Text style={styles.futureText}>
-                            Dépenses & bénéfices nets disponibles dans une prochaine version
+                            Un acompte est un encaissement. Le bénéfice = encaissements − dépenses (dépenses pas encore suivies). Le reste impayé n’est pas du bénéfice. Sur une commande annulée, les sommes déjà reçues restent encaissées.
                         </Text>
                     </View>
                 </ScrollView>
@@ -584,25 +572,28 @@ export function ComptabiliteScreen() {
 }
 
 // ── Styles ────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     safe:   { flex: 1, backgroundColor: P.pageBg },
 
     // Header
     header: {
-        backgroundColor: P.bg,
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingVertical: 14, gap: 12,
+        flexDirection: 'row', alignItems: 'flex-start',
+        paddingHorizontal: 20, paddingVertical: 12, gap: 12,
     },
     backBtn: {
-        width: 36, height: 36, borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.10)',
+        width: 40, height: 40, borderRadius: 12, marginTop: 4,
+        backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
         justifyContent: 'center', alignItems: 'center',
     },
-    headerTitle: { color: '#fff', fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold' },
-    headerSub:   { color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 1 },
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2,
+    },
+    headerTitle: { color: P.text, fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', letterSpacing: -0.6 },
+    headerSub:   { color: P.sub, fontSize: 13, marginTop: 4 },
     exportBtn: {
-        width: 36, height: 36, borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.12)',
+        width: 40, height: 40, borderRadius: 12, marginTop: 4,
+        backgroundColor: P.bg, borderWidth: 1, borderColor: P.goldRim,
         justifyContent: 'center', alignItems: 'center',
     },
 
@@ -653,10 +644,9 @@ const styles = StyleSheet.create({
 
     // Card
     card: {
-        backgroundColor: P.surface, borderRadius: 12,
+        backgroundColor: P.surface, borderRadius: 18,
         overflow: 'hidden',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+        borderWidth: 0.5, borderColor: P.borderHard,
     },
     rowDivider: { height: 1, backgroundColor: P.border, marginHorizontal: 14 },
 
@@ -673,10 +663,9 @@ const styles = StyleSheet.create({
     // Debtors header
     debtorsHeader: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        backgroundColor: P.surface, borderRadius: 12,
+        backgroundColor: P.surface, borderRadius: 18,
         padding: 14, marginTop: 24,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+        borderWidth: 0.5, borderColor: P.borderHard,
     },
     debtorsHeaderOpen: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
     debtorsHeaderLeft: { flexDirection: 'row', alignItems: 'center' },

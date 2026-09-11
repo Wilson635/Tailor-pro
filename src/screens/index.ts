@@ -44,5 +44,7 @@ export { CatalogScreen } from './Catalog/CatalogScreen';
 export { ModelDetailsScreen } from './Catalog/ModelDetailsScreen';
 export { EditCatalogModelScreen } from './Catalog/EditCatalogModelScreen';
 
+export { NotificationsScreen } from './Notifications/NotificationsScreen';
+
 // Statistics
 export { StatisticsScreen } from './Statistics/StatisticsScreen';

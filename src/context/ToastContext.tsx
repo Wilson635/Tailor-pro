@@ -186,11 +186,8 @@ const styles = StyleSheet.create({
         paddingBottom: 20,
         paddingHorizontal: 22,
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.2,
-        shadowRadius: 20,
-        elevation: 12,
+        borderWidth: 0.5,
+        borderColor: 'rgba(108,62,184,0.18)',
     },
     iconCircle: {
         width: 68,

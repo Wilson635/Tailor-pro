@@ -7,6 +7,8 @@
 // Chaque fonction retourne { data, error }.
 
 import { supabase } from '@/src/lib/supabase';
+import * as FileSystem from 'expo-file-system/legacy'; // SDK 54 : API string-based (readAsStringAsync, EncodingType) déplacée ici
+import { decode } from 'base64-arraybuffer';
 import type { Client, Order, Measurements, Payment, Statistics, CatalogModel, FicheMensuration, TypeVetement } from '../types';
 
 // ==========================================
@@ -70,7 +72,7 @@ export const clientService = {
     update: async (clientId: string, updates: Partial<Client>) => {
         const payload: Record<string, any> = { updated_at: new Date().toISOString() };
         if (updates.nom            !== undefined) payload.nom            = updates.nom;
-        if (updates.telephone      !== undefined) payload.phone          = updates.telephone;
+        if (updates.telephone      !== undefined) payload.telephone      = updates.telephone;
         if (updates.whatsapp       !== undefined) payload.whatsapp       = updates.whatsapp;
         if (updates.email          !== undefined) payload.email          = updates.email;
         if (updates.adresse        !== undefined) payload.adresse        = updates.adresse;
@@ -102,6 +104,98 @@ export const clientService = {
             .eq('id', clientId);
         return { error };
     },
+};
+
+export const isRemotePhoto = (uri?: string | null) =>
+    !!uri && (uri.startsWith('http://') || uri.startsWith('https://'));
+
+const guessImageExt = (localUri: string) => {
+    if (localUri.startsWith('data:image/png')) return 'png';
+    if (localUri.startsWith('data:image/webp')) return 'webp';
+    const raw = (localUri.split('.').pop()?.toLowerCase() ?? 'jpg').split('?')[0];
+    const ext = raw.replace(/[^a-z0-9]/g, '');
+    if (ext === 'jpeg' || ext === 'jpg' || ext === 'png' || ext === 'webp' || ext === 'heic') return ext === 'jpeg' ? 'jpg' : ext;
+    return 'jpg';
+};
+
+const uriToArrayBuffer = async (localUri: string): Promise<ArrayBuffer> => {
+    if (localUri.startsWith('data:')) {
+        const b64 = localUri.split(',')[1] ?? '';
+        return decode(b64);
+    }
+    try {
+        const base64 = await FileSystem.readAsStringAsync(localUri, {
+            encoding: FileSystem.EncodingType.Base64,
+        });
+        return decode(base64);
+    } catch {
+        const response = await fetch(localUri);
+        return await response.arrayBuffer();
+    }
+};
+
+/** Upload d’une photo client vers `catalog-photos` (bucket existant, RLS uid en 1er dossier). */
+export const uploadClientPhoto = async (
+    localUri: string,
+    couturierId: string,
+    clientId: string,
+): Promise<{ publicUrl: string | null; error: Error | null }> => {
+    try {
+        const userId = couturierId || await getUserId();
+        const ext = guessImageExt(localUri);
+        const path = `${userId}/clients/${clientId}_${Date.now()}.${ext}`;
+        const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const arrayBuffer = await uriToArrayBuffer(localUri);
+
+        const { error } = await supabase.storage
+            .from('catalog-photos')
+            .upload(path, arrayBuffer, { contentType, upsert: false });
+        if (error) {
+            console.error('Erreur upload photo client:', error);
+            return { publicUrl: null, error };
+        }
+        const { data } = supabase.storage.from('catalog-photos').getPublicUrl(path);
+        return { publicUrl: data.publicUrl, error: null };
+    } catch (e) {
+        console.error('Exception upload photo client:', e);
+        return { publicUrl: null, error: e as Error };
+    }
+};
+
+export const uploadProfilePhoto = async (
+    localUri: string,
+    userId: string,
+): Promise<{ publicUrl: string | null; error: Error | null }> => {
+    try {
+        const ext = guessImageExt(localUri);
+        const path = `${userId}/profile/avatar_${Date.now()}.${ext}`;
+        const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const arrayBuffer = await uriToArrayBuffer(localUri);
+
+        const { error } = await supabase.storage
+            .from('catalog-photos')
+            .upload(path, arrayBuffer, { contentType, upsert: false });
+        if (error) {
+            console.error('Erreur upload photo profil:', error);
+            return { publicUrl: null, error };
+        }
+        const { data } = supabase.storage.from('catalog-photos').getPublicUrl(path);
+        return { publicUrl: data.publicUrl, error: null };
+    } catch (e) {
+        console.error('Exception upload photo profil:', e);
+        return { publicUrl: null, error: e as Error };
+    }
+};
+
+export const resolveClientPhotoForSave = async (
+    photo: string | null | undefined,
+    couturierId: string,
+    clientId: string,
+): Promise<string | null> => {
+    if (!photo) return null;
+    if (isRemotePhoto(photo)) return photo.split('?')[0];
+    const { publicUrl } = await uploadClientPhoto(photo, couturierId, clientId);
+    return publicUrl;
 };
 
 // ==========================================
@@ -350,13 +444,29 @@ export const measurementService = {
 // FICHES DE MENSURATION (Module 3)
 // ==========================================
 
+const parseMesures = (raw: unknown): Record<string, number> => {
+    if (!raw) return {};
+    try {
+        const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (!obj || typeof obj !== 'object') return {};
+        const out: Record<string, number> = {};
+        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+            const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+            if (Number.isFinite(n)) out[k] = n;
+        }
+        return out;
+    } catch {
+        return {};
+    }
+};
+
 export const mapFiche = (row: Record<string, unknown>): FicheMensuration => ({
     id:           row.id as string,
     clientId:     row.client_id as string,
     couturierId:  row.couturier_id as string,
     typeVetement: row.type_vetement as TypeVetement,
     datePrise:    new Date(row.date_prise as string),
-    mesures:      (row.mesures ?? {}) as Record<string, number>,
+    mesures:      parseMesures(row.mesures),
     unite:        row.unite as 'cm' | 'pouces',
     notes:        row.notes as string | undefined,
     isActive:     row.is_active as boolean,
@@ -615,6 +725,7 @@ export const paymentService = {
         amount: number;
         method: string;
         notes?: string;
+        typePaiement?: string;
     }) => {
         if (!payment.orderId && !payment.projectId) {
             return { data: null, error: new Error('Un paiement doit être lié à une commande ou à un projet') };
@@ -629,6 +740,7 @@ export const paymentService = {
                 client_id:    payment.clientId,
                 amount:       payment.amount,
                 method:       payment.method,
+                type:         payment.typePaiement ?? 'acompte',
                 notes:        payment.notes ?? null,
                 date:         new Date().toISOString().slice(0, 10),
             })
@@ -650,7 +762,7 @@ export const activityService = {
         const { data, error } = await supabase
             .from('activities')
             .select('*')
-            .eq('user_id', userId)
+            .eq('couturier_id', userId)
             .order('created_at', { ascending: false })
             .limit(limit);
         return { data, error };
@@ -669,7 +781,7 @@ export const activityService = {
         const { error } = await supabase
             .from('activities')
             .insert({
-                user_id: userId,
+                couturier_id: userId,
                 activity_type: activity.type,
                 title: activity.title,
                 subtitle: activity.subtitle ?? null,
@@ -713,8 +825,12 @@ export const statisticsService = {
                 o => o.order_status === 'completed' || o.order_status === 'delivered'
             ).length;
 
-            // Impayés
-            const unpaidOrders = orders.filter(o => o.payment_status !== 'paid');
+            // Impayés : le reste d'une commande annulée n'est plus dû
+            const unpaidOrders = orders.filter(o =>
+                o.payment_status !== 'paid' &&
+                o.order_status !== 'cancelled' &&
+                o.order_status !== 'annulee'
+            );
             const unpaidInvoices = unpaidOrders.length;
             const unpaidAmount = unpaidOrders.reduce((sum, o) => sum + Number(o.remaining_amount), 0);
 
@@ -729,7 +845,9 @@ export const statisticsService = {
                 completedOrders,
                 unpaidInvoices,
                 unpaidAmount,
-                totalExpenses: 0, // à implémenter si tu ajoutes une table dépenses
+                totalExpenses: 0, // pas de suivi des dépenses pour l'instant
+                // Bénéfice = encaissements − dépenses. Sans dépenses, égal à l'encaissé du mois
+                // (acomptes inclus). Le reste à payer n'entre pas ici.
                 netProfit: monthlyRevenue,
             };
 
@@ -747,19 +865,19 @@ export const statisticsService = {
 
 export const catalogService = {
 
-    /** Récupère tous les modèles non archivés du couturier */
+    /** Récupère tous les modèles non archivés du couturier (avec leurs photos) */
     getAll: async () => {
         const userId = await getUserId();
         const { data, error } = await supabase
             .from('catalog')
-            .select('*')
-            .or(`couturier_id.eq.${userId},user_id.eq.${userId}`)
+            .select('*, catalog_photos(photo_url)')
+            .eq('couturier_id', userId)
             .is('deleted_at', null)
             .order('created_at', { ascending: false });
         return { data, error };
     },
 
-    /** Crée un nouveau modèle */
+    /** Crée un nouveau modèle (les photos sont stockées séparément dans catalog_photos) */
     create: async (model: Omit<CatalogModel, 'id' | 'createdAt' | 'couturierId' | 'deletedAt'>) => {
         const userId = await getUserId();
         const { data, error } = await supabase
@@ -770,7 +888,6 @@ export const catalogService = {
                 category:                 model.categorie,
                 price:                    model.prixIndicatif,
                 description:              model.description ?? null,
-                photos:                   model.photos,
                 is_favorite:              model.isFavorite ?? false,
                 difficulte:               model.difficulte ?? 'moyen',
                 temps_moyen_realisation:  model.tempsMoyenRealisation ?? null,
@@ -780,17 +897,43 @@ export const catalogService = {
             })
             .select()
             .single();
-        return { data, error };
+
+        if (error || !data) return { data, error };
+
+        let catalogPhotos: { photo_url: string }[] = [];
+        if (model.photos && model.photos.length > 0) {
+            const { data: insertedPhotos, error: photosError } = await supabase
+                .from('catalog_photos')
+                .insert(
+                    model.photos.map((url) => ({
+                        catalog_id:   data.id,
+                        couturier_id: userId,
+                        photo_url:    url,
+                    }))
+                )
+                .select('photo_url');
+
+            if (photosError) {
+                console.error('Erreur insertion catalog_photos:', photosError);
+            } else {
+                catalogPhotos = insertedPhotos ?? [];
+            }
+        }
+
+        return { data: { ...data, catalog_photos: catalogPhotos }, error: null };
     },
 
-    /** Met à jour un modèle */
+    /** Met à jour un modèle (les photos sont synchronisées dans catalog_photos, pas dans une colonne) */
     update: async (modelId: string, updates: Partial<CatalogModel>) => {
+        const userId = await getUserId();
+        // `updated_at` existe maintenant sur `catalog` (colonne + trigger côté DB) — on l'envoie
+        // aussi ici par cohérence avec clientService/orderService/tissuService, même si le
+        // trigger `before update` écrasera de toute façon avec l'heure serveur.
         const payload: Record<string, any> = { updated_at: new Date().toISOString() };
         if (updates.nom               !== undefined) payload.name                    = updates.nom;
         if (updates.categorie         !== undefined) payload.category                = updates.categorie;
         if (updates.prixIndicatif     !== undefined) payload.price                   = updates.prixIndicatif;
         if (updates.description       !== undefined) payload.description             = updates.description;
-        if (updates.photos            !== undefined) payload.photos                  = updates.photos;
         if (updates.isFavorite        !== undefined) payload.is_favorite             = updates.isFavorite;
         if (updates.difficulte        !== undefined) payload.difficulte              = updates.difficulte;
         if (updates.tempsMoyenRealisation !== undefined) payload.temps_moyen_realisation = updates.tempsMoyenRealisation;
@@ -805,7 +948,41 @@ export const catalogService = {
             .eq('id', modelId)
             .select()
             .single();
-        return { data, error };
+
+        if (error || !data) {
+            if (error) console.error('Erreur update catalog:', JSON.stringify(error, null, 2));
+            return { data, error };
+        }
+
+        // Les photos vivent dans catalog_photos — si le formulaire d'édition a fourni une
+        // nouvelle liste, on remplace entièrement l'ensemble existant par celle-ci.
+        if (updates.photos !== undefined) {
+            const { error: deleteError } = await supabase
+                .from('catalog_photos')
+                .delete()
+                .eq('catalog_id', modelId);
+
+            if (deleteError) {
+                console.error('Erreur suppression catalog_photos:', deleteError);
+            }
+
+            if (updates.photos.length > 0) {
+                const { error: photosError } = await supabase
+                    .from('catalog_photos')
+                    .insert(
+                        updates.photos.map((url) => ({
+                            catalog_id:   modelId,
+                            couturier_id: userId,
+                            photo_url:    url,
+                        }))
+                    );
+                if (photosError) {
+                    console.error('Erreur insertion catalog_photos (update):', photosError);
+                }
+            }
+        }
+
+        return { data, error: null };
     },
 
     /** Soft delete : archive le modèle (ne pas le supprimer physiquement si des commandes y font référence) */
@@ -837,7 +1014,6 @@ export const catalogService = {
                 category:                 model.categorie,
                 price:                    model.prixIndicatif,
                 description:              model.description ?? null,
-                photos:                   [...model.photos],
                 is_favorite:              false,
                 difficulte:               model.difficulte,
                 temps_moyen_realisation:  model.tempsMoyenRealisation ?? null,
@@ -847,29 +1023,60 @@ export const catalogService = {
             })
             .select()
             .single();
-        return { data, error };
+
+        if (error || !data) return { data, error };
+
+        let catalogPhotos: { photo_url: string }[] = [];
+        if (model.photos.length > 0) {
+            const { data: insertedPhotos, error: photosError } = await supabase
+                .from('catalog_photos')
+                .insert(
+                    model.photos.map((url) => ({
+                        catalog_id:   data.id,
+                        couturier_id: userId,
+                        photo_url:    url,
+                    }))
+                )
+                .select('photo_url');
+
+            if (photosError) {
+                console.error('Erreur duplication catalog_photos:', photosError);
+            } else {
+                catalogPhotos = insertedPhotos ?? [];
+            }
+        }
+
+        return { data: { ...data, catalog_photos: catalogPhotos }, error: null };
     },
 
     /** Upload une image vers Supabase Storage et retourne l'URL publique */
     uploadPhoto: async (localUri: string, fileName: string): Promise<string | null> => {
         const userId = await getUserId();
         try {
-            const response = await fetch(localUri);
-            const blob = await response.blob();
+            // fetch(uri).blob() est peu fiable en React Native (blob vide/erreur silencieuse
+            // sur Android+Hermes) — lire en base64 puis convertir en ArrayBuffer est la méthode fiable.
+            const base64 = await FileSystem.readAsStringAsync(localUri, {
+                encoding: FileSystem.EncodingType.Base64,
+            });
+            const arrayBuffer = decode(base64);
             const path = `${userId}/catalog/${Date.now()}_${fileName}`;
 
             const { error } = await supabase.storage
                 .from('catalog-photos')
-                .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+                .upload(path, arrayBuffer, { contentType: 'image/jpeg', upsert: false });
 
-            if (error) return null;
+            if (error) {
+                console.error('Erreur upload photo catalogue:', JSON.stringify(error, null, 2));
+                return null;
+            }
 
             const { data } = supabase.storage
                 .from('catalog-photos')
                 .getPublicUrl(path);
 
             return data.publicUrl;
-        } catch {
+        } catch (err) {
+            console.error('Exception upload photo catalogue:', err);
             return null;
         }
     },
@@ -880,14 +1087,16 @@ export const catalogService = {
 // (avec mapClient, mapOrder, mapActivity)
 // ==========================================
 
-/** Convertit une ligne DB catalog → type CatalogModel de l'app */
+/** Convertit une ligne DB catalog (+ catalog_photos joint) → type CatalogModel de l'app */
 export const mapCatalogModel = (row: any): CatalogModel => ({
     id:                      row.id,
     couturierId:             row.couturier_id ?? row.user_id ?? '',
     nom:                     row.name ?? '',
     categorie:               row.category ?? 'casual',
     description:             row.description ?? undefined,
-    photos:                  Array.isArray(row.photos) ? row.photos : [],
+    photos:                  Array.isArray(row.catalog_photos)
+        ? row.catalog_photos.map((p: any) => p.photo_url)
+        : (Array.isArray(row.photos) ? row.photos : []),
     prixIndicatif:           Number(row.price ?? 0),
     difficulte:              row.difficulte ?? 'moyen',
     tempsMoyenRealisation:   row.temps_moyen_realisation ?? null,
@@ -909,13 +1118,13 @@ export const mapClient = (row: any): Client => ({
     id:            row.id,
     couturierId:   row.couturier_id ?? row.user_id ?? '',
     nom:           row.nom ?? row.full_name ?? '',
-    telephone:     row.telephone ?? '',
+    telephone:     row.telephone ?? row.phone ?? '',
     whatsapp:      row.whatsapp ?? null,
     email:         row.email ?? null,
     adresse:       row.adresse ?? row.neighborhood ?? null,
     sexe:          row.sexe ?? row.gender ?? 'femme',
     dateNaissance: row.date_naissance ? new Date(row.date_naissance) : null,
-    photo:         row.photo_url ?? null,
+    photo:         row.photo_url ?? row.photo ?? row.avatar_url ?? null,
     notesInternes: row.notes_internes ?? null,
     isFavorite:    row.is_favorite ?? false,
     balance:       Number(row.balance ?? 0),
@@ -1040,6 +1249,15 @@ export const realisationService = {
             .order('created_at', { ascending: false });
     },
 
+    getAllForCouturier: async () => {
+        const userId = await getUserId();
+        return supabase
+            .from('realisations')
+            .select('*')
+            .eq('couturier_id', userId)
+            .order('created_at', { ascending: false });
+    },
+
     getByCommande: async (commandeId: string) => {
         const userId = await getUserId();
         return supabase
@@ -1125,18 +1343,22 @@ export const uploadRealisationPhoto = async (
     realisationId: string,
 ): Promise<{ publicUrl: string | null; error: Error | null }> => {
     try {
-        const ext      = (localUri.split('.').pop()?.toLowerCase() ?? 'jpg').split('?')[0];
-        const fileName = `${couturierId}/${realisationId}/${Date.now()}.${ext}`;
-        const response = await fetch(localUri);
-        const blob     = await response.blob();
-        const buffer   = await blob.arrayBuffer();
+        const userId = couturierId || await getUserId();
+        const ext = guessImageExt(localUri);
+        const path = `${userId}/realisations/${realisationId}_${Date.now()}.${ext}`;
+        const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const arrayBuffer = await uriToArrayBuffer(localUri);
         const { error } = await supabase.storage
-            .from('realisation-photos')
-            .upload(fileName, buffer, { contentType: `image/${ext}`, upsert: false });
-        if (error) return { publicUrl: null, error };
-        const { data } = supabase.storage.from('realisation-photos').getPublicUrl(fileName);
+            .from('catalog-photos')
+            .upload(path, arrayBuffer, { contentType, upsert: false });
+        if (error) {
+            console.error('Erreur upload photo réalisation:', error);
+            return { publicUrl: null, error };
+        }
+        const { data } = supabase.storage.from('catalog-photos').getPublicUrl(path);
         return { publicUrl: data.publicUrl, error: null };
     } catch (e) {
+        console.error('Exception upload photo réalisation:', e);
         return { publicUrl: null, error: e as Error };
     }
 };
@@ -1145,9 +1367,10 @@ export const deleteRealisationPhoto = async (
     publicUrl: string,
 ): Promise<{ error: Error | null }> => {
     try {
-        const match = publicUrl.match(/realisation-photos\/(.+)$/);
+        const match = publicUrl.match(/\/(?:catalog-photos|realisation-photos)\/(.+)$/);
         if (!match) return { error: new Error('URL invalide') };
-        const { error } = await supabase.storage.from('realisation-photos').remove([match[1]]);
+        const bucket = publicUrl.includes('realisation-photos') ? 'realisation-photos' : 'catalog-photos';
+        const { error } = await supabase.storage.from(bucket).remove([match[1]]);
         return { error: error ?? null };
     } catch (e) {
         return { error: e as Error };
@@ -1230,18 +1453,22 @@ export const uploadTissuPhoto = async (
     tissuId: string,
 ): Promise<{ publicUrl: string | null; error: Error | null }> => {
     try {
-        const ext      = (localUri.split('.').pop()?.toLowerCase() ?? 'jpg').split('?')[0];
-        const fileName = `${couturierId}/${tissuId}/${Date.now()}.${ext}`;
-        const response = await fetch(localUri);
-        const blob     = await response.blob();
-        const buffer   = await blob.arrayBuffer();
+        const userId = couturierId || await getUserId();
+        const ext = guessImageExt(localUri);
+        const path = `${userId}/tissus/${tissuId}_${Date.now()}.${ext}`;
+        const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const arrayBuffer = await uriToArrayBuffer(localUri);
         const { error } = await supabase.storage
-            .from('tissu-photos')
-            .upload(fileName, buffer, { contentType: `image/${ext}`, upsert: true });
-        if (error) return { publicUrl: null, error };
-        const { data } = supabase.storage.from('tissu-photos').getPublicUrl(fileName);
+            .from('catalog-photos')
+            .upload(path, arrayBuffer, { contentType, upsert: false });
+        if (error) {
+            console.error('Erreur upload photo tissu:', error);
+            return { publicUrl: null, error };
+        }
+        const { data } = supabase.storage.from('catalog-photos').getPublicUrl(path);
         return { publicUrl: data.publicUrl, error: null };
     } catch (e) {
+        console.error('Exception upload photo tissu:', e);
         return { publicUrl: null, error: e as Error };
     }
 };
@@ -1366,7 +1593,8 @@ export const comptabiliteService = {
             .from('orders')
             .select('id, client_id, client_name, total_price, remaining_amount, payment_status, order_status, created_at, numero_commande, advance_payment')
             .eq('couturier_id', userId)
-            .neq('order_status', 'cancelled');
+            .neq('order_status', 'cancelled')
+            .neq('order_status', 'annulee');
     },
 };
 

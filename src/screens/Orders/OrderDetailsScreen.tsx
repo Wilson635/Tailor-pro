@@ -4,16 +4,15 @@
 // ==========================================
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
     View,
     Text,
-    StyleSheet,
     ScrollView,
     TouchableOpacity,
     TextInput,
     Modal,
     ActivityIndicator,
-    Alert,
     Image,
     Platform,
     KeyboardAvoidingView,
@@ -26,37 +25,16 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { paymentService, activityService, createPaiementM8 } from '@services/supabaseService';
 import { TYPE_PAIEMENT_META, TYPES_PAIEMENT, TypePaiement } from '@constants/paiementConstants';
+import { isCancelledOrder } from '@constants/commandeConstants';
 import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
+import { getDeviseMeta } from '@constants/currencies';
+import { getRuntimePrefs } from '@/src/preferences/runtime';
+import { Avatar, keyboardAvoidBehavior } from '@components/ui';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderDetails'>;
-
-// ──────────────────────────────────────────
-// PALETTE
-// ──────────────────────────────────────────
-
-const P = {
-    bg:        '#16123A',
-    primary:   '#6C3EB8',
-    pageBg:    '#F5F4FB',
-    surface:   '#FFFFFF',
-    text:      '#1A1033',
-    sub:       '#7C6FA8',
-    border:    'rgba(108,62,184,0.10)',
-    borderHard:'rgba(108,62,184,0.15)',
-    gold:      '#D4AF37',
-    goldBg:    'rgba(212,175,55,0.10)',
-    goldRim:   'rgba(212,175,55,0.28)',
-    success:   '#16A34A',
-    successBg: 'rgba(22,163,74,0.10)',
-    error:     '#EF4444',
-    errorBg:   'rgba(239,68,68,0.10)',
-    warning:   '#D97706',
-    warningBg: 'rgba(217,119,6,0.10)',
-    info:      '#2563EB',
-    infoBg:    'rgba(37,99,235,0.10)',
-};
 
 // ──────────────────────────────────────────
 // TYPES & CONSTANTES
@@ -68,21 +46,21 @@ type PaymentMethod = 'cash' | 'mobile_money' | 'bank_transfer' | 'other';
 
 const ORDER_STATUS_FLOW: OrderStatus[] = ['pending', 'in_progress', 'completed', 'delivered'];
 
-const ORDER_STATUS_META: Record<OrderStatus, {
+const orderStatusMeta = (P: Palette): Record<OrderStatus, {
     label: string; color: string; bg: string; icon: keyof typeof Feather.glyphMap;
-}> = {
+}> => ({
     pending:     { label: 'En attente',    color: P.warning, bg: P.warningBg, icon: 'clock'        },
     in_progress: { label: 'En cours',      color: P.info,    bg: P.infoBg,    icon: 'scissors'     },
     completed:   { label: 'Prêt à livrer', color: P.success, bg: P.successBg, icon: 'check-circle' },
     delivered:   { label: 'Livré',         color: P.gold,    bg: P.goldBg,    icon: 'package'      },
     cancelled:   { label: 'Annulée',       color: P.error,   bg: P.errorBg,   icon: 'x-circle'     },
-};
+});
 
-const PAYMENT_STATUS_META: Record<PaymentStatus, { label: string; color: string; bg: string }> = {
+const paymentStatusMeta = (P: Palette): Record<PaymentStatus, { label: string; color: string; bg: string }> => ({
     unpaid:  { label: 'Impayée', color: P.error,   bg: P.errorBg   },
     partial: { label: 'Partiel', color: P.warning, bg: P.warningBg },
     paid:    { label: 'Soldée',  color: P.success, bg: P.successBg },
-};
+});
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: keyof typeof Feather.glyphMap }[] = [
     { value: 'cash',          label: 'Espèces',      icon: 'dollar-sign'    },
@@ -99,11 +77,11 @@ const CLOTHING_LABELS: Record<string, string> = {
     tenue_enfant: 'Tenue enfant',    autre:       'Autre',
 };
 
-const URGENCY_META: Record<string, { label: string; color: string }> = {
+const urgencyMetaMap = (P: Palette): Record<string, { label: string; color: string }> => ({
     low:    { label: 'Normal',  color: P.success },
     medium: { label: 'Moyen',  color: P.warning },
     high:   { label: 'Urgent', color: P.error   },
-};
+});
 
 // ──────────────────────────────────────────
 // HELPERS
@@ -130,8 +108,12 @@ interface LocalPayment {
 export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const { orderId } = route.params;
     const insets = useSafeAreaInsets();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
+    const ORDER_STATUS_META = orderStatusMeta(P);
+    const PAYMENT_STATUS_META = paymentStatusMeta(P);
+    const URGENCY_META = urgencyMetaMap(P);
 
-    const { orders, updateOrder, loadStatistics, loadActivities, realisations, loadRealisations, getProjectById, getParticipantsByProject, loadProjects, loadParticipants } = useAppStore();
+    const { orders, updateOrder, loadStatistics, loadActivities, realisations, loadRealisations, getProjectById, getParticipantsByProject, loadProjects, loadParticipants, getClientById } = useAppStore();
     const order = orders.find(o => o.id === orderId);
     // Réalisation liée à cette commande (Module 7)
     const linkedRealisation = order
@@ -195,20 +177,22 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         );
     }
 
-    // Calculs
-    const currentStatusMeta = ORDER_STATUS_META[order.orderStatus as OrderStatus] ?? ORDER_STATUS_META.pending;
+    // Calculs — le solde en base est la source de vérité (évite de compter 2× l'acompte).
+    const cancelled         = isCancelledOrder(order.orderStatus);
+    const currentStatusMeta = ORDER_STATUS_META[order.orderStatus as OrderStatus]
+        ?? (cancelled ? ORDER_STATUS_META.cancelled : ORDER_STATUS_META.pending);
     const currentPayMeta    = PAYMENT_STATUS_META[order.paymentStatus as PaymentStatus] ?? PAYMENT_STATUS_META.unpaid;
-    const totalPaid         = order.advancePayment + payments.reduce((s, p) => s + p.amount, 0);
-    const remaining         = Math.max(0, order.totalPrice - totalPaid);
+    const remaining         = Math.max(0, order.remainingAmount ?? 0);
+    const totalPaid         = Math.max(0, (order.totalPrice ?? 0) - remaining);
     const currentStepIndex  = ORDER_STATUS_FLOW.indexOf(order.orderStatus as OrderStatus);
     const urgencyMeta       = URGENCY_META[order.urgencyLevel] ?? URGENCY_META.medium;
 
     // ── Changer le statut ──
     const handleStatusChange = async (newStatus: OrderStatus, confirmed = false) => {
-        if (savingStatus) return;
+        if (savingStatus || cancelled) return;
         // Alerte livraison avec solde restant (Module 7)
         if (newStatus === 'delivered' && remaining > 0 && !confirmed) {
-            Alert.alert(
+            showAlert(
                 'Solde non soldé',
                 `Il reste ${formatCurrencyShort(remaining)} à encaisser. Confirmer quand même ?`,
                 [
@@ -233,15 +217,22 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 loadActivities();
             }
             loadStatistics();
+            showSuccess(
+                newStatus === 'cancelled' ? 'Commande annulée' : 'Statut modifié',
+                `La commande est maintenant « ${ORDER_STATUS_META[newStatus].label} ».`,
+            );
         } finally {
             setSavingStatus(false);
         }
     };
 
     const handleCancelOrder = () => {
-        Alert.alert(
+        const paidNote = order.advancePayment > 0 || remaining < order.totalPrice
+            ? 'Les sommes déjà encaissées (acompte compris) restent une recette. '
+            : '';
+        showAlert(
             'Annuler la commande ?',
-            'Cette action ne peut pas être annulée.',
+            `${paidNote}Le reste à payer (${formatCurrencyShort(remaining)}) ne sera plus dû. La commande passera en lecture seule : plus de paiement, ni de changement de statut.`,
             [
                 { text: 'Non', style: 'cancel' },
                 { text: 'Oui, annuler', style: 'destructive', onPress: () => handleStatusChange('cancelled') },
@@ -251,13 +242,14 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 
     // ── Enregistrer un paiement ──
     const handleAddPayment = async () => {
+        if (cancelled) return;
         const amount = parseFloat(payAmount.replace(/\s/g, '').replace(',', '.'));
         if (isNaN(amount) || amount <= 0) {
-            Alert.alert('Montant invalide', 'Entrez un montant supérieur à 0.');
+            showAlert('Montant invalide', 'Entrez un montant supérieur à 0.');
             return;
         }
         if (amount > remaining + 0.01) {
-            Alert.alert(
+            showAlert(
                 'Montant trop élevé',
                 `Le reste à payer est de ${formatCurrencyShort(remaining)}. Continuer quand même ?`,
                 [
@@ -283,7 +275,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             });
 
             if (error || !data) {
-                Alert.alert('Erreur', 'Impossible d\'enregistrer le paiement.');
+                showAlert('Erreur', 'Impossible d\'enregistrer le paiement.');
                 return;
             }
 
@@ -310,7 +302,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             fetchPayments();
             // Proposer le reçu
             const snapPaid = totalPaid + amount;
-            Alert.alert(
+            showAlert(
                 'Paiement enregistré ✓',
                 `${formatCurrencyShort(amount)} encaissé avec succès`,
                 [
@@ -347,13 +339,16 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                     <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
                         <Feather name="arrow-left" size={20} color={P.text} />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Détails commande</Text>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.kicker}>Atelier</Text>
+                        <Text style={styles.headerTitle}>Commande</Text>
+                    </View>
                     <TouchableOpacity
                         style={styles.clientBtn}
                         onPress={() => navigation.navigate('ClientDetails', { clientId: order.clientId })}
                     >
                         <Feather name="user" size={16} color={P.primary} />
-                        <Text style={styles.clientBtnText}>Fiche client</Text>
+                        <Text style={styles.clientBtnText}>Fiche</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -378,6 +373,17 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                     contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
                     showsVerticalScrollIndicator={false}
                 >
+                    {cancelled && (
+                        <View style={styles.cancelBanner}>
+                            <Feather name="x-circle" size={16} color={P.error} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.cancelBannerTitle}>Commande annulée</Text>
+                                <Text style={styles.cancelBannerText}>
+                                    Lecture seule. Les encaissements déjà reçus sont conservés ; le solde restant n’est plus dû.
+                                </Text>
+                            </View>
+                        </View>
+                    )}
 
                     {/* ══ CARTE CLIENT ══ */}
                     <TouchableOpacity
@@ -385,16 +391,12 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         onPress={() => navigation.navigate('ClientDetails', { clientId: order.clientId })}
                         activeOpacity={0.7}
                     >
-                        <View style={styles.clientAvatar}>
-                            <Text style={styles.clientAvatarText}>
-                                {order.clientName.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase()}
-                            </Text>
-                        </View>
+                        <Avatar source={getClientById(order.clientId)?.photo} name={order.clientName} size={42} />
                         <View style={{ flex: 1 }}>
                             <Text style={styles.clientName}>{order.clientName}</Text>
                             <Text style={styles.clientSub}>Voir la fiche client</Text>
                         </View>
-                        <Feather name="chevron-right" size={16} color="rgba(108,62,184,0.3)" />
+                        <Feather name="chevron-right" size={16} color={P.muted} />
                     </TouchableOpacity>
 
                     {/* ══ STATUT COMMANDE ══ */}
@@ -413,7 +415,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         </View>
 
                         {/* Barre de progression */}
-                        {order.orderStatus !== 'cancelled' && (
+                        {order.orderStatus !== 'cancelled' && order.orderStatus !== 'annulee' && (
                             <View style={styles.progressWrap}>
                                 {ORDER_STATUS_FLOW.map((step, i) => {
                                     const done = i <= currentStepIndex;
@@ -438,7 +440,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         )}
 
                         {/* Boutons action */}
-                        {order.orderStatus !== 'cancelled' && order.orderStatus !== 'delivered' && (
+                        {!cancelled && order.orderStatus !== 'delivered' && order.orderStatus !== 'livree' && (
                             <View style={styles.statusActions}>
                                 {currentStepIndex < ORDER_STATUS_FLOW.length - 1 && (
                                     <TouchableOpacity
@@ -447,7 +449,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                         disabled={savingStatus}
                                         activeOpacity={0.85}
                                     >
-                                        <Feather name="arrow-right-circle" size={15} color="#fff" />
+                                        <Feather name="arrow-right-circle" size={15} color={P.gold} />
                                         <Text style={styles.advanceBtnText}>
                                             Passer à : {ORDER_STATUS_META[ORDER_STATUS_FLOW[currentStepIndex + 1]].label}
                                         </Text>
@@ -524,13 +526,13 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         >
                             <View style={styles.cardHeaderRow}>
                                 <Text style={styles.cardTitle}>Réalisation associée</Text>
-                                <Feather name="chevron-right" size={14} color="rgba(108,62,184,0.3)" />
+                                <Feather name="chevron-right" size={14} color={P.muted} />
                             </View>
                             <Text style={styles.clientSub}>
                                 Statut : {String((linkedRealisation as any).statut).replace(/_/g, ' ')}
                             </Text>
                         </TouchableOpacity>
-                    ) : order ? (
+                    ) : order && !cancelled ? (
                         <TouchableOpacity
                             style={styles.card}
                             onPress={() => navigation.navigate('AddRealisation', {
@@ -568,22 +570,24 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             <FinanceLine label="Payé au total"   value={totalPaid}           sub />
                             <View style={styles.financeDivider} />
                             <View style={styles.financeRemaining}>
-                                <Text style={styles.financeRemainingLabel}>Reste à payer</Text>
-                                <Text style={[styles.financeRemainingValue, remaining === 0 && { color: P.success }]}>
+                                <Text style={styles.financeRemainingLabel}>
+                                    {cancelled ? 'Reste non dû' : 'Reste à payer'}
+                                </Text>
+                                <Text style={[styles.financeRemainingValue, (remaining === 0 || cancelled) && { color: cancelled ? P.muted : P.success }]}>
                                     {formatCurrencyShort(remaining)}
                                 </Text>
                             </View>
                         </View>
 
                         {/* Boutons paiement */}
-                        {remaining > 0 && (
+                        {remaining > 0 && !cancelled && (
                             <>
                                 <TouchableOpacity
                                     style={styles.payFullBtn}
                                     onPress={() => { setPayAmount(remaining.toString()); setPayModal(true); }}
                                     activeOpacity={0.85}
                                 >
-                                    <Feather name="check-circle" size={15} color="#fff" />
+                                    <Feather name="check-circle" size={15} color={P.gold} />
                                     <Text style={styles.payFullBtnText}>Encaisser le solde — {formatCurrencyShort(remaining)}</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
@@ -604,7 +608,22 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             <View style={styles.historyWrap}>
                                 <Text style={styles.historyTitle}>Historique</Text>
                                 {payments.map((p, i) => (
-                                    <View key={p.id}>
+                                    <TouchableOpacity
+                                        key={p.id}
+                                        onPress={() => navigation.navigate('Recu', {
+                                            amount: p.amount,
+                                            typePaiement: (p as any).typePaiement ?? 'acompte',
+                                            modePaiement: p.paymentMethod,
+                                            date: typeof p.paymentDate === 'string' ? p.paymentDate : new Date(p.paymentDate).toISOString(),
+                                            notes: p.notes,
+                                            clientName: order.clientName,
+                                            commandeNumero: (order as any).numeroCommande,
+                                            totalAmount: order.totalPrice,
+                                            paidAmount: totalPaid,
+                                            remaining,
+                                        })}
+                                        activeOpacity={0.75}
+                                    >
                                         <View style={styles.historyRow}>
                                             <View style={[styles.historyIcon, { backgroundColor: P.successBg }]}>
                                                 <Feather
@@ -631,9 +650,10 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                                 <Text style={styles.historyDate}>{formatDate(p.paymentDate)}</Text>
                                                 {p.notes ? <Text style={styles.historyNotes}>{p.notes}</Text> : null}
                                             </View>
+                                            <Feather name="chevron-right" size={16} color={P.muted} />
                                         </View>
                                         {i < payments.length - 1 && <View style={styles.historyDivider} />}
-                                    </View>
+                                    </TouchableOpacity>
                                 ))}
                             </View>
                         ) : (
@@ -648,7 +668,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 
             {/* ══ MODAL PAIEMENT ══ */}
             <Modal
-                visible={payModal}
+                visible={payModal && !cancelled}
                 transparent
                 animationType="slide"
                 onRequestClose={() => setPayModal(false)}
@@ -656,7 +676,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             >
                 <Pressable style={styles.overlay} onPress={() => setPayModal(false)} />
                 <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                    behavior={keyboardAvoidBehavior}
                     style={styles.sheetWrap}
                 >
                     <View style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}>
@@ -694,11 +714,11 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                 onChangeText={setPayAmount}
                                 keyboardType="decimal-pad"
                                 placeholder="0"
-                                placeholderTextColor="rgba(26,16,51,0.2)"
+                                placeholderTextColor={P.muted}
                                 autoFocus
                             />
                             <View style={styles.amountRight}>
-                                <Text style={styles.amountCurrency}>FCFA</Text>
+                                <Text style={styles.amountCurrency}>{getDeviseMeta(getRuntimePrefs().currency).symbol}</Text>
                                 {remaining > 0 && (
                                     <TouchableOpacity
                                         style={styles.allBtn}
@@ -735,7 +755,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             value={payNotes}
                             onChangeText={setPayNotes}
                             placeholder="Ex : 2ème versement, solde..."
-                            placeholderTextColor="rgba(26,16,51,0.2)"
+                            placeholderTextColor={P.muted}
                             multiline
                         />
 
@@ -749,7 +769,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             {savingPay
                                 ? <ActivityIndicator color="#fff" size="small" />
                                 : <>
-                                    <Feather name="check" size={15} color="#fff" />
+                                    <Feather name="check" size={15} color={P.gold} />
                                     <Text style={styles.submitBtnText}>Confirmer le paiement</Text>
                                 </>
                             }
@@ -773,45 +793,36 @@ const InfoRow = ({
     value: string;
     valueColor?: string;
     multiline?: boolean;
-}) => (
-    <View style={[ir.row, multiline && { alignItems: 'flex-start' }]}>
-        <View style={ir.icon}>
+}) => {
+    const { colors: P, styles } = useThemedStyles(makeStyles);
+    return (
+    <View style={[styles.infoRow, multiline && { alignItems: 'flex-start' }]}>
+        <View style={styles.infoIcon}>
             <Feather name={icon} size={13} color={P.primary} />
         </View>
         <View style={{ flex: 1 }}>
-            <Text style={ir.label}>{label}</Text>
-            <Text style={[ir.value, valueColor ? { color: valueColor } : null]}>{value}</Text>
+            <Text style={styles.infoLabel}>{label}</Text>
+            <Text style={[styles.infoValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
         </View>
     </View>
-);
+    );
+};
 
-const ir = StyleSheet.create({
-    row:  { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-    icon: { width: 30, height: 30, borderRadius: 8, backgroundColor: 'rgba(108,62,184,0.07)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-    label:{ fontSize: 10, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium', marginBottom: 1 },
-    value:{ fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
-});
-
-const FinanceLine = ({ label, value, sub }: { label: string; value: number; sub?: boolean }) => (
-    <View style={fl.row}>
-        <Text style={[fl.label, sub && fl.labelSub]}>{label}</Text>
-        <Text style={[fl.value, sub && fl.valueSub]}>{formatCurrencyShort(value)}</Text>
+const FinanceLine = ({ label, value, sub }: { label: string; value: number; sub?: boolean }) => {
+    const { styles } = useThemedStyles(makeStyles);
+    return (
+    <View style={styles.financeLine}>
+        <Text style={[styles.financeLineLabel, sub && styles.financeLineLabelSub]}>{label}</Text>
+        <Text style={[styles.financeLineValue, sub && styles.financeLineValueSub]}>{formatCurrencyShort(value)}</Text>
     </View>
-);
-
-const fl = StyleSheet.create({
-    row:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
-    label:    { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
-    labelSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_400Regular' },
-    value:    { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
-    valueSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
-});
+    );
+};
 
 // ──────────────────────────────────────────
 // STYLES — Aucune ombre
 // ──────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     root:    { flex: 1, backgroundColor: P.pageBg },
     notFound:{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
     notFoundText:   { fontSize: 15, color: P.text, fontFamily: 'PlusJakartaSans_600SemiBold' },
@@ -820,20 +831,22 @@ const styles = StyleSheet.create({
 
     // ── Header ──
     header: {
-        backgroundColor: P.surface,
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: SPACING.md, paddingVertical: 12,
-        borderBottomWidth: 0.5,
-        borderBottomColor: P.borderHard,
-        gap: 8,
+        backgroundColor: P.pageBg,
+        flexDirection: 'row' as const, alignItems: 'flex-start' as const,
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
+        gap: 12,
     },
     backBtn: {
-        width: 36, height: 36, borderRadius: 10,
-        backgroundColor: P.pageBg,
+        width: 40, height: 40, borderRadius: 12,
+        backgroundColor: P.surface,
         borderWidth: 0.5, borderColor: P.borderHard,
-        alignItems: 'center', justifyContent: 'center',
+        alignItems: 'center' as const, justifyContent: 'center' as const, marginTop: 4,
     },
-    headerTitle: { flex: 1, fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text, textAlign: 'center' },
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
+    },
+    headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
 
     // ── Fil d'Ariane projet ──
     projectBreadcrumb: {
@@ -850,7 +863,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', gap: 4,
         paddingHorizontal: 10, paddingVertical: 7,
         borderRadius: 10,
-        backgroundColor: 'rgba(108,62,184,0.07)',
+        backgroundColor: P.primaryBg,
         borderWidth: 0.5, borderColor: P.border,
     },
     clientBtnText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
@@ -858,11 +871,23 @@ const styles = StyleSheet.create({
     // ── Scroll ──
     scroll:        { flex: 1 },
     scrollContent: { padding: SPACING.md, gap: SPACING.sm + 2 },
+    cancelBanner: {
+        flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 10,
+        backgroundColor: P.errorBg, borderRadius: 14,
+        borderWidth: 0.5, borderColor: P.error,
+        padding: 14,
+    },
+    cancelBannerTitle: {
+        fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.error, marginBottom: 2,
+    },
+    cancelBannerText: {
+        fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, lineHeight: 17,
+    },
 
     // ── Client card ──
     clientCard: {
         backgroundColor: P.surface,
-        borderRadius: 14,
+        borderRadius: 18,
         borderWidth: 0.5, borderColor: P.borderHard,
         flexDirection: 'row', alignItems: 'center',
         padding: SPACING.md, gap: SPACING.sm,
@@ -879,7 +904,7 @@ const styles = StyleSheet.create({
     // ── Card ──
     card: {
         backgroundColor: P.surface,
-        borderRadius: 14,
+        borderRadius: 18,
         borderWidth: 0.5, borderColor: P.borderHard,
         padding: SPACING.md,
     },
@@ -899,31 +924,41 @@ const styles = StyleSheet.create({
     progressStep: { alignItems: 'center', flex: 1 },
     progressDot: {
         width: 16, height: 16, borderRadius: 8,
-        backgroundColor: 'rgba(0,0,0,0.08)',
+        backgroundColor: P.gray200,
         alignItems: 'center', justifyContent: 'center',
         marginBottom: 4,
     },
-    progressStepLabel: { fontSize: 9, color: 'rgba(0,0,0,0.3)', fontFamily: 'PlusJakartaSans_600SemiBold', textAlign: 'center' },
-    progressConnector: { flex: 1, height: 1.5, backgroundColor: 'rgba(0,0,0,0.08)', marginTop: 7, marginHorizontal: -4 },
+    progressStepLabel: { fontSize: 9, color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold', textAlign: 'center' as const },
+    progressConnector: { flex: 1, height: 1.5, backgroundColor: P.gray200, marginTop: 7, marginHorizontal: -4 },
 
     // Actions statut
     statusActions: { gap: 8 },
     advanceBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 7,
-        backgroundColor: P.primary, borderRadius: 12,
+        backgroundColor: P.bg, borderRadius: 14,
         paddingVertical: 13, paddingHorizontal: 16, justifyContent: 'center',
+        borderWidth: 1, borderColor: P.goldRim,
     },
     advanceBtnText: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
     cancelBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16, justifyContent: 'center',
-        borderWidth: 0.5, borderColor: 'rgba(239,68,68,0.25)',
+        borderWidth: 0.5, borderColor: P.errorBg,
         backgroundColor: P.errorBg,
     },
     cancelBtnText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.error },
 
     // ── Infos ──
     infoList: { gap: 0 },
+    infoRow:  { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingVertical: 8 },
+    infoIcon: { width: 30, height: 30, borderRadius: 8, backgroundColor: P.primaryBg, alignItems: 'center' as const, justifyContent: 'center' as const, flexShrink: 0 },
+    infoLabel:{ fontSize: 10, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium', marginBottom: 1 },
+    infoValue:{ fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+    financeLine: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, paddingVertical: 4 },
+    financeLineLabel: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
+    financeLineLabelSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_400Regular' },
+    financeLineValue: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+    financeLineValueSub: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
 
     // ── Photos ──
     photoLabel: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub, marginBottom: 8 },
@@ -946,16 +981,17 @@ const styles = StyleSheet.create({
 
     payFullBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 7,
-        backgroundColor: P.success, borderRadius: 12,
+        backgroundColor: P.bg, borderRadius: 14,
         paddingVertical: 13, paddingHorizontal: 16, justifyContent: 'center',
         marginBottom: 7,
+        borderWidth: 1, borderColor: P.goldRim,
     },
     payFullBtnText: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
     payPartialBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16, justifyContent: 'center',
         borderWidth: 0.5, borderColor: P.border,
-        backgroundColor: 'rgba(108,62,184,0.05)',
+        backgroundColor: P.primaryBg,
         marginBottom: 4,
     },
     payPartialBtnText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary },
@@ -973,7 +1009,7 @@ const styles = StyleSheet.create({
     emptyPayText: { fontSize: 12, color: P.sub },
 
     // ── Modal ──
-    overlay:   { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(22,18,58,0.4)' },
+    overlay:   { position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: P.overlay },
     sheetWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
     sheet: {
         backgroundColor: P.surface,
@@ -983,7 +1019,7 @@ const styles = StyleSheet.create({
     },
     sheetHandle: {
         width: 36, height: 3.5, borderRadius: 2,
-        backgroundColor: 'rgba(0,0,0,0.1)',
+        backgroundColor: P.borderHard,
         alignSelf: 'center', marginBottom: 16,
     },
     sheetTitle: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, marginBottom: 2 },
@@ -1009,9 +1045,9 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', gap: 5,
         paddingHorizontal: 10, paddingVertical: 7,
         borderRadius: 8, borderWidth: 0.5, borderColor: P.borderHard,
-        backgroundColor: P.pageBg,
+        backgroundColor: P.surface,
     },
-    methodChipActive:    { backgroundColor: P.primary, borderColor: P.primary },
+    methodChipActive:    { backgroundColor: P.bg, borderColor: P.goldRim },
     methodChipText:      { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
 
     notesInput: {
@@ -1024,8 +1060,9 @@ const styles = StyleSheet.create({
 
     submitBtn: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-        backgroundColor: P.success, borderRadius: 14,
+        backgroundColor: P.bg, borderRadius: 16,
         paddingVertical: 15,
+        borderWidth: 1, borderColor: P.goldRim,
     },
     submitBtnText: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });

@@ -4,6 +4,7 @@
 // ==========================================
 
 import React, { useState, useRef } from "react";
+import { showAlert } from '@/src/context/DialogContext';
 import {
     View,
     Text,
@@ -14,7 +15,6 @@ import {
     ScrollView,
     KeyboardAvoidingView,
     Platform,
-    Alert,
     ActivityIndicator,
     Image,
     Animated,
@@ -185,7 +185,7 @@ export const TailorSetupScreen: React.FC<Props> = ({ navigation }) => {
     const pickImage = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== "granted") {
-            Alert.alert("Permission requise", "Autorisez l'accès à votre galerie pour ajouter une photo.");
+            showAlert("Permission requise", "Autorisez l'accès à votre galerie pour ajouter une photo.");
             return;
         }
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -228,7 +228,7 @@ export const TailorSetupScreen: React.FC<Props> = ({ navigation }) => {
             // navigation.reset({ index: 0, routes: [{ name: "TailorHome" }] });
 
         } catch (e: any) {
-            Alert.alert("Erreur", e.message ?? "Impossible de sauvegarder le profil");
+            showAlert("Erreur", e.message ?? "Impossible de sauvegarder le profil");
         } finally {
             setLoading(false);
         }

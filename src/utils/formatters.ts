@@ -2,75 +2,95 @@
 // UTILITAIRES DE FORMATAGE - TailorPro
 // ==========================================
 
-/**
- * Formater un montant en FCFA
- */
+import { getDeviseMeta } from '@constants/currencies';
+import { getRuntimePrefs } from '@/src/preferences/runtime';
+import { t } from '@/src/i18n';
+
+const numberLocale = () => (getRuntimePrefs().locale === 'en' ? 'en-US' : 'fr-FR');
+
+const dateLocale = () => (getRuntimePrefs().locale === 'en' ? 'en-GB' : 'fr-FR');
+
 export const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'decimal',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount) + ' FCFA';
+  const { currency } = getRuntimePrefs();
+  const meta = getDeviseMeta(currency);
+  const loc = numberLocale();
+  try {
+    return new Intl.NumberFormat(loc, {
+      style: 'currency',
+      currency: meta.value,
+      minimumFractionDigits: meta.fractionDigits,
+      maximumFractionDigits: meta.fractionDigits,
+    }).format(amount);
+  } catch {
+    const n = new Intl.NumberFormat(loc, {
+      minimumFractionDigits: meta.fractionDigits,
+      maximumFractionDigits: meta.fractionDigits,
+    }).format(amount);
+    return `${n} ${meta.symbol}`;
+  }
 };
 
-/**
- * Formater un montant court (ex: 1.2M, 520K)
- */
 export const formatCurrencyShort = (amount: number): string => {
-  if (amount >= 1000000) {
-    return (amount / 1000000).toFixed(1).replace('.0', '') + 'M FCFA';
+  const { currency } = getRuntimePrefs();
+  const meta = getDeviseMeta(currency);
+  const abs = Math.abs(amount);
+  const loc = numberLocale();
+  const suffix = meta.symbol;
+  if (abs >= 1_000_000) {
+    const n = (amount / 1_000_000).toFixed(1).replace(/\.0$/, '');
+    return `${n}M ${suffix}`;
   }
-  if (amount >= 1000) {
-    return (amount / 1000).toFixed(0) + 'K FCFA';
+  if (abs >= 10_000) {
+    const n = (amount / 1000).toFixed(0);
+    return `${n}K ${suffix}`;
   }
-  return amount + ' FCFA';
+  const n = new Intl.NumberFormat(loc, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: meta.fractionDigits,
+  }).format(amount);
+  return `${n} ${suffix}`;
 };
 
-/**
- * Formater une date
- */
 export const formatDate = (date: Date | string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('fr-FR', {
+  return d.toLocaleDateString(dateLocale(), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   });
 };
 
-/**
- * Formater une date courte (ex: 15 Mai)
- */
 export const formatDateShort = (date: Date | string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('fr-FR', {
+  return d.toLocaleDateString(dateLocale(), {
     day: 'numeric',
     month: 'short',
   });
 };
 
-/**
- * Formater un numéro de téléphone
- */
+export const formatLongDate = (date: Date | string = new Date()): string => {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return d.toLocaleDateString(dateLocale(), {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+};
+
 export const formatPhone = (phone: string): string => {
-  // Garder le format original s'il est déjà formaté
   if (!phone) return '';
   if (phone.includes(' ')) return phone;
-  
-  // Sinon formater comme +XXX XX XX XX XX XX
+
   const cleaned = phone.replace(/\D/g, '');
   const match = cleaned.match(/^(\d{3})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
-  
+
   if (match) {
     return `+${match[1]} ${match[2]} ${match[3]} ${match[4]} ${match[5]} ${match[6]}`;
   }
-  
+
   return phone;
 };
 
-/**
- * Formater un temps relatif (ex: "Il y a 2h", "Il y a 4b")
- */
 export const formatRelativeTime = (date: Date | string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
   const now = new Date();
@@ -78,38 +98,27 @@ export const formatRelativeTime = (date: Date | string): string => {
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
-  
-  if (diffMins < 1) return 'À l\'instant';
-  if (diffMins < 60) return `Il y a ${diffMins}m`;
-  if (diffHours < 24) return `Il y a ${diffHours}h`;
-  if (diffDays < 7) return `Il y a ${diffDays}j`;
-  
+
+  if (diffMins < 1) return t('relative.now');
+  if (diffMins < 60) return t('relative.minutes', { n: diffMins });
+  if (diffHours < 24) return t('relative.hours', { n: diffHours });
+  if (diffDays < 7) return t('relative.days', { n: diffDays });
+
   return formatDateShort(d);
 };
 
-/**
- * Formater les initiales d'un nom
- */
 export const getInitials = (name: string): string => {
-  return name
-    .split(' ')
-    .map((part) => part.charAt(0))
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 };
 
-/**
- * Formater un pourcentage avec signe
- */
 export const formatPercentage = (value: number, showSign: boolean = true): string => {
   const sign = showSign && value > 0 ? '+' : '';
   return `${sign}${value}%`;
 };
 
-/**
- * Tronquer un texte
- */
 export const truncateText = (text: string, maxLength: number): string => {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength - 3) + '...';

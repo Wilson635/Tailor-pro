@@ -4,17 +4,18 @@
 // ==========================================
 
 import React, { useEffect, useState } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
     View,
     Text,
-    StyleSheet,
     ScrollView,
     TouchableOpacity,
     ActivityIndicator,
     Modal,
     TextInput,
-    Alert,
-} from 'react-native';
+    KeyboardAvoidingView,
+    } from 'react-native';
+import { keyboardAvoidBehavior } from '@components/ui';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -22,22 +23,12 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrency } from '@utils/formatters';
 import { SPACING, CLOTHING_TYPE_LABELS } from '@constants/theme';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
-import { useToast } from '@/src/context/ToastContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ParticipantDetails'>;
 
-const P = {
-    primary: '#6C3EB8', pageBg: '#F5F4FB', surface: '#FFFFFF',
-    text: '#1A1033', sub: '#7C6FA8',
-    border: 'rgba(108,62,184,0.10)', borderHard: 'rgba(108,62,184,0.15)',
-    gold: '#D4AF37', goldBg: 'rgba(212,175,55,0.10)',
-    success: '#16A34A', successBg: 'rgba(22,163,74,0.10)',
-    error: '#EF4444', errorBg: 'rgba(239,68,68,0.10)',
-    warning: '#D97706', warningBg: 'rgba(217,119,6,0.10)',
-};
-
-const ORDER_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+const orderStatusLabels = (P: Palette): Record<string, { label: string; color: string }> => ({
     pending:       { label: 'En attente',   color: P.sub },
     creee:         { label: 'Créée',        color: P.sub },
     en_attente:    { label: 'En attente',   color: P.sub },
@@ -51,12 +42,13 @@ const ORDER_STATUS_LABELS: Record<string, { label: string; color: string }> = {
     delivered:     { label: 'Livrée',       color: P.success },
     cancelled:     { label: 'Annulée',      color: P.error },
     annulee:       { label: 'Annulée',      color: P.error },
-};
+});
 
 export const ParticipantDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const { projectId, participantId } = route.params;
     const insets = useSafeAreaInsets();
-    const { showToast } = useToast();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
+    const ORDER_STATUS_LABELS = orderStatusLabels(P);
 
     const {
         getProjectById, loadProjects,
@@ -89,18 +81,18 @@ export const ParticipantDetailsScreen: React.FC<Props> = ({ route, navigation })
 
     const handlePromote = async () => {
         if (!promoteTelephone.trim()) {
-            showToast({ type: 'error', message: 'Un numéro de téléphone est requis pour créer la fiche client.' });
+            showAlert('Champ requis', 'Un numéro de téléphone est requis pour créer la fiche client.');
             return;
         }
         setPromoting(true);
         await promoteParticipant(participantId, projectId, { telephone: promoteTelephone.trim() });
         setPromoting(false);
         setPromoteModal(false);
-        showToast({ type: 'success', message: `${participant.nom} est maintenant un client à part entière.` });
+        showSuccess('Client créé', `${participant.nom} est maintenant un client à part entière.`);
     };
 
     const handleDelete = () => {
-        Alert.alert(
+        showAlert(
             'Retirer cette personne ?',
             garments.length > 0
                 ? "Cette personne a déjà des vêtements associés — ils resteront dans le projet mais ne seront plus rattachés à personne."
@@ -111,7 +103,7 @@ export const ParticipantDetailsScreen: React.FC<Props> = ({ route, navigation })
                     text: 'Retirer', style: 'destructive',
                     onPress: async () => {
                         await deleteParticipant(participantId, projectId);
-                        navigation.goBack();
+                        showSuccess('Personne retirée', `${participant.nom} a quitté le projet.`, () => navigation.goBack());
                     },
                 },
             ]
@@ -122,9 +114,12 @@ export const ParticipantDetailsScreen: React.FC<Props> = ({ route, navigation })
         <View style={[styles.root, { paddingTop: insets.top }]}>
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-                    <Feather name="arrow-left" size={20} color={P.text} />
+                    <Feather name="arrow-left" size={18} color={P.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle} numberOfLines={1}>{participant.nom}</Text>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.headerTitle} numberOfLines={1}>{participant.nom}</Text>
+                </View>
                 <TouchableOpacity style={styles.backBtn} onPress={handleDelete}>
                     <Feather name="trash-2" size={18} color={P.error} />
                 </TouchableOpacity>
@@ -214,6 +209,7 @@ export const ParticipantDetailsScreen: React.FC<Props> = ({ route, navigation })
 
             {/* ══ MODAL PROMOTION ══ */}
             <Modal visible={promoteModal} transparent animationType="fade" onRequestClose={() => setPromoteModal(false)}>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidBehavior}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalCard}>
                         <Text style={styles.headerTitle}>Créer la fiche client</Text>
@@ -242,26 +238,30 @@ export const ParticipantDetailsScreen: React.FC<Props> = ({ route, navigation })
                         </View>
                     </View>
                 </View>
+                </KeyboardAvoidingView>
             </Modal>
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     root: { flex: 1, backgroundColor: P.pageBg },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     header: {
-        backgroundColor: P.surface, flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: SPACING.md, paddingVertical: 12,
-        borderBottomWidth: 0.5, borderBottomColor: P.borderHard, gap: 8,
+        backgroundColor: P.pageBg, flexDirection: 'row', alignItems: 'flex-start',
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, gap: 12,
     },
     backBtn: {
-        width: 36, height: 36, borderRadius: 10, backgroundColor: P.pageBg,
-        borderWidth: 0.5, borderColor: P.borderHard, alignItems: 'center', justifyContent: 'center',
+        width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+        borderWidth: 0.5, borderColor: P.borderHard, alignItems: 'center', justifyContent: 'center', marginTop: 4,
     },
-    headerTitle: { flex: 1, fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text, textAlign: 'center' },
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2,
+    },
+    headerTitle: { fontSize: 22, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.4 },
 
-    card: { backgroundColor: P.surface, borderRadius: 16, padding: 14, borderWidth: 0.5, borderColor: P.borderHard, gap: 8 },
+    card: { backgroundColor: P.surface, borderRadius: 18, padding: 14, borderWidth: 0.5, borderColor: P.borderHard, gap: 8 },
     rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     hint: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_400Regular' },
 
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     statusBadgeText: { fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold' },
     amountValue: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(26,16,51,0.5)', justifyContent: 'center', padding: SPACING.lg },
+    modalOverlay: { flex: 1, backgroundColor: P.overlay, justifyContent: 'center', padding: SPACING.lg },
     modalCard: { backgroundColor: P.surface, borderRadius: 20, padding: 18, gap: 10 },
     input: {
         borderWidth: 0.5, borderColor: P.borderHard, borderRadius: 10,
@@ -295,6 +295,6 @@ const styles = StyleSheet.create({
     },
     cancelBtn: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: 10, backgroundColor: P.pageBg, alignItems: 'center' },
     cancelBtnText: { color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold' },
-    submitBtn: { backgroundColor: P.primary, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+    submitBtn: { backgroundColor: P.bg, borderRadius: 16, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: P.goldRim },
     submitBtnText: { color: '#fff', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13 },
 });

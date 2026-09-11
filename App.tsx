@@ -9,6 +9,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { COLORS, Typography } from '@constants/theme';
 import { useAppStore } from '@store/useAppStore';
 import { ToastProvider } from './src/context/ToastContext';
+import { DialogProvider } from './src/context/DialogContext';
 
 export default function App() {
   const [isReady, setIsReady] = useState(false);
@@ -55,8 +56,10 @@ export default function App() {
         <SafeAreaProvider>
           {/* 2. ToastProvider à l'intérieur */}
           <ToastProvider>
-            <StatusBar style="dark" />
-            <AppNavigator session={null} />
+            <DialogProvider>
+              <StatusBar style="dark" />
+              <AppNavigator session={null} />
+            </DialogProvider>
           </ToastProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

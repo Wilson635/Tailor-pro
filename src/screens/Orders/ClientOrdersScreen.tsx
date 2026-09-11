@@ -1,165 +1,224 @@
 // ==========================================
-// ÉCRAN COMMANDES & TAILLEURS - CÔTÉ CLIENT
+// COMMANDES — CÔTÉ CLIENT
 // ==========================================
 
 import React, { useState } from 'react';
 import {
     View,
     Text,
-    StyleSheet,
     ScrollView,
     TouchableOpacity,
     TextInput,
-    FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card } from '@components/ui';
 import { useAppStore } from '@store/useAppStore';
-import { formatCurrency, formatCurrencyShort } from '@utils/formatters';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '@constants/theme';
-import {RootStackParamList} from "@/src/navigation/AppNavigator";
-import {NativeStackScreenProps} from "@react-navigation/native-stack";
-import {useProfile} from "@hooks/useProfile";
+import { formatCurrencyShort } from '@utils/formatters';
+import { CLOTHING_TYPE_LABELS } from '@constants/theme';
+import { STATUT_COMMANDE_LABELS, STATUT_COMMANDE_COLORS } from '@constants/commandeConstants';
+import { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useProfile } from '@hooks/useProfile';
+import { useThemedStyles, type Palette } from '@/src/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MainTabs'>;
 
+const DONE = ['completed', 'delivered', 'terminee', 'livree'];
+
 export const ClientOrdersScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
     const { orders } = useAppStore();
     const [searchTailor, setSearchTailor] = useState('');
     const { profile } = useProfile();
 
-    // Séparation des commandes du client connecté
-    const activeOrders = orders.filter(o => o.orderStatus !== 'completed' && o.orderStatus !== 'delivered');
-    const pastOrders = orders.filter(o => o.orderStatus === 'completed' || o.orderStatus === 'delivered');
+    const activeOrders = orders.filter((o) => !DONE.includes(o.orderStatus));
+    const pastOrders = orders.filter((o) => DONE.includes(o.orderStatus));
 
     return (
         <View style={[styles.container, { paddingTop: insets.top }]}>
-            {/* ── Header ── */}
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Mes Commandes</Text>
-                <TouchableOpacity style={styles.actionPill} onPress={() => navigation.navigate('AddOrder', { clientId: profile?.id })}>
-                    <Ionicons name="add" size={16} color={COLORS.white} />
-                    <Text style={styles.actionPillText}>Commander</Text>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.headerTitle}>Mes commandes</Text>
+                </View>
+                <TouchableOpacity
+                    style={styles.addBtn}
+                    onPress={() => navigation.navigate('AddOrder', { clientId: profile?.id })}
+                >
+                    <Ionicons name="add" size={18} color={P.gold} />
                 </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-
-                {/* ── Section 1 : Trouver un Couturier ── */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Trouver un atelier ou un tailleur</Text>
-                    <View style={styles.searchBarContainer}>
-                        <Ionicons name="search-outline" size={18} color={COLORS.textMuted} />
+                    <Text style={styles.sectionTitle}>Trouver un atelier</Text>
+                    <View style={styles.searchBar}>
+                        <Ionicons name="search-outline" size={18} color={P.sub} />
                         <TextInput
                             style={styles.searchInput}
-                            placeholder="Rechercher par nom, ville, spécialité..."
+                            placeholder="Nom, ville, spécialité…"
                             value={searchTailor}
                             onChangeText={setSearchTailor}
-                            placeholderTextColor={COLORS.textMuted}
+                            placeholderTextColor={P.muted}
                         />
                     </View>
 
-                    {/* Proposition d'ateliers partenaires rapides */}
-                    <Card style={styles.findTailorCard}>
+                    <View style={styles.card}>
                         <View style={styles.tailorInfo}>
                             <View style={styles.tailorAvatar}>
-                                <Ionicons name="cut-outline" size={20} color={COLORS.primary} />
+                                <Ionicons name="cut-outline" size={20} color={P.gold} />
                             </View>
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.tailorName}>Atelier Haute Couture Pro</Text>
-                                <Text style={styles.tailorSub}>À 1.2 km • Costume, Robes de mariée</Text>
+                                <Text style={styles.tailorSub}>À 1.2 km · Costume, robes de mariée</Text>
                             </View>
                             <TouchableOpacity style={styles.connectBtn}>
                                 <Text style={styles.connectBtnText}>Contacter</Text>
                             </TouchableOpacity>
                         </View>
-                    </Card>
+                    </View>
                 </View>
 
-                {/* ── Section 2 : Commandes Actives ── */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>En cours de confection ({activeOrders.length})</Text>
+                    <Text style={styles.sectionTitle}>En confection ({activeOrders.length})</Text>
                     {activeOrders.length === 0 ? (
-                        <Card style={styles.emptyCard}>
-                            <Ionicons name="shirt-outline" size={32} color={COLORS.textMuted} />
-                            <Text style={styles.emptyText}>Aucune commande en cours chez votre couturier.</Text>
-                        </Card>
+                        <View style={styles.emptyCard}>
+                            <Ionicons name="shirt-outline" size={28} color={P.gold} />
+                            <Text style={styles.emptyText}>Aucune commande en cours.</Text>
+                        </View>
                     ) : (
-                        activeOrders.map(order => (
-                            <Card key={order.id} style={styles.orderCard}>
-                                <View style={styles.orderHeader}>
-                                    <View>
-                                        <Text style={styles.orderName}>{order.clothingType || 'Modèle personnalisé'}</Text>
-                                        <Text style={styles.atelierTag}>🧵 {'Mon Tailleur'}</Text>
+                        activeOrders.map((order) => {
+                            const statusColor = STATUT_COMMANDE_COLORS[order.orderStatus] ?? P.sub;
+                            const statusLabel = STATUT_COMMANDE_LABELS[order.orderStatus] ?? order.orderStatus;
+                            return (
+                                <TouchableOpacity
+                                    key={order.id}
+                                    style={styles.orderCard}
+                                    onPress={() => navigation.navigate('OrderDetails', { orderId: order.id })}
+                                    activeOpacity={0.82}
+                                >
+                                    <View style={styles.orderHeader}>
+                                        <View style={{ flex: 1, minWidth: 0 }}>
+                                            <Text style={styles.orderName} numberOfLines={1}>
+                                                {CLOTHING_TYPE_LABELS[order.clothingType] ?? order.clothingType}
+                                            </Text>
+                                            {order.numeroCommande ? (
+                                                <Text style={styles.atelierTag}>{order.numeroCommande}</Text>
+                                            ) : null}
+                                        </View>
+                                        <View style={[styles.statusBadge, { backgroundColor: `${statusColor}18`, borderColor: `${statusColor}44` }]}>
+                                            <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+                                        </View>
                                     </View>
-                                    <View style={styles.statusBadge}>
-                                        <Text style={styles.statusText}>{order.orderStatus}</Text>
+                                    <View style={styles.orderFooter}>
+                                        <Text style={styles.orderPrice}>{formatCurrencyShort(order.totalPrice)}</Text>
+                                        {order.remainingAmount > 0 && (
+                                            <Text style={styles.orderRemaining}>
+                                                Reste {formatCurrencyShort(order.remainingAmount)}
+                                            </Text>
+                                        )}
                                     </View>
-                                </View>
-                                <View style={styles.orderFooter}>
-                                    <Text style={styles.orderPrice}>Total : {formatCurrencyShort(order.totalPrice)}</Text>
-                                    {order.remainingAmount > 0 && (
-                                        <Text style={styles.orderRemaining}>Reste : {formatCurrencyShort(order.remainingAmount)}</Text>
-                                    )}
-                                </View>
-                            </Card>
-                        ))
+                                </TouchableOpacity>
+                            );
+                        })
                     )}
                 </View>
 
-                {/* ── Section 3 : Historique Passé ── */}
                 {pastOrders.length > 0 && (
                     <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Historique des commandes</Text>
-                        {pastOrders.map(order => (
-                            <Card key={order.id} style={[styles.orderCard, styles.pastOrderCard]}>
+                        <Text style={styles.sectionTitle}>Historique</Text>
+                        {pastOrders.map((order) => (
+                            <TouchableOpacity
+                                key={order.id}
+                                style={[styles.orderCard, styles.pastOrderCard]}
+                                onPress={() => navigation.navigate('OrderDetails', { orderId: order.id })}
+                                activeOpacity={0.82}
+                            >
                                 <View style={styles.orderHeader}>
-                                    <Text style={styles.pastOrderName}>{order.clothingType || 'Livrable accompli'}</Text>
-                                    <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
+                                    <Text style={styles.pastOrderName}>
+                                        {CLOTHING_TYPE_LABELS[order.clothingType] ?? order.clothingType}
+                                    </Text>
+                                    <Ionicons name="checkmark-circle" size={18} color={P.success} />
                                 </View>
-                                <Text style={styles.orderFooterText}>Livré avec succès • {formatCurrencyShort(order.totalPrice)}</Text>
-                            </Card>
+                                <Text style={styles.orderFooterText}>
+                                    Livré · {formatCurrencyShort(order.totalPrice)}
+                                </Text>
+                            </TouchableOpacity>
                         ))}
                     </View>
                 )}
-
             </ScrollView>
         </View>
     );
 };
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-    headerTitle: { fontSize: FONT_SIZES.lg, fontFamily: 'PlusJakartaSans_700Bold', color: COLORS.text },
-    actionPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.primary, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm - 2, borderRadius: BORDER_RADIUS.full },
-    actionPillText: { fontSize: FONT_SIZES.xs, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.white },
-    scrollContent: { padding: SPACING.lg },
-    section: { marginBottom: SPACING.xl },
-    sectionTitle: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_700Bold', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: SPACING.md },
-    searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border, borderRadius: BORDER_RADIUS.lg, paddingHorizontal: SPACING.md, height: 46, marginBottom: SPACING.sm },
-    searchInput: { flex: 1, marginLeft: SPACING.sm, fontSize: FONT_SIZES.sm, color: COLORS.text },
-    findTailorCard: { padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border },
-    tailorInfo: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
-    tailorAvatar: { width: 40, height: 40, borderRadius: BORDER_RADIUS.md, backgroundColor: COLORS.secondary, alignItems: 'center', justifyContent: 'center' },
-    tailorName: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
-    tailorSub: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 2 },
-    connectBtn: { backgroundColor: COLORS.secondary, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, borderRadius: BORDER_RADIUS.md },
-    connectBtnText: { fontSize: FONT_SIZES.xs, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.primary },
-    emptyCard: { padding: SPACING.xl, alignItems: 'center', gap: SPACING.sm, borderStyle: 'dashed', borderWidth: 1, borderColor: COLORS.border },
-    emptyText: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, textAlign: 'center' },
-    orderCard: { padding: SPACING.lg, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
-    pastOrderCard: { opacity: 0.75, backgroundColor: COLORS.gray100 },
-    orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    orderName: { fontSize: FONT_SIZES.md, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.text },
-    pastOrderName: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_500Medium', color: COLORS.textSecondary },
-    atelierTag: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 4 },
-    statusBadge: { backgroundColor: COLORS.secondary, paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: BORDER_RADIUS.full },
-    statusText: { fontSize: FONT_SIZES.xs, color: COLORS.primary, fontFamily: 'PlusJakartaSans_700Bold', textTransform: 'capitalize' },
-    orderFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.md, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: COLORS.border },
-    orderPrice: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_500Medium', color: COLORS.text },
-    orderRemaining: { fontSize: FONT_SIZES.sm, fontFamily: 'PlusJakartaSans_600SemiBold', color: COLORS.error },
-    orderFooterText: { fontSize: FONT_SIZES.xs, color: COLORS.textLight, marginTop: SPACING.xs },
+const makeStyles = (P: Palette) => ({
+    container: { flex: 1, backgroundColor: P.pageBg },
+    header: {
+        flexDirection: 'row' as const, alignItems: 'flex-end' as const,
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14,
+    },
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
+    },
+    headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
+    addBtn: {
+        width: 40, height: 40, borderRadius: 12, backgroundColor: P.bg,
+        alignItems: 'center' as const, justifyContent: 'center' as const,
+        borderWidth: 1, borderColor: P.goldRim, marginBottom: 2,
+    },
+    scrollContent: { paddingHorizontal: 20, paddingBottom: 32 },
+    section: { marginBottom: 24 },
+    sectionTitle: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', color: P.sub,
+        textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 12,
+    },
+    searchBar: {
+        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8,
+        backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
+        borderRadius: 14, paddingHorizontal: 14, height: 44, marginBottom: 10,
+    },
+    searchInput: { flex: 1, fontSize: 14, fontFamily: 'PlusJakartaSans_500Medium', color: P.text },
+    card: {
+        backgroundColor: P.surface, borderRadius: 18, padding: 14,
+        borderWidth: 0.5, borderColor: P.borderHard,
+    },
+    tailorInfo: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 },
+    tailorAvatar: {
+        width: 42, height: 42, borderRadius: 13, backgroundColor: P.bg,
+        alignItems: 'center' as const, justifyContent: 'center' as const,
+        borderWidth: 1, borderColor: P.goldRim,
+    },
+    tailorName: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+    tailorSub: { fontSize: 12, color: P.sub, marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium' },
+    connectBtn: {
+        backgroundColor: P.primaryBg, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10,
+        borderWidth: 0.5, borderColor: P.borderHard,
+    },
+    connectBtnText: { fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', color: P.primary },
+    emptyCard: {
+        padding: 28, alignItems: 'center' as const, gap: 8, borderRadius: 18,
+        borderStyle: 'dashed' as const, borderWidth: 1, borderColor: P.borderHard, backgroundColor: P.surface,
+    },
+    emptyText: { fontSize: 13, color: P.sub, textAlign: 'center' as const, fontFamily: 'PlusJakartaSans_500Medium' },
+    orderCard: {
+        padding: 14, marginBottom: 10, borderRadius: 18, backgroundColor: P.surface,
+        borderWidth: 0.5, borderColor: P.borderHard,
+    },
+    pastOrderCard: { opacity: 0.78 },
+    orderHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'flex-start' as const, gap: 8 },
+    orderName: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+    pastOrderName: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
+    atelierTag: { fontSize: 12, color: P.sub, marginTop: 4, fontFamily: 'PlusJakartaSans_500Medium' },
+    statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, borderWidth: 0.5 },
+    statusText: { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold' },
+    orderFooter: {
+        flexDirection: 'row' as const, justifyContent: 'space-between' as const,
+        marginTop: 12, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: P.border,
+    },
+    orderPrice: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+    orderRemaining: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.error },
+    orderFooterText: { fontSize: 12, color: P.sub, marginTop: 8, fontFamily: 'PlusJakartaSans_500Medium' },
 });

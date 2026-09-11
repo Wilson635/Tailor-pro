@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
-import { COLORS, BORDER_RADIUS, SPACING, FONT_SIZES, FONT_WEIGHTS, SHADOWS } from '../../constants/theme';
+import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS } from '../../constants/theme';
 
 interface StatCardProps {
   label: string;
@@ -97,9 +97,10 @@ export const StatCard: React.FC<StatCardProps> = ({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: 18,
     padding: SPACING.lg,
-    ...SHADOWS.sm,
+    borderWidth: 0.5,
+    borderColor: COLORS.borderHard,
   },
   highlightContainer: {
     backgroundColor: COLORS.primary,

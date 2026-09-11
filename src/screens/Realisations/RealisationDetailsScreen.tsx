@@ -2,10 +2,11 @@
 // ÉCRAN DÉTAILS RÉALISATION — TailorPro (Module 5)
 // ==========================================
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Alert, FlatList, Dimensions, ActivityIndicator,
+  Image, FlatList, Dimensions, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,7 +19,7 @@ import {
 } from '@constants/realisationConstants';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 import type { StatutRealisation } from '../../types';
-import { RC } from '@screens/Realisations/RealisationForm';
+import { RC, realisationTitle } from '@screens/Realisations/RealisationForm';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'RealisationDetails'>;
 
@@ -86,8 +87,9 @@ const tp = StyleSheet.create({
   nextBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: RC.ink, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.28)',
   },
-  nextBtnText: { color: RC.gold, fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold' },
+  nextBtnText: { color: '#fff', fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold' },
 });
 
 const MetaRow = ({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) => (
@@ -114,12 +116,14 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
 
   const {
     getRealisationById, updateRealisationStatut, deleteRealisation,
-    addRealisationPhoto, updateRealisation,
+    addRealisationPhoto, updateRealisation, catalog, loadCatalog,
   } = useAppStore();
   const realisation = getRealisationById(realisationId, clientId);
 
   const [photoIdx, setPhotoIdx] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => { loadCatalog(); }, []);
 
   if (!realisation) {
     return (
@@ -135,11 +139,13 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
 
   const { photos, statut } = realisation;
   const statutColor = STATUT_REALISATION_COLORS[statut];
+  const title = realisationTitle(realisation, catalog);
+  const modele = realisation.modeleId ? catalog.find(m => m.id === realisation.modeleId) : undefined;
 
   const handleAddPhoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission requise', "L'accès à la galerie est nécessaire.");
+      showAlert('Permission requise', "L'accès à la galerie est nécessaire.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -147,36 +153,52 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
     });
     if (!result.canceled) {
       setIsUploading(true);
+      let ok = 0;
       for (const asset of result.assets) {
-        await addRealisationPhoto(realisationId, clientId, asset.uri);
+        const saved = await addRealisationPhoto(realisationId, clientId, asset.uri);
+        if (saved) ok += 1;
       }
       setIsUploading(false);
+      if (ok === 0) {
+        showAlert('Photo non ajoutée', "L'envoi a échoué. Vérifiez la connexion et réessayez.");
+      } else {
+        showSuccess(ok > 1 ? 'Photos ajoutées' : 'Photo ajoutée', 'La galerie a été mise à jour.');
+      }
     }
   };
 
   const handleRemovePhoto = (url: string) => {
-    Alert.alert('Retirer cette photo ?', undefined, [
+    showAlert('Retirer cette photo ?', undefined, [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Retirer', style: 'destructive',
-        onPress: () => updateRealisation(realisationId, clientId, { photos: photos.filter(p => p !== url) }),
+        onPress: async () => {
+          await updateRealisation(realisationId, clientId, { photos: photos.filter(p => p !== url) });
+          showSuccess('Photo retirée', 'La galerie a été mise à jour.');
+        },
       },
     ]);
   };
 
   const handleTransition = (newStatut: StatutRealisation) => {
-    Alert.alert('Changer le statut', `Passer à « ${STATUT_REALISATION_LABELS[newStatut]} » ?`, [
+    showAlert('Changer le statut', `Passer à « ${STATUT_REALISATION_LABELS[newStatut]} » ?`, [
       { text: 'Annuler', style: 'cancel' },
-      { text: 'Confirmer', onPress: () => updateRealisationStatut(realisationId, clientId, newStatut) },
+      { text: 'Confirmer', onPress: async () => {
+        await updateRealisationStatut(realisationId, clientId, newStatut);
+        showSuccess('Statut modifié', `La réalisation est maintenant « ${STATUT_REALISATION_LABELS[newStatut]} ».`);
+      } },
     ]);
   };
 
   const handleDelete = () => {
-    Alert.alert('Supprimer la réalisation', 'Cette action est irréversible. Continuer ?', [
+    showAlert('Supprimer la réalisation', 'Cette action est irréversible. Continuer ?', [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer', style: 'destructive',
-        onPress: async () => { await deleteRealisation(realisationId, clientId); navigation.goBack(); },
+        onPress: async () => {
+          await deleteRealisation(realisationId, clientId);
+          showSuccess('Réalisation supprimée', 'La pièce a été retirée de l’atelier.', () => navigation.goBack());
+        },
       },
     ]);
   };
@@ -213,14 +235,14 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
                   <Ionicons name="shirt-outline" size={56} color={RC.textTer} />
                   <Text style={styles.galleryPlaceholderText}>Aucune photo pour l'instant</Text>
                   <TouchableOpacity style={styles.emptyAddBtn} onPress={handleAddPhoto}>
-                    <Ionicons name="camera-outline" size={15} color={RC.gold} />
+                    <Ionicons name="camera-outline" size={15} color="#fff" />
                     <Text style={styles.emptyAddBtnText}>Ajouter une photo</Text>
                   </TouchableOpacity>
                 </View>
             )}
 
             {/* Boutons flottants sur l'image */}
-            <View style={[styles.floatRow, { top: insets.top + 8 }]}>
+            <View style={[styles.floatRow, { top: 12 }]}>
               <TouchableOpacity style={styles.floatBtn} onPress={() => navigation.goBack()}>
                 <Ionicons name="arrow-back" size={19} color="#FFF" />
               </TouchableOpacity>
@@ -251,7 +273,7 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
                   <View style={[styles.statutPill, { backgroundColor: statutColor }]}>
                     <Text style={styles.statutPillText}>{STATUT_REALISATION_LABELS[statut]}</Text>
                   </View>
-                  <Text style={styles.heroTitle} numberOfLines={1}>{realisation.tissuLabel ?? 'Réalisation'}</Text>
+                  <Text style={styles.heroTitle} numberOfLines={1}>{title}</Text>
                   {realisation.couleur ? <Text style={styles.heroSub}>{realisation.couleur}</Text> : null}
                 </View>
             )}
@@ -260,7 +282,7 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
           <View style={styles.body}>
             {photos.length === 0 && (
                 <View>
-                  <Text style={styles.plainTitle}>{realisation.tissuLabel ?? 'Réalisation'}</Text>
+                  <Text style={styles.plainTitle}>{title}</Text>
                   {realisation.couleur ? <Text style={styles.plainSub}>{realisation.couleur}</Text> : null}
                 </View>
             )}
@@ -288,6 +310,7 @@ export const RealisationDetailsScreen: React.FC<Props> = ({ route, navigation })
 
             {/* Détails */}
             <View style={styles.card}>
+              {modele && <MetaRow icon="albums-outline" label="Modèle" value={modele.nom} />}
               {realisation.tissuLabel && <MetaRow icon="layers-outline" label="Tissu" value={realisation.tissuLabel} />}
               {realisation.couleur && <MetaRow icon="color-palette-outline" label="Couleur" value={realisation.couleur} />}
               {realisation.accessoires.length > 0 && (
@@ -342,8 +365,9 @@ const styles = StyleSheet.create({
   emptyAddBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: RC.ink, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.28)',
   },
-  emptyAddBtnText: { color: RC.gold, fontSize: 12.5, fontFamily: 'PlusJakartaSans_700Bold' },
+  emptyAddBtnText: { color: '#fff', fontSize: 12.5, fontFamily: 'PlusJakartaSans_700Bold' },
 
   dots: { position: 'absolute', bottom: 16, alignSelf: 'center', flexDirection: 'row', gap: 6 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
@@ -372,7 +396,10 @@ const styles = StyleSheet.create({
   plainTitle: { fontSize: 22, color: RC.text, fontFamily: 'PlusJakartaSans_700Bold' },
   plainSub: { fontSize: 14, color: RC.textSec, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 2 },
 
-  card: { backgroundColor: RC.linen, borderRadius: 18, padding: 16 },
+  card: {
+    backgroundColor: RC.linen, borderRadius: 18, padding: 16,
+    borderWidth: 0.5, borderColor: RC.hairline,
+  },
 
   thumbSm: { width: 56, height: 56, borderRadius: 10 },
   thumbRemove: {
@@ -384,10 +411,11 @@ const styles = StyleSheet.create({
   noteBar: { width: 3, borderRadius: 2, backgroundColor: RC.gold },
   noteText: { flex: 1, fontSize: 14, color: RC.text, lineHeight: 21, fontFamily: 'PlusJakartaSans_500Medium' },
 
-  footer: { borderTopWidth: 1, borderTopColor: RC.hairline, padding: 16, backgroundColor: RC.ivory },
+  footer: { borderTopWidth: 0.5, borderTopColor: RC.hairline, padding: 16, backgroundColor: RC.ivory },
   footerBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: RC.ink, borderRadius: 16, paddingVertical: 15,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.28)',
   },
-  footerBtnText: { fontSize: 15.5, fontFamily: 'PlusJakartaSans_700Bold', color: RC.gold },
+  footerBtnText: { fontSize: 15.5, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });

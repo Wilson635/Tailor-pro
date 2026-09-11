@@ -7,7 +7,6 @@ import React, { useMemo, useState } from 'react';
 import {
     View,
     Text,
-    StyleSheet,
     ScrollView,
     TouchableOpacity,
     TextInput,
@@ -22,18 +21,13 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { useAppStore } from '@store/useAppStore';
 import { SPACING } from '@constants/theme';
+import { useThemedStyles, type Palette } from '@/src/theme';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { keyboardAvoidBehavior } from '@components/ui';
 import type { ParticipantRole } from '../../types';
-import { useToast } from '@/src/context/ToastContext';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddParticipant'>;
-
-const P = {
-    primary: '#6C3EB8', pageBg: '#F5F4FB', surface: '#FFFFFF',
-    text: '#1A1033', sub: '#7C6FA8',
-    border: 'rgba(108,62,184,0.10)', borderHard: 'rgba(108,62,184,0.15)',
-    gold: '#D4AF37', goldBg: 'rgba(212,175,55,0.10)',
-};
 
 const ROLES: { value: ParticipantRole; label: string }[] = [
     { value: 'mariee',         label: 'Mariée' },
@@ -52,7 +46,7 @@ const ROLES: { value: ParticipantRole; label: string }[] = [
 export const AddParticipantScreen: React.FC<Props> = ({ route, navigation }) => {
     const { projectId } = route.params;
     const insets = useSafeAreaInsets();
-    const { showToast } = useToast();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
     const { clients, addParticipant } = useAppStore();
 
     const [mode, setMode] = useState<'existing' | 'new'>('new');
@@ -74,9 +68,9 @@ export const AddParticipantScreen: React.FC<Props> = ({ route, navigation }) => 
 
     const handleSubmit = async () => {
         if (mode === 'existing') {
-            if (!clientId) { showToast({ type: 'error', message: 'Sélectionne un client.' }); return; }
+            if (!clientId) { showAlert('Client', 'Sélectionne un client.'); return; }
         } else if (!nom.trim()) {
-            showToast({ type: 'error', message: 'Le nom est requis.' });
+            showAlert('Champ requis', 'Le nom est requis.');
             return;
         }
 
@@ -92,25 +86,26 @@ export const AddParticipantScreen: React.FC<Props> = ({ route, navigation }) => 
         setIsLoading(false);
 
         if (!participant) {
-            showToast({ type: 'error', message: "Erreur lors de l'ajout." });
+            showAlert('Erreur', "Erreur lors de l'ajout.");
             return;
         }
-        showToast({ type: 'success', message: `${participant.nom} a été ajouté(e) au projet.` });
-        navigation.goBack();
+        showSuccess('Personne ajoutée', `${participant.nom} a été ajouté(e) au projet.`, () => navigation.goBack());
     };
 
     return (
         <KeyboardAvoidingView
             style={[styles.root, { paddingTop: insets.top }]}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={keyboardAvoidBehavior}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-                    <Feather name="arrow-left" size={20} color={P.text} />
+                    <Feather name="arrow-left" size={18} color={P.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Ajouter une personne</Text>
-                <View style={{ width: 36 }} />
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.headerTitle}>Ajouter une personne</Text>
+                </View>
             </View>
 
             <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: insets.bottom + 120, gap: 14 }}>
@@ -245,18 +240,21 @@ export const AddParticipantScreen: React.FC<Props> = ({ route, navigation }) => 
     );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     root: { flex: 1, backgroundColor: P.pageBg },
     header: {
-        backgroundColor: P.surface, flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: SPACING.md, paddingVertical: 12,
-        borderBottomWidth: 0.5, borderBottomColor: P.borderHard, gap: 8,
+        backgroundColor: P.pageBg, flexDirection: 'row', alignItems: 'flex-start',
+        paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, gap: 12,
     },
     backBtn: {
-        width: 36, height: 36, borderRadius: 10, backgroundColor: P.pageBg,
-        borderWidth: 0.5, borderColor: P.borderHard, alignItems: 'center', justifyContent: 'center',
+        width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+        borderWidth: 0.5, borderColor: P.borderHard, alignItems: 'center', justifyContent: 'center', marginTop: 4,
     },
-    headerTitle: { flex: 1, fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text, textAlign: 'center' },
+    kicker: {
+        fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+        letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2,
+    },
+    headerTitle: { fontSize: 22, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.4 },
 
     modeRow: { flexDirection: 'row', gap: 10 },
     modeBtn: {
@@ -264,11 +262,11 @@ const styles = StyleSheet.create({
         paddingVertical: 12, borderRadius: 12, backgroundColor: P.surface,
         borderWidth: 0.5, borderColor: P.borderHard,
     },
-    modeBtnActive: { backgroundColor: P.primary, borderColor: P.primary },
+    modeBtnActive: { backgroundColor: P.bg, borderColor: P.goldRim },
     modeBtnText: { fontSize: 12.5, color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold' },
     modeBtnTextActive: { color: '#fff' },
 
-    card: { backgroundColor: P.surface, borderRadius: 16, padding: 14, borderWidth: 0.5, borderColor: P.borderHard, gap: 10 },
+    card: { backgroundColor: P.surface, borderRadius: 18, padding: 14, borderWidth: 0.5, borderColor: P.borderHard, gap: 10 },
     label: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
     hint: { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_400Regular' },
     input: {
@@ -278,8 +276,8 @@ const styles = StyleSheet.create({
     },
 
     chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: P.pageBg, borderWidth: 0.5, borderColor: P.borderHard },
-    chipActive: { backgroundColor: P.primary, borderColor: P.primary },
+    chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard },
+    chipActive: { backgroundColor: P.bg, borderColor: P.goldRim },
     chipText: { fontSize: 12.5, color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold' },
     chipTextActive: { color: '#fff' },
 
@@ -291,9 +289,9 @@ const styles = StyleSheet.create({
 
     footer: {
         position: 'absolute', bottom: 0, left: 0, right: 0,
-        backgroundColor: P.surface, borderTopWidth: 0.5, borderTopColor: P.borderHard,
+        backgroundColor: P.pageBg, borderTopWidth: 0.5, borderTopColor: P.borderHard,
         padding: SPACING.md,
     },
-    submitBtn: { backgroundColor: P.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+    submitBtn: { backgroundColor: P.bg, borderRadius: 16, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: P.goldRim },
     submitBtnText: { color: '#fff', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14 },
 });

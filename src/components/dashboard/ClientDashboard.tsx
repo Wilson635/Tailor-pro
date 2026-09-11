@@ -8,7 +8,6 @@ import React, { useMemo } from 'react';
 import {
     View,
     Text,
-    StyleSheet,
     ScrollView,
     TouchableOpacity,
 } from 'react-native';
@@ -18,36 +17,12 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { useProfile } from '@hooks/useProfile';
-import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
-import { SPACING } from '@constants/theme';
-import {RootStackParamList} from "@/src/navigation/AppNavigator";
+import { formatCurrencyShort } from '@utils/formatters';
+import { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { useThemedStyles, type Palette } from '@/src/theme';
+import { isCancelledOrder } from '@constants/commandeConstants';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-// ──────────────────────────────────────────
-// PALETTE
-// ──────────────────────────────────────────
-
-const P = {
-    bg:        '#16123A',
-    primary:   '#6C3EB8',
-    pageBg:    '#F5F4FB',
-    surface:   '#FFFFFF',
-    text:      '#1A1033',
-    sub:       '#7C6FA8',
-    border:    'rgba(108,62,184,0.10)',
-    gold:      '#D4AF37',
-    goldBg:    'rgba(212,175,55,0.10)',
-    goldRim:   'rgba(212,175,55,0.28)',
-    success:   '#16A34A',
-    successBg: 'rgba(22,163,74,0.10)',
-    error:     '#EF4444',
-    errorBg:   'rgba(239,68,68,0.10)',
-    warning:   '#D97706',
-    warningBg: 'rgba(217,119,6,0.10)',
-    info:      '#2563EB',
-    infoBg:    'rgba(37,99,235,0.10)',
-};
 
 // ──────────────────────────────────────────
 // HELPERS
@@ -71,21 +46,21 @@ const ORDER_STATUS_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
     cancelled:   'x-circle',
 };
 
-const ORDER_STATUS_COLOR: Record<string, string> = {
+const statusColor = (P: Palette): Record<string, string> => ({
     pending:     P.warning,
     in_progress: P.info,
     completed:   P.success,
     delivered:   P.gold,
     cancelled:   P.error,
-};
+});
 
-const ORDER_STATUS_BG: Record<string, string> = {
+const statusBg = (P: Palette): Record<string, string> => ({
     pending:     P.warningBg,
     in_progress: P.infoBg,
     completed:   P.successBg,
     delivered:   P.goldBg,
     cancelled:   P.errorBg,
-};
+});
 
 const CLOTHING_LABELS: Record<string, string> = {
     robe_longue:  'Robe longue',  robe_courte: 'Robe courte',
@@ -103,6 +78,7 @@ const daysUntil = (date: Date) =>
 // ──────────────────────────────────────────
 
 const ProgressStepper = ({ status }: { status: string }) => {
+    const { colors: P, styles: ps } = useThemedStyles(makeStepperStyles);
     const stepIndex = ORDER_STATUS_STEPS.indexOf(status);
     if (stepIndex < 0) return null;
 
@@ -110,9 +86,9 @@ const ProgressStepper = ({ status }: { status: string }) => {
         <View style={ps.row}>
             {ORDER_STATUS_STEPS.map((step, i) => (
                 <React.Fragment key={step}>
-                    <View style={[ps.dot, i <= stepIndex && ps.dotActive]} />
+                    <View style={[ps.dot, i <= stepIndex && { backgroundColor: P.primary }]} />
                     {i < ORDER_STATUS_STEPS.length - 1 && (
-                        <View style={[ps.line, i < stepIndex && ps.lineActive]} />
+                        <View style={[ps.line, i < stepIndex && { backgroundColor: P.primary }]} />
                     )}
                 </React.Fragment>
             ))}
@@ -120,12 +96,10 @@ const ProgressStepper = ({ status }: { status: string }) => {
     );
 };
 
-const ps = StyleSheet.create({
-    row:       { flexDirection: 'row', alignItems: 'center', flex: 1 },
-    dot:       { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.1)' },
-    dotActive: { backgroundColor: P.primary },
-    line:      { flex: 1, height: 2, backgroundColor: 'rgba(0,0,0,0.08)' },
-    lineActive:{ backgroundColor: P.primary },
+const makeStepperStyles = (P: Palette) => ({
+    row: { flexDirection: 'row' as const, alignItems: 'center' as const, flex: 1 },
+    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: P.borderHard },
+    line: { flex: 1, height: 2, backgroundColor: P.borderHard },
 });
 
 // ──────────────────────────────────────────
@@ -135,6 +109,7 @@ const ps = StyleSheet.create({
 export const ClientDashboard: React.FC = () => {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<Nav>();
+    const { colors: P, styles } = useThemedStyles(makeStyles);
     const { profile } = useProfile();
     const { orders, measurements } = useAppStore();
 
@@ -146,7 +121,11 @@ export const ClientDashboard: React.FC = () => {
     );
 
     const activeOrders = useMemo(() =>
-            myOrders.filter(o => o.orderStatus !== 'delivered' && o.orderStatus !== 'cancelled'),
+            myOrders.filter(o =>
+                o.orderStatus !== 'delivered' &&
+                o.orderStatus !== 'livree' &&
+                !isCancelledOrder(o.orderStatus)
+            ),
         [myOrders]
     );
 
@@ -157,7 +136,6 @@ export const ClientDashboard: React.FC = () => {
 
     const nextDelivery = useMemo(() => {
         const pending = activeOrders
-            .filter(o => o.orderStatus !== 'cancelled')
             .sort((a, b) => new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime());
         return pending[0] ?? null;
     }, [activeOrders]);
@@ -242,7 +220,7 @@ export const ClientDashboard: React.FC = () => {
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.quickCard} activeOpacity={0.8}>
-                        <View style={[styles.quickIcon, { backgroundColor: 'rgba(108,62,184,0.10)' }]}>
+                        <View style={[styles.quickIcon, { backgroundColor: P.primaryBg }]}>
                             <Feather name="grid" size={22} color={P.primary} />
                         </View>
                         <Text style={styles.quickLabel}>Catalogue{'\n'}inspiration</Text>
@@ -290,7 +268,7 @@ export const ClientDashboard: React.FC = () => {
 
                 {activeOrders.length === 0 ? (
                     <View style={styles.emptyCard}>
-                        <Feather name="inbox" size={32} color="rgba(108,62,184,0.2)" />
+                        <Feather name="inbox" size={32} color={P.gold} />
                         <Text style={styles.emptyTitle}>Aucune commande en cours</Text>
                         <Text style={styles.emptySub}>
                             Vos commandes apparaîtront ici dès que votre couturier les créera.
@@ -299,22 +277,22 @@ export const ClientDashboard: React.FC = () => {
                 ) : (
                     activeOrders.map((order) => {
                         const days        = daysUntil(new Date(order.deliveryDate));
-                        const statusColor = ORDER_STATUS_COLOR[order.orderStatus] ?? P.sub;
-                        const statusBg    = ORDER_STATUS_BG[order.orderStatus]    ?? P.border;
+                        const stColor = statusColor(P)[order.orderStatus] ?? P.sub;
+                        const stBg    = statusBg(P)[order.orderStatus]    ?? P.border;
                         const statusIcon  = ORDER_STATUS_ICONS[order.orderStatus] ?? 'circle';
                         const statusLabel = ORDER_STATUS_LABELS[order.orderStatus] ?? order.orderStatus;
 
                         return (
                             <View key={order.id} style={styles.orderCard}>
                                 <View style={styles.orderCardTop}>
-                                    <View style={[styles.orderIconBox, { backgroundColor: statusBg }]}>
-                                        <Feather name={statusIcon} size={18} color={statusColor} />
+                                    <View style={[styles.orderIconBox, { backgroundColor: stBg }]}>
+                                        <Feather name={statusIcon} size={18} color={stColor} />
                                     </View>
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.orderType} numberOfLines={1}>
                                             {CLOTHING_LABELS[order.clothingType] ?? order.clothingType}
                                         </Text>
-                                        <Text style={[styles.orderStatus, { color: statusColor }]} numberOfLines={1}>
+                                        <Text style={[styles.orderStatus, { color: stColor }]} numberOfLines={1}>
                                             {statusLabel}
                                         </Text>
                                     </View>
@@ -389,137 +367,127 @@ export const ClientDashboard: React.FC = () => {
 // STYLES — Aucune ombre, borderWidth 0.5
 // ==========================================
 
-const card = {
-    backgroundColor: P.surface,
-    borderRadius: 18,
-    borderWidth: 0.5,
-    borderColor: 'rgba(108,62,184,0.12)',
-} as const;
-
-const styles = StyleSheet.create({
+const makeStyles = (P: Palette) => ({
     scroll:  { flex: 1, backgroundColor: P.pageBg },
-    content: { padding: SPACING.lg, gap: SPACING.lg },
+    content: { padding: 20, gap: 16 },
 
-    // ── Hero ──
     heroCard: {
-        backgroundColor: P.bg,
-        borderRadius: 24, padding: SPACING.xl,
-        overflow: 'hidden', position: 'relative',
-        borderWidth: 0.5, borderColor: 'rgba(212,175,55,0.2)',
+        backgroundColor: '#16123A',
+        borderRadius: 24, padding: 20,
+        overflow: 'hidden' as const, position: 'relative' as const,
+        borderWidth: 1, borderColor: P.goldRim,
     },
-    heroBlob1:    { position: 'absolute', top: -60,  right: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(108,62,184,0.35)' },
-    heroBlob2:    { position: 'absolute', bottom: -50, left: -30, width: 160, height: 160, borderRadius: 80,  backgroundColor: 'rgba(212,175,55,0.04)' },
-    heroGoldLine: { position: 'absolute', top: 0, left: 24, right: 24, height: 1, backgroundColor: 'rgba(212,175,55,0.25)' },
+    heroBlob1:    { position: 'absolute' as const, top: -60,  right: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(108,62,184,0.35)' },
+    heroBlob2:    { position: 'absolute' as const, bottom: -50, left: -30, width: 160, height: 160, borderRadius: 80,  backgroundColor: 'rgba(212,175,55,0.04)' },
+    heroGoldLine: { position: 'absolute' as const, top: 0, left: 24, right: 24, height: 1, backgroundColor: P.goldRim },
 
-    heroTop:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    heroTop:    { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'flex-start' as const },
     heroLabel:  { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'PlusJakartaSans_700Bold', letterSpacing: 1.5, marginBottom: 6 },
     heroAmount: { fontSize: 34, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#fff', letterSpacing: -0.5 },
     heroDeliveryPill: {
-        flexDirection: 'row', alignItems: 'center', gap: 5,
+        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 5,
         backgroundColor: P.goldBg,
         paddingHorizontal: 10, paddingVertical: 5,
-        borderRadius: 99, marginTop: 10,
-        alignSelf: 'flex-start',
+        borderRadius: 20, marginTop: 10,
+        alignSelf: 'flex-start' as const,
         borderWidth: 0.5, borderColor: P.goldRim,
     },
     heroDeliveryText: { fontSize: 11, color: P.gold, fontFamily: 'PlusJakartaSans_600SemiBold' },
     heroDueCard: {
         backgroundColor: P.errorBg,
-        borderRadius: 14, padding: SPACING.md,
-        alignItems: 'flex-end',
-        borderWidth: 0.5, borderColor: 'rgba(239,68,68,0.25)',
+        borderRadius: 14, padding: 12,
+        alignItems: 'flex-end' as const,
+        borderWidth: 0.5, borderColor: P.error,
     },
-    heroDueLabel: { fontSize: 10, color: 'rgba(239,68,68,0.7)', fontFamily: 'PlusJakartaSans_600SemiBold', marginBottom: 4 },
+    heroDueLabel: { fontSize: 10, color: P.error, fontFamily: 'PlusJakartaSans_600SemiBold', marginBottom: 4 },
     heroDueValue: { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.error },
 
-    // ── Alerte paiement ──
     alertBanner: {
-        flexDirection: 'row', alignItems: 'center',
+        flexDirection: 'row' as const, alignItems: 'center' as const,
         backgroundColor: P.errorBg,
-        borderRadius: 14, padding: SPACING.md,
-        borderWidth: 0.5, borderColor: 'rgba(239,68,68,0.25)',
+        borderRadius: 16, padding: 14,
+        borderWidth: 0.5, borderColor: P.error,
     },
-    alertLeft: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, flex: 1 },
+    alertLeft: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 8, flex: 1 },
     alertText: { flex: 1, fontSize: 12, color: P.error, fontFamily: 'PlusJakartaSans_600SemiBold', lineHeight: 18 },
 
-    // ── Sections ──
-    section:       { gap: SPACING.md },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    section:       { gap: 12 },
+    sectionHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
     sectionTitle:  { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
-    seeAll:        { fontSize: 12, color: P.sub },
+    seeAll:        { fontSize: 12, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
 
-    // ── Accès rapide ──
-    quickRow:  { flexDirection: 'row', gap: SPACING.sm },
+    quickRow:  { flexDirection: 'row' as const, gap: 8 },
     quickCard: {
-        flex: 1, ...card,
-        padding: SPACING.md, gap: SPACING.sm,
-        alignItems: 'center',
-        position: 'relative',
+        flex: 1, backgroundColor: P.surface, borderRadius: 18,
+        borderWidth: 0.5, borderColor: P.borderHard,
+        padding: 14, gap: 8,
+        alignItems: 'center' as const,
+        position: 'relative' as const,
     },
-    quickIcon:      { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-    quickLabel:     { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text, textAlign: 'center', lineHeight: 16 },
+    quickIcon:      { width: 44, height: 44, borderRadius: 13, alignItems: 'center' as const, justifyContent: 'center' as const },
+    quickLabel:     { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text, textAlign: 'center' as const, lineHeight: 16 },
     quickBadge: {
-        position: 'absolute', top: 8, right: 8,
+        position: 'absolute' as const, top: 8, right: 8,
         width: 16, height: 16, borderRadius: 8,
-        backgroundColor: P.error, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: P.error, alignItems: 'center' as const, justifyContent: 'center' as const,
     },
     quickBadgeText: { fontSize: 9, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#fff' },
 
-    // ── Mesures ──
     measuresBanner: {
-        ...card,
-        flexDirection: 'row', alignItems: 'center',
-        padding: SPACING.md,
-        borderColor: 'rgba(108,62,184,0.2)',
-        borderStyle: 'dashed',
-        gap: SPACING.sm,
+        backgroundColor: P.surface, borderRadius: 18, borderWidth: 0.5, borderColor: P.borderHard,
+        flexDirection: 'row' as const, alignItems: 'center' as const,
+        padding: 14, borderStyle: 'dashed' as const, gap: 8,
     },
-    measuresBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, flex: 1 },
+    measuresBannerLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, flex: 1 },
     measuresBannerIcon: {
         width: 40, height: 40, borderRadius: 12,
-        backgroundColor: 'rgba(108,62,184,0.08)',
-        alignItems: 'center', justifyContent: 'center',
+        backgroundColor: P.primaryBg,
+        alignItems: 'center' as const, justifyContent: 'center' as const,
     },
     measuresBannerTitle: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
-    measuresBannerSub:   { fontSize: 11, color: P.sub, marginTop: 2 },
+    measuresBannerSub:   { fontSize: 11, color: P.sub, marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium' },
 
-    // ── Commandes ──
-    orderCard:    { ...card, padding: SPACING.md, gap: SPACING.sm },
-    orderCardTop: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-    orderIconBox: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+    orderCard:    {
+        backgroundColor: P.surface, borderRadius: 18, borderWidth: 0.5, borderColor: P.borderHard,
+        padding: 14, gap: 8,
+    },
+    orderCardTop: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10 },
+    orderIconBox: { width: 44, height: 44, borderRadius: 13, alignItems: 'center' as const, justifyContent: 'center' as const },
     orderType:    { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
     orderStatus:  { fontSize: 12, marginTop: 2, fontFamily: 'PlusJakartaSans_600SemiBold' },
     deliveryPill: {
-        flexDirection: 'row', alignItems: 'center', gap: 3,
-        backgroundColor: P.border,
-        paddingHorizontal: 8, paddingVertical: 4, borderRadius: 99,
+        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3,
+        backgroundColor: P.pageBg,
+        paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20,
+        borderWidth: 0.5, borderColor: P.borderHard,
     },
     deliveryText:  { fontSize: 11, color: P.sub, fontFamily: 'PlusJakartaSans_600SemiBold' },
-    progressRow:   { flexDirection: 'row', alignItems: 'center' },
+    progressRow:   { flexDirection: 'row' as const, alignItems: 'center' as const },
     progressLabel: { fontSize: 11, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
     orderPayRow: {
-        flexDirection: 'row', alignItems: 'center', gap: 5,
-        paddingTop: 8, borderTopWidth: 0.5, borderTopColor: 'rgba(0,0,0,0.06)',
+        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 5,
+        paddingTop: 8, borderTopWidth: 0.5, borderTopColor: P.borderHard,
     },
     orderPayText: { fontSize: 12, color: P.error },
 
-    // ── Historique ──
-    historyCard:   { ...card, overflow: 'hidden' },
-    historyRow:    { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, gap: SPACING.sm },
-    historyDot:    { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    historyCard:   {
+        backgroundColor: P.surface, borderRadius: 18, overflow: 'hidden' as const,
+        borderWidth: 0.5, borderColor: P.borderHard,
+    },
+    historyRow:    { flexDirection: 'row' as const, alignItems: 'center' as const, padding: 14, gap: 10 },
+    historyDot:    { width: 40, height: 40, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const },
     historyTitle:  { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.text },
     historySub:    { fontSize: 11, color: P.sub, marginTop: 2 },
-    paidBadge:     { backgroundColor: P.successBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 },
+    paidBadge:     { backgroundColor: P.successBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
     unpaidBadge:   { backgroundColor: P.errorBg },
     paidText:      { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: P.success },
-    historyDivider:{ height: 0.5, backgroundColor: 'rgba(0,0,0,0.06)', marginLeft: 60 },
+    historyDivider:{ height: 0.5, backgroundColor: P.borderHard, marginLeft: 60 },
 
-    // ── Vide ──
     emptyCard: {
-        ...card,
-        padding: SPACING.xl, alignItems: 'center', gap: SPACING.sm,
-        borderStyle: 'dashed', borderColor: 'rgba(108,62,184,0.15)',
+        backgroundColor: P.surface, borderRadius: 18, borderWidth: 0.5, borderColor: P.borderHard,
+        padding: 20, alignItems: 'center' as const, gap: 8,
+        borderStyle: 'dashed' as const,
     },
     emptyTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
-    emptySub:   { fontSize: 12, color: P.sub, textAlign: 'center', lineHeight: 18 },
+    emptySub:   { fontSize: 12, color: P.sub, textAlign: 'center' as const, lineHeight: 18, fontFamily: 'PlusJakartaSans_500Medium' },
 });

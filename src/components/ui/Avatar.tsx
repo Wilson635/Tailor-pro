@@ -1,109 +1,101 @@
 // ==========================================
-// COMPOSANT AVATAR - TailorPro
+// AVATAR CLIENT — photo si disponible, sinon initiales
 // ==========================================
 
-import React from 'react';
-import { View, Image, Text, StyleSheet } from 'react-native';
-import { COLORS, BORDER_RADIUS, FONT_SIZES, FONT_WEIGHTS } from '../../constants/theme';
-import { getInitials } from '../../utils/formatters';
+import React, { useEffect, useState } from 'react';
+import { View, Image, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';
+import { getInitials } from '@utils/formatters';
+import { usePalette } from '@/src/theme';
+
+type SizeToken = 'sm' | 'md' | 'lg' | 'xl';
 
 interface AvatarProps {
-  source?: string;
+  source?: string | null;
   name: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
-  showBadge?: boolean;
-  badgeColor?: string;
+  size?: SizeToken | number;
+  radius?: number;
+  style?: StyleProp<ViewStyle>;
 }
 
-const SIZES = {
+const SIZE_TOKENS: Record<SizeToken, number> = {
   sm: 32,
-  md: 48,
-  lg: 64,
-  xl: 100,
+  md: 44,
+  lg: 72,
+  xl: 96,
 };
 
-const FONT_SIZE_MAP = {
-  sm: FONT_SIZES.xs,
-  md: FONT_SIZES.md,
-  lg: FONT_SIZES.xl,
-  xl: FONT_SIZES.title,
+const isUsableUri = (uri?: string | null) => {
+  if (typeof uri !== 'string') return false;
+  const value = uri.trim();
+  if (!value) return false;
+  return (
+    value.startsWith('http://') ||
+    value.startsWith('https://') ||
+    value.startsWith('file://') ||
+    value.startsWith('content://') ||
+    value.startsWith('ph://') ||
+    value.startsWith('data:')
+  );
 };
 
 export const Avatar: React.FC<AvatarProps> = ({
   source,
   name,
   size = 'md',
-  showBadge = false,
-  badgeColor = COLORS.success,
+  radius,
+  style,
 }) => {
-  const dimension = SIZES[size];
-  const fontSize = FONT_SIZE_MAP[size];
+  const P = usePalette();
+  const dimension = typeof size === 'number' ? size : SIZE_TOKENS[size];
+  const corner = radius ?? Math.round(dimension * 0.32);
+  const [failed, setFailed] = useState(false);
+  const uri = isUsableUri(source) ? source!.trim() : null;
+  const showPhoto = !!uri && !failed;
+
+  useEffect(() => {
+    setFailed(false);
+  }, [uri]);
+
+  const initials = getInitials(name || '?') || '?';
+  const fontSize = Math.round(dimension * 0.36);
 
   return (
-    <View style={[styles.container, { width: dimension, height: dimension }]}>
-      {source ? (
+    <View
+      style={[
+        styles.wrap,
+        {
+          width: dimension,
+          height: dimension,
+          borderRadius: corner,
+          backgroundColor: P.bg,
+          borderWidth: 1,
+          borderColor: P.goldRim,
+        },
+        style,
+      ]}
+    >
+      {showPhoto ? (
         <Image
-          source={{ uri: source }}
-          style={[
-            styles.image,
-            { width: dimension, height: dimension, borderRadius: dimension / 2 },
-          ]}
+          source={{ uri }}
+          style={{ width: dimension, height: dimension, borderRadius: corner }}
+          resizeMode="cover"
+          onError={() => setFailed(true)}
         />
       ) : (
-        <View
-          style={[
-            styles.placeholder,
-            { width: dimension, height: dimension, borderRadius: dimension / 2 },
-          ]}
-        >
-          <Text style={[styles.initials, { fontSize }]}>{getInitials(name)}</Text>
-        </View>
-      )}
-      
-      {showBadge && (
-        <View
-          style={[
-            styles.badge,
-            { backgroundColor: badgeColor },
-            size === 'sm' && styles.badgeSm,
-          ]}
-        />
+        <Text style={[styles.initials, { fontSize, color: P.gold }]}>{initials}</Text>
       )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    position: 'relative',
-  },
-  image: {
-    resizeMode: 'cover',
-  },
-  placeholder: {
-    backgroundColor: COLORS.primaryLight,
+  wrap: {
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   initials: {
-    color: COLORS.white,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  badge: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: COLORS.white,
-  },
-  badgeSm: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    bottom: 0,
-    right: 0,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
   },
 });

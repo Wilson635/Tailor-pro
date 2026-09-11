@@ -1,409 +1,251 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+// ==========================================
+// ENREGISTRER UN PAIEMENT — TailorPro
+// ==========================================
 
-import { COLORS, Typography, SPACING } from '@constants/theme';
-import { Card, Button, Input, Header } from '@components/ui';
+import React, { useMemo, useState } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
+import {
+  View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrency } from '@utils/formatters';
-import { RootStackParamList } from '../../navigation/AppNavigator';
-import { Payment } from '../../types';
+import {
+  TYPES_PAIEMENT, TYPE_PAIEMENT_META, MODES_PAIEMENT, MODE_PAIEMENT_META,
+  type TypePaiement, type ModePaiement,
+} from '@constants/paiementConstants';
+import { useThemedStyles, type Palette } from '@/src/theme';
+import { Avatar, keyboardAvoidBehavior } from '@components/ui';
+import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 
-type AddPaymentRouteProp = RouteProp<{ AddPayment: { clientId: string; orderId?: string } }, 'AddPayment'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'AddPayment'>;
 
-const AddPaymentScreen = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const route = useRoute<AddPaymentRouteProp>();
+export const AddPaymentScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { colors: P, styles } = useThemedStyles(makeStyles);
   const { clientId, orderId } = route.params;
 
-  const { clients, orders, addPayment } = useAppStore();
-  const client = clients.find((c) => c.id === clientId);
-  const clientOrders = orders.filter((o) => o.clientId === clientId);
+  const { getClientById, getOrdersByClient, addPayment } = useAppStore();
+  const client = getClientById(clientId);
+  const clientOrders = getOrdersByClient(clientId).filter(
+    o => o.orderStatus !== 'cancelled' && o.orderStatus !== 'annulee',
+  );
 
-  const [selectedOrderId, setSelectedOrderId] = useState<string | undefined>(orderId);
+  const [selectedOrderId, setSelectedOrderId] = useState(orderId ?? clientOrders.find(o => o.remainingAmount > 0)?.id);
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<Payment['method']>('cash');
+  const [method, setMethod] = useState<ModePaiement>('cash');
+  const [typePaiement, setTypePaiement] = useState<TypePaiement>('acompte');
   const [notes, setNotes] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const selectedOrder = clientOrders.find((o) => o.id === selectedOrderId);
-  const remainingAmount = selectedOrder 
-    ? selectedOrder.totalAmount - selectedOrder.paidAmount 
-    : 0;
+  const selectedOrder = clientOrders.find(o => o.id === selectedOrderId);
+  const remaining = selectedOrder?.remainingAmount ?? 0;
 
-  const paymentMethods: { value: Payment['method']; label: string; icon: keyof typeof Feather.glyphMap }[] = [
-    { value: 'cash', label: 'Especes', icon: 'dollar-sign' },
-    { value: 'mobile_money', label: 'Mobile Money', icon: 'smartphone' },
-    { value: 'bank_transfer', label: 'Virement', icon: 'credit-card' },
-    //{ value: 'card', label: 'Carte', icon: 'credit-card' },
-    { value: 'other', label: 'Autre', icon: 'more-horizontal' },
-  ];
+  const parsedAmount = useMemo(() => {
+    const n = Number(amount.replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  }, [amount]);
 
-  const handleSubmit = async () => {
-    if (!selectedOrderId) {
-      Alert.alert('Erreur', 'Veuillez selectionner une commande');
+  const submit = async () => {
+    if (!selectedOrderId || !selectedOrder) {
+      showAlert('Commande', 'Choisissez une commande à solder.');
       return;
     }
-
-    const amountValue = parseFloat(amount.replace(/\s/g, ''));
-    if (isNaN(amountValue) || amountValue <= 0) {
-      Alert.alert('Erreur', 'Veuillez entrer un montant valide');
+    if (parsedAmount <= 0) {
+      showAlert('Montant', 'Entrez un montant valide.');
       return;
     }
-
-    if (amountValue > remainingAmount) {
-      Alert.alert(
-        'Attention',
-        `Le montant depasse le reste a payer (${formatCurrency(remainingAmount)}). Voulez-vous continuer?`,
-        [
-          { text: 'Annuler', style: 'cancel' },
-          { text: 'Continuer', onPress: () => submitPayment(amountValue) },
-        ]
-      );
-      return;
-    }
-
-    submitPayment(amountValue);
-  };
-
-  const submitPayment = async (amountValue: number) => {
-    setIsSubmitting(true);
-    try {
-      const newPayment: Payment = {
-        id: `payment_${Date.now()}`,
-        orderId: selectedOrderId!,
+    const run = async () => {
+      setSaving(true);
+      const result = await addPayment({
+        orderId: selectedOrderId,
+        projectId: selectedOrder.projectId,
         clientId,
-        amount: amountValue,
-        date: new Date(),
-        method: paymentMethod,
-        notes: notes || undefined,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      addPayment(newPayment);
-      Alert.alert('Succes', 'Paiement enregistre avec succes', [
-        { text: 'OK', onPress: () => navigation.goBack() },
+        amount: parsedAmount,
+        method,
+        typePaiement,
+        notes: notes.trim() || undefined,
+      });
+      setSaving(false);
+      if (!result) {
+        showAlert('Erreur', "Impossible d'enregistrer le paiement.");
+        return;
+      }
+      showSuccess('Paiement enregistré', `${formatCurrency(parsedAmount)} a été encaissé.`, () => navigation.goBack());
+    };
+    if (parsedAmount > remaining) {
+      showAlert('Montant supérieur au reste', `Reste dû : ${formatCurrency(remaining)}. Continuer ?`, [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Enregistrer', onPress: run },
       ]);
-    } catch (error) {
-      Alert.alert('Erreur', 'Une erreur est survenue lors de l\'enregistrement');
-    } finally {
-      setIsSubmitting(false);
+      return;
     }
-  };
-
-  const setFullAmount = () => {
-    setAmount(remainingAmount.toString());
+    await run();
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <Header
-        title="Enregistrer un paiement"
-        showBack
-        onBack={() => navigation.goBack()}
-      />
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Client Info */}
-          {client && (
-            <Card style={styles.clientCard}>
-              <View style={styles.clientInfo}>
-                <View style={styles.clientAvatar}>
-                  <Text style={styles.clientInitial}>
-                    {client.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.clientDetails}>
-                  <Text style={styles.clientName}>{client.name}</Text>
-                  <Text style={styles.clientPhone}>{client.phone}</Text>
-                </View>
-              </View>
-            </Card>
-          )}
-
-          {/* Order Selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Commande</Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.ordersScroll}
-            >
-              {clientOrders.map((order) => {
-                const remaining = order.totalAmount - order.paidAmount;
-                const isSelected = selectedOrderId === order.id;
-                
-                return (
-                  <TouchableOpacity
-                    key={order.id}
-                    style={[
-                      styles.orderCard,
-                      isSelected && styles.orderCardSelected,
-                    ]}
-                    onPress={() => setSelectedOrderId(order.id)}
-                  >
-                    <Text style={[
-                      styles.orderTitle,
-                      isSelected && styles.orderTitleSelected,
-                    ]}>
-                      {order.garmentType}
-                    </Text>
-                    <Text style={[
-                      styles.orderAmount,
-                      isSelected && styles.orderAmountSelected,
-                    ]}>
-                      Reste: {formatCurrency(remaining)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          {/* Amount Input */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Montant</Text>
-              {selectedOrder && remainingAmount > 0 && (
-                <TouchableOpacity onPress={setFullAmount}>
-                  <Text style={styles.fullAmountLink}>
-                    Payer tout ({formatCurrency(remainingAmount)})
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <Input
-              placeholder="0"
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="numeric"
-              rightIcon={<Text style={styles.currencyLabel}>FCFA</Text>}
-            />
-            {selectedOrder && (
-              <Text style={styles.remainingText}>
-                Reste a payer: {formatCurrency(remainingAmount)}
-              </Text>
-            )}
-          </View>
-
-          {/* Payment Method */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Mode de paiement</Text>
-            <View style={styles.methodsGrid}>
-              {paymentMethods.map((method) => (
-                <TouchableOpacity
-                  key={method.value}
-                  style={[
-                    styles.methodButton,
-                    paymentMethod === method.value && styles.methodButtonSelected,
-                  ]}
-                  onPress={() => setPaymentMethod(method.value)}
-                >
-                  <Feather
-                    name={method.icon}
-                    size={20}
-                    color={paymentMethod === method.value ? COLORS.white : COLORS.textSecondary}
-                  />
-                  <Text style={[
-                    styles.methodLabel,
-                    paymentMethod === method.value && styles.methodLabelSelected,
-                  ]}>
-                    {method.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Notes */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Notes (optionnel)</Text>
-            <Input
-              placeholder="Ajouter une note..."
-              value={notes}
-              onChangeText={setNotes}
-              multiline
-              numberOfLines={3}
-            />
-          </View>
-        </ScrollView>
-
-        {/* Submit Button */}
-        <View style={styles.footer}>
-          <Button
-            title="Enregistrer le paiement"
-            onPress={handleSubmit}
-            loading={isSubmitting}
-            disabled={!selectedOrderId || !amount}
-            fullWidth
-          />
+    <KeyboardAvoidingView style={[styles.root, { paddingTop: insets.top }]} behavior={keyboardAvoidBehavior} keyboardVerticalOffset={insets.top}>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={18} color={P.text} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.kicker}>Atelier</Text>
+          <Text style={styles.headerTitle}>Encaisser</Text>
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {client ? (
+          <View style={styles.clientRow}>
+            <Avatar source={client.photo} name={client.nom} size={44} />
+            <View>
+              <Text style={styles.clientName}>{client.nom}</Text>
+              <Text style={styles.clientSub}>{client.telephone}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        <Text style={styles.section}>Commande</Text>
+        {clientOrders.length === 0 ? (
+          <Text style={styles.emptyHint}>Aucune commande pour ce client.</Text>
+        ) : (
+          clientOrders.map((o) => {
+            const on = o.id === selectedOrderId;
+            return (
+              <TouchableOpacity key={o.id} style={[styles.orderCard, on && styles.orderOn]} onPress={() => setSelectedOrderId(o.id)}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.orderTitle, on && { color: '#fff' }]}>{o.numeroCommande ?? 'Commande'}</Text>
+                  <Text style={[styles.orderSub, on && { color: 'rgba(255,255,255,0.7)' }]}>
+                    Total {formatCurrency(o.totalPrice)} · reste {formatCurrency(o.remainingAmount)}
+                  </Text>
+                </View>
+                {on ? <Ionicons name="checkmark" size={16} color={P.gold} /> : null}
+              </TouchableOpacity>
+            );
+          })
+        )}
+
+        <Text style={styles.section}>Montant</Text>
+        <View style={styles.amountWrap}>
+          <TextInput
+            style={styles.amountInput}
+            keyboardType="decimal-pad"
+            placeholder="0"
+            placeholderTextColor={P.muted}
+            value={amount}
+            onChangeText={setAmount}
+          />
+          {remaining > 0 && (
+            <TouchableOpacity onPress={() => setAmount(String(remaining))}>
+              <Text style={styles.soldeLink}>Solde {formatCurrency(remaining)}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <Text style={styles.section}>Type</Text>
+        <View style={styles.pills}>
+          {TYPES_PAIEMENT.map((t) => {
+            const on = typePaiement === t;
+            return (
+              <TouchableOpacity key={t} style={[styles.pill, on && styles.pillOn]} onPress={() => setTypePaiement(t)}>
+                <Text style={[styles.pillText, on && styles.pillTextOn]}>{TYPE_PAIEMENT_META[t].label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.section}>Mode</Text>
+        <View style={styles.pills}>
+          {MODES_PAIEMENT.map((m) => {
+            const on = method === m;
+            return (
+              <TouchableOpacity key={m} style={[styles.pill, on && styles.pillOn]} onPress={() => setMethod(m)}>
+                <Text style={[styles.pillText, on && styles.pillTextOn]}>{MODE_PAIEMENT_META[m].label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.section}>Note (optionnel)</Text>
+        <TextInput
+          style={styles.note}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="Référence, opérateur…"
+          placeholderTextColor={P.muted}
+        />
+      </ScrollView>
+
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
+        <TouchableOpacity style={[styles.submit, saving && { opacity: 0.6 }]} onPress={submit} disabled={saving}>
+          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Enregistrer le paiement</Text>}
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
+const makeStyles = (P: Palette) => ({
+  root: { flex: 1, backgroundColor: P.pageBg },
+  header: {
+    flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 12,
+    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
   },
-  keyboardView: {
-    flex: 1,
+  backBtn: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: P.surface,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+    borderWidth: 0.5, borderColor: P.borderHard, marginTop: 4,
   },
-  scrollView: {
-    flex: 1,
+  kicker: {
+    fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold,
+    letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
   },
-  scrollContent: {
-    padding: SPACING.md,
-  },
-  clientCard: {
-    marginBottom: SPACING.md,
-  },
-  clientInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  clientAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  clientInitial: {
-    ...Typography.h3,
-    color: COLORS.white,
-  },
-  clientDetails: {
-    marginLeft: SPACING.md,
-  },
-  clientName: {
-    ...Typography.h4,
-    color: COLORS.text,
-  },
-  clientPhone: {
-    ...Typography.bodySmall,
-    color: COLORS.textSecondary,
-  },
+  headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
+  scroll: { paddingHorizontal: 20, paddingBottom: 24 },
+  clientRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, marginBottom: 8 },
+  clientName: { fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+  clientSub: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, marginTop: 2 },
   section: {
-    marginBottom: SPACING.lg,
+    fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub,
+    letterSpacing: 1.2, textTransform: 'uppercase' as const, marginTop: 18, marginBottom: 8,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  sectionTitle: {
-    ...Typography.h4,
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  ordersScroll: {
-    marginHorizontal: -SPACING.md,
-    paddingHorizontal: SPACING.md,
-  },
+  emptyHint: { fontSize: 13, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
   orderCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: SPACING.md,
-    marginRight: SPACING.sm,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    minWidth: 140,
+    flexDirection: 'row' as const, alignItems: 'center' as const,
+    backgroundColor: P.surface, borderRadius: 16, padding: 14, marginBottom: 8,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
-  orderCardSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryLight,
+  orderOn: { backgroundColor: P.bg, borderColor: P.goldRim },
+  orderTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
+  orderSub: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub, marginTop: 2 },
+  amountWrap: {
+    backgroundColor: P.surface, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 8,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
-  orderTitle: {
-    ...Typography.body,
-    color: COLORS.text,
-    marginBottom: 4,
+  amountInput: { fontSize: 28, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, paddingVertical: 6 },
+  soldeLink: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.primary, marginBottom: 8 },
+  pills: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
+  pill: {
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
   },
-  orderTitleSelected: {
-    color: COLORS.primary,
-    fontWeight: '600',
+  pillOn: { backgroundColor: P.bg, borderColor: P.goldRim },
+  pillText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: P.sub },
+  pillTextOn: { color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold' },
+  note: {
+    backgroundColor: P.surface, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 14, fontFamily: 'PlusJakartaSans_500Medium', color: P.text,
+    borderWidth: 0.5, borderColor: P.borderHard,
   },
-  orderAmount: {
-    ...Typography.bodySmall,
-    color: COLORS.textSecondary,
+  footer: { paddingHorizontal: 20, paddingTop: 12, borderTopWidth: 0.5, borderTopColor: P.borderHard, backgroundColor: P.pageBg },
+  submit: {
+    backgroundColor: P.bg, borderRadius: 16, paddingVertical: 16, alignItems: 'center' as const,
+    borderWidth: 1, borderColor: P.goldRim,
   },
-  orderAmountSelected: {
-    color: COLORS.primary,
-  },
-  fullAmountLink: {
-    ...Typography.bodySmall,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  currencyLabel: {
-    ...Typography.body,
-    color: COLORS.textSecondary,
-  },
-  remainingText: {
-    ...Typography.bodySmall,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
-  },
-  methodsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -4,
-  },
-  methodButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderRadius: 8,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    marginRight: SPACING.xs,
-    marginBottom: SPACING.xs,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  methodButtonSelected: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  methodLabel: {
-    ...Typography.bodySmall,
-    color: COLORS.textSecondary,
-    marginLeft: SPACING.xs,
-  },
-  methodLabelSelected: {
-    color: COLORS.white,
-  },
-  footer: {
-    padding: SPACING.md,
-    backgroundColor: COLORS.white,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
+  submitText: { color: '#fff', fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold' },
 });
 
 export default AddPaymentScreen;

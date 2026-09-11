@@ -169,7 +169,7 @@ export interface Payment {
 }
 
 // Modèle de catalogue
-export interface CatalogModel {
+/*export interface CatalogModel {
   id: string;
   couturierId: string;
   nom: string;
@@ -182,6 +182,24 @@ export interface CatalogModel {
   tissusRecommandes: string[];
   accessoiresNecessaires: string[];
   statut: 'public' | 'prive';
+  isFavorite: boolean;
+  createdAt: Date;
+  deletedAt: Date | null;
+}*/
+
+export interface CatalogModel {
+  id: string;
+  couturierId: string;
+  nom: string;                    // ← français
+  categorie: CatalogCategory;     // ← français
+  description?: string;
+  photos: string[];
+  prixIndicatif: number;          // ← français
+  difficulte: 'facile' | 'moyen' | 'difficile';       // requis, pas optionnel
+  tempsMoyenRealisation: number | null;                // requis
+  tissusRecommandes: string[];                          // requis
+  accessoiresNecessaires: string[];                     // requis
+  statut: 'public' | 'prive';                           // requis
   isFavorite: boolean;
   createdAt: Date;
   deletedAt: Date | null;
@@ -468,6 +486,7 @@ export type RootStackParamList = {
   Settings: undefined;
   Profile: undefined;
   Statistics: undefined;
+  Notifications: undefined;
 };
 
 export type TabParamList = {

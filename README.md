@@ -6,36 +6,42 @@ Application mobile **React Native / Expo** connectée à **Supabase** pour gére
 
 ## Stack technique
 
-| Couche | Technologie |
-|---|---|
-| Mobile | React Native 0.79 + Expo SDK 54 |
-| Langage | TypeScript strict |
-| Navigation | React Navigation (bottom tabs + native stack) |
-| État global | Zustand |
-| Backend | Supabase (Auth + PostgreSQL + Storage) |
-| Graphiques | react-native-chart-kit + react-native-svg |
+
+| Couche      | Technologie                                   |
+| ----------- | --------------------------------------------- |
+| Mobile      | React Native 0.79 + Expo SDK 54               |
+| Langage     | TypeScript strict                             |
+| Navigation  | React Navigation (bottom tabs + native stack) |
+| État global | Zustand                                       |
+| Backend     | Supabase (Auth + PostgreSQL + Storage)        |
+| Graphiques  | react-native-chart-kit + react-native-svg     |
+
 
 ---
 
 ## Modules implémentés
 
-| # | Module | Description |
-|---|---|---|
-| 0 | Auth & Profil couturier | OTP par téléphone, profil atelier, paramètres devise/langue/unité |
-| 1 | Tableau de bord | KPIs temps réel, livraisons du jour, retards, filtres période |
-| 2 | Gestion des clients | CRUD clients, soft delete, fiche agrégée |
-| 3 | Fiches de mensuration | JSON versionnées par type de vêtement |
-| 4 | Catalogue de modèles | Modèles publics/privés, photos, difficulté |
-| 5 | Réalisations | 1-N par commande, photos Supabase Storage |
-| 6 | Tissus | Catalogue tissus de l'atelier, photos |
-| 7 | Commandes | Cycle de vie complet, Kanban, numérotation CMD-YYYY-NNNN |
-| 8 | Paiements | Types acompte/intermédiaire/solde, reçu PDF partageable |
-| 9 | Comptabilité | Agrégation pure (revenus, encaissements, débiteurs), export CSV |
-| 10 | Recherche globale | Full-Text Search PostgreSQL, filtres statut + dates |
-| 11 | Galerie | Grille photos par catégorie, publication catalogue |
-| 12 | Statistiques | Graphiques BarChart + PieChart, top clients, top modèles, export CSV |
+
+| #   | Module                  | Description                                                          |
+| --- | ----------------------- | -------------------------------------------------------------------- |
+| 0   | Auth & Profil couturier | OTP par téléphone, profil atelier, paramètres devise/langue/unité    |
+| 1   | Tableau de bord         | KPIs temps réel, livraisons du jour, retards, filtres période        |
+| 2   | Gestion des clients     | CRUD clients, soft delete, fiche agrégée                             |
+| 3   | Fiches de mensuration   | JSON versionnées par type de vêtement                                |
+| 4   | Catalogue de modèles    | Modèles publics/privés, photos, difficulté                           |
+| 5   | Réalisations            | 1-N par commande, photos Supabase Storage                            |
+| 6   | Tissus                  | Catalogue tissus de l'atelier, photos                                |
+| 7   | Commandes               | Cycle de vie complet, Kanban, numérotation CMD-YYYY-NNNN             |
+| 8   | Paiements               | Types acompte/intermédiaire/solde, reçu PDF partageable              |
+| 9   | Comptabilité            | Agrégation pure (revenus, encaissements, débiteurs), export CSV      |
+| 10  | Recherche globale       | Full-Text Search PostgreSQL, filtres statut + dates                  |
+| 11  | Galerie                 | Grille photos par catégorie, publication catalogue                   |
+| 12  | Statistiques            | Graphiques BarChart + PieChart, top clients, top modèles, export CSV |
+
 
 ---
+
+
 
 ## Lancer l'application
 
@@ -48,6 +54,8 @@ Le workflow **Start application** démarre automatiquement ce commande.
 
 ---
 
+
+
 ## Configuration Supabase
 
 L'URL et la clé publique sont dans `src/lib/supabase.ts`.  
@@ -55,7 +63,11 @@ Toutes les migrations ci-dessous se collent dans **Supabase → SQL Editor → N
 
 ---
 
+
+
 ## Schéma complet — tables, colonnes, types
+
+
 
 ### Vue d'ensemble des tables
 
@@ -79,216 +91,258 @@ Buckets Storage :
 
 ---
 
+
+
 ### Table : `users` (profil couturier)
 
 > Étend la table `users` déjà créée par Supabase Auth.  
 > **Ne pas recréer** — utiliser uniquement les `ALTER TABLE` des migrations 001 et 002.
 
-| Colonne | Type | Contrainte | Note |
-|---|---|---|---|
-| id | UUID | PK, FK auth.users | Géré par Supabase Auth |
-| phone | TEXT | UNIQUE (index partiel) | Numéro de connexion OTP |
-| whatsapp | TEXT | | Peut différer du téléphone |
-| adresse | TEXT | | Adresse de l'atelier |
-| horaires | JSONB | DEFAULT '{}' | `{lundi:"8h-18h", ...}` |
-| reseaux_sociaux | JSONB | DEFAULT '{}' | `{facebook, instagram, ...}` |
-| description | TEXT | | Bio de l'atelier |
-| statut_catalogue | TEXT | CHECK (public/prive) | DEFAULT 'prive' |
-| plan_abonnement | TEXT | CHECK (gratuit/pro/business) | DEFAULT 'gratuit' |
-| city | TEXT | | Ville de l'atelier |
-| district | TEXT | | Quartier |
-| specialities | TEXT[] | DEFAULT '{}' | Spécialités du couturier |
-| avatar_url | TEXT | | Photo de profil |
-| devise | TEXT | CHECK (XAF/EUR/USD/GBP/GHS/NGN/KES) | DEFAULT 'XAF' |
-| langue | TEXT | CHECK (fr/en) | DEFAULT 'fr' |
-| unite_mesure | TEXT | CHECK (cm/pouces) | DEFAULT 'cm' |
+
+| Colonne          | Type   | Contrainte                          | Note                         |
+| ---------------- | ------ | ----------------------------------- | ---------------------------- |
+| id               | UUID   | PK, FK auth.users                   | Géré par Supabase Auth       |
+| phone            | TEXT   | UNIQUE (index partiel)              | Numéro de connexion OTP      |
+| whatsapp         | TEXT   |                                     | Peut différer du téléphone   |
+| adresse          | TEXT   |                                     | Adresse de l'atelier         |
+| horaires         | JSONB  | DEFAULT '{}'                        | `{lundi:"8h-18h", ...}`      |
+| reseaux_sociaux  | JSONB  | DEFAULT '{}'                        | `{facebook, instagram, ...}` |
+| description      | TEXT   |                                     | Bio de l'atelier             |
+| statut_catalogue | TEXT   | CHECK (public/prive)                | DEFAULT 'prive'              |
+| plan_abonnement  | TEXT   | CHECK (gratuit/pro/business)        | DEFAULT 'gratuit'            |
+| city             | TEXT   |                                     | Ville de l'atelier           |
+| district         | TEXT   |                                     | Quartier                     |
+| specialities     | TEXT[] | DEFAULT '{}'                        | Spécialités du couturier     |
+| avatar_url       | TEXT   |                                     | Photo de profil              |
+| devise           | TEXT   | CHECK (XAF/EUR/USD/GBP/GHS/NGN/KES) | DEFAULT 'XAF'                |
+| langue           | TEXT   | CHECK (fr/en)                       | DEFAULT 'fr'                 |
+| unite_mesure     | TEXT   | CHECK (cm/pouces)                   | DEFAULT 'cm'                 |
+
 
 ---
+
+
 
 ### Table : `clients`
 
 > Table pré-existante modifiée par la migration 003.
 
-| Colonne | Type | Contrainte | Note |
-|---|---|---|---|
-| id | UUID | PK DEFAULT gen_random_uuid() | |
-| couturier_id | UUID | FK auth.users | était `user_id` |
-| nom | TEXT | NOT NULL | était `full_name` |
-| telephone | TEXT | NOT NULL | |
-| whatsapp | TEXT | | |
-| email | TEXT | | |
-| adresse | TEXT | | était `neighborhood` |
-| sexe | TEXT | CHECK (homme/femme/autre) | était `gender` en anglais |
-| date_naissance | DATE | | |
-| photo_url | TEXT | | |
-| notes_internes | TEXT | | Privées, non visibles clients |
-| is_favorite | BOOLEAN | DEFAULT false | |
-| balance | NUMERIC | DEFAULT 0 | |
-| deleted_at | TIMESTAMPTZ | | NULL = actif (soft delete) |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | |
-| updated_at | TIMESTAMPTZ | DEFAULT NOW() | |
+
+| Colonne        | Type        | Contrainte                   | Note                          |
+| -------------- | ----------- | ---------------------------- | ----------------------------- |
+| id             | UUID        | PK DEFAULT gen_random_uuid() |                               |
+| couturier_id   | UUID        | FK auth.users                | était `user_id`               |
+| nom            | TEXT        | NOT NULL                     | était `full_name`             |
+| telephone      | TEXT        | NOT NULL                     |                               |
+| whatsapp       | TEXT        |                              |                               |
+| email          | TEXT        |                              |                               |
+| adresse        | TEXT        |                              | était `neighborhood`          |
+| sexe           | TEXT        | CHECK (homme/femme/autre)    | était `gender` en anglais     |
+| date_naissance | DATE        |                              |                               |
+| photo_url      | TEXT        |                              |                               |
+| notes_internes | TEXT        |                              | Privées, non visibles clients |
+| is_favorite    | BOOLEAN     | DEFAULT false                |                               |
+| balance        | NUMERIC     | DEFAULT 0                    |                               |
+| deleted_at     | TIMESTAMPTZ |                              | NULL = actif (soft delete)    |
+| created_at     | TIMESTAMPTZ | DEFAULT NOW()                |                               |
+| updated_at     | TIMESTAMPTZ | DEFAULT NOW()                |                               |
+
 
 ---
+
+
 
 ### Table : `catalog`
 
 > Table pré-existante modifiée par la migration 004.
 
-| Colonne | Type | Contrainte | Note |
-|---|---|---|---|
-| id | UUID | PK DEFAULT gen_random_uuid() | |
-| couturier_id | UUID | FK auth.users | était `user_id` |
-| name | TEXT | NOT NULL | Nom du modèle |
-| category | TEXT | NOT NULL | femme/homme/enfant/mariage/... |
-| description | TEXT | | |
-| photos | TEXT[] | DEFAULT '{}' | URLs Supabase Storage |
-| price | NUMERIC | DEFAULT 0 | Prix indicatif |
-| is_favorite | BOOLEAN | DEFAULT false | |
-| difficulte | TEXT | CHECK (facile/moyen/difficile) | DEFAULT 'moyen' |
-| temps_moyen_realisation | INTEGER | | En heures |
-| tissus_recommandes | TEXT[] | DEFAULT '{}' | |
-| accessoires_necessaires | TEXT[] | DEFAULT '{}' | |
-| statut | TEXT | CHECK (public/prive) | DEFAULT 'prive' |
-| deleted_at | TIMESTAMPTZ | | Soft delete |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | |
+
+| Colonne                 | Type        | Contrainte                     | Note                           |
+| ----------------------- | ----------- | ------------------------------ | ------------------------------ |
+| id                      | UUID        | PK DEFAULT gen_random_uuid()   |                                |
+| couturier_id            | UUID        | FK auth.users                  | était `user_id`                |
+| name                    | TEXT        | NOT NULL                       | Nom du modèle                  |
+| category                | TEXT        | NOT NULL                       | femme/homme/enfant/mariage/... |
+| description             | TEXT        |                                |                                |
+| photos                  | TEXT[]      | DEFAULT '{}'                   | URLs Supabase Storage          |
+| price                   | NUMERIC     | DEFAULT 0                      | Prix indicatif                 |
+| is_favorite             | BOOLEAN     | DEFAULT false                  |                                |
+| difficulte              | TEXT        | CHECK (facile/moyen/difficile) | DEFAULT 'moyen'                |
+| temps_moyen_realisation | INTEGER     |                                | En heures                      |
+| tissus_recommandes      | TEXT[]      | DEFAULT '{}'                   |                                |
+| accessoires_necessaires | TEXT[]      | DEFAULT '{}'                   |                                |
+| statut                  | TEXT        | CHECK (public/prive)           | DEFAULT 'prive'                |
+| deleted_at              | TIMESTAMPTZ |                                | Soft delete                    |
+| created_at              | TIMESTAMPTZ | DEFAULT NOW()                  |                                |
+
 
 ---
+
+
 
 ### Table : `orders`
 
 > Table pré-existante modifiée par la migration 008.
 
-| Colonne | Type | Contrainte | Note |
-|---|---|---|---|
-| id | UUID | PK DEFAULT gen_random_uuid() | |
-| client_id | UUID | FK clients | |
-| client_name | TEXT | | Dénormalisé pour performance |
-| clothing_type | TEXT | | Type de vêtement |
-| description | TEXT | | |
-| delivery_date | DATE | | Date livraison prévue |
-| urgency_level | TEXT | | low/medium/high |
-| total_price | NUMERIC | DEFAULT 0 | Montant total |
-| advance_payment | NUMERIC | DEFAULT 0 | Acompte initial |
-| remaining_amount | NUMERIC | DEFAULT 0 | Solde restant |
-| payment_status | TEXT | | unpaid/partial/paid |
-| order_status | TEXT | | creee/en_confection/essayage/retouches/terminee/livree/annulee |
-| numero_commande | TEXT | | CMD-YYYY-NNNN (auto, migration 008) |
-| date_livraison_reelle | DATE | | Date effective de livraison (migration 008) |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | |
-| updated_at | TIMESTAMPTZ | DEFAULT NOW() | |
+
+| Colonne               | Type        | Contrainte                   | Note                                                           |
+| --------------------- | ----------- | ---------------------------- | -------------------------------------------------------------- |
+| id                    | UUID        | PK DEFAULT gen_random_uuid() |                                                                |
+| client_id             | UUID        | FK clients                   |                                                                |
+| client_name           | TEXT        |                              | Dénormalisé pour performance                                   |
+| clothing_type         | TEXT        |                              | Type de vêtement                                               |
+| description           | TEXT        |                              |                                                                |
+| delivery_date         | DATE        |                              | Date livraison prévue                                          |
+| urgency_level         | TEXT        |                              | low/medium/high                                                |
+| total_price           | NUMERIC     | DEFAULT 0                    | Montant total                                                  |
+| advance_payment       | NUMERIC     | DEFAULT 0                    | Acompte initial                                                |
+| remaining_amount      | NUMERIC     | DEFAULT 0                    | Solde restant                                                  |
+| payment_status        | TEXT        |                              | unpaid/partial/paid                                            |
+| order_status          | TEXT        |                              | creee/en_confection/essayage/retouches/terminee/livree/annulee |
+| numero_commande       | TEXT        |                              | CMD-YYYY-NNNN (auto, migration 008)                            |
+| date_livraison_reelle | DATE        |                              | Date effective de livraison (migration 008)                    |
+| created_at            | TIMESTAMPTZ | DEFAULT NOW()                |                                                                |
+| updated_at            | TIMESTAMPTZ | DEFAULT NOW()                |                                                                |
+
 
 ---
+
+
 
 ### Table : `payments`
 
 > Table pré-existante modifiée par la migration 009.
 
-| Colonne | Type | Contrainte | Note |
-|---|---|---|---|
-| id | UUID | PK DEFAULT gen_random_uuid() | |
-| order_id | UUID | FK orders | |
-| client_id | UUID | FK clients | |
-| amount | NUMERIC | NOT NULL | Montant du paiement |
-| date | DATE | DEFAULT CURRENT_DATE | |
-| method | TEXT | | cash/mobile_money/bank_transfer/card |
-| notes | TEXT | | |
-| type | TEXT | CHECK (acompte/paiement_intermediaire/solde_final) | DEFAULT 'acompte' |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | |
+
+| Colonne    | Type        | Contrainte                                         | Note                                 |
+| ---------- | ----------- | -------------------------------------------------- | ------------------------------------ |
+| id         | UUID        | PK DEFAULT gen_random_uuid()                       |                                      |
+| order_id   | UUID        | FK orders                                          |                                      |
+| client_id  | UUID        | FK clients                                         |                                      |
+| amount     | NUMERIC     | NOT NULL                                           | Montant du paiement                  |
+| date       | DATE        | DEFAULT CURRENT_DATE                               |                                      |
+| method     | TEXT        |                                                    | cash/mobile_money/bank_transfer/card |
+| notes      | TEXT        |                                                    |                                      |
+| type       | TEXT        | CHECK (acompte/paiement_intermediaire/solde_final) | DEFAULT 'acompte'                    |
+| created_at | TIMESTAMPTZ | DEFAULT NOW()                                      |                                      |
+
 
 ---
+
+
 
 ### Table : `activities`
 
 > Utilisée par le tableau de bord pour les activités récentes.
 
-| Colonne | Type | Note |
-|---|---|---|
-| id | UUID | PK |
-| activity_type | TEXT | new_order/payment_received/order_completed/new_client |
-| title | TEXT | |
-| subtitle | TEXT | |
-| amount | NUMERIC | |
-| client_id | UUID | |
-| order_id | UUID | |
-| created_at | TIMESTAMPTZ | |
+
+| Colonne       | Type        | Note                                                  |
+| ------------- | ----------- | ----------------------------------------------------- |
+| id            | UUID        | PK                                                    |
+| activity_type | TEXT        | new_order/payment_received/order_completed/new_client |
+| title         | TEXT        |                                                       |
+| subtitle      | TEXT        |                                                       |
+| amount        | NUMERIC     |                                                       |
+| client_id     | UUID        |                                                       |
+| order_id      | UUID        |                                                       |
+| created_at    | TIMESTAMPTZ |                                                       |
+
 
 ---
 
+
+
 ### Table : `fiches_mensuration` *(créée par migration 005)*
 
-| Colonne | Type | Contrainte | Note |
-|---|---|---|---|
-| id | UUID | PK DEFAULT gen_random_uuid() | |
-| client_id | UUID | FK clients ON DELETE CASCADE | |
-| couturier_id | UUID | FK auth.users ON DELETE CASCADE | ⚠️ voir note ci-dessous |
-| type_vetement | ENUM | robe/costume/chemise/pantalon/boubou/autre | |
-| date_prise | DATE | DEFAULT CURRENT_DATE | |
-| mesures | JSONB | NOT NULL DEFAULT '{}' | Toutes les mesures |
-| unite | ENUM | cm / pouces | DEFAULT 'cm' |
-| notes | TEXT | | |
-| is_active | BOOLEAN | DEFAULT false | 1 seule active par client/type |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | |
+
+| Colonne       | Type        | Contrainte                                 | Note                           |
+| ------------- | ----------- | ------------------------------------------ | ------------------------------ |
+| id            | UUID        | PK DEFAULT gen_random_uuid()               |                                |
+| client_id     | UUID        | FK clients ON DELETE CASCADE               |                                |
+| couturier_id  | UUID        | FK auth.users ON DELETE CASCADE            | ⚠️ voir note ci-dessous        |
+| type_vetement | ENUM        | robe/costume/chemise/pantalon/boubou/autre |                                |
+| date_prise    | DATE        | DEFAULT CURRENT_DATE                       |                                |
+| mesures       | JSONB       | NOT NULL DEFAULT '{}'                      | Toutes les mesures             |
+| unite         | ENUM        | cm / pouces                                | DEFAULT 'cm'                   |
+| notes         | TEXT        |                                            |                                |
+| is_active     | BOOLEAN     | DEFAULT false                              | 1 seule active par client/type |
+| created_at    | TIMESTAMPTZ | DEFAULT NOW()                              |                                |
+
 
 > ⚠️ **Note migration 005** : la FK `REFERENCES couturiers(id)` dans le fichier de migration suppose qu'une table `couturiers` existe. Si ce n'est pas le cas dans votre projet, remplacer par `REFERENCES auth.users(id)` avant d'exécuter.
 
 ---
 
+
+
 ### Table : `realisations` *(créée par migration 006)*
 
-| Colonne | Type | Contrainte | Note |
-|---|---|---|---|
-| id | UUID | PK DEFAULT gen_random_uuid() | |
-| couturier_id | UUID | FK auth.users ON DELETE CASCADE | |
-| client_id | UUID | FK clients ON DELETE CASCADE | |
-| commande_id | UUID | FK orders ON DELETE SET NULL | Ajouté par migration 008 |
-| modele_id | UUID | FK catalog ON DELETE SET NULL | |
-| fiche_mensuration_id | UUID | FK fiches_mensuration ON DELETE SET NULL | |
-| tissu_id | UUID | FK tissus ON DELETE SET NULL | Ajouté par migration 007 |
-| tissu_label | TEXT | | Libellé temporaire avant Module 6 |
-| couleur | TEXT | DEFAULT '' | |
-| accessoires | TEXT[] | DEFAULT '{}' | |
-| photos | TEXT[] | DEFAULT '{}' | URLs bucket `realisation-photos` |
-| observations | TEXT | | |
-| statut | ENUM | en_cours/essayage/corrections/terminee/livree | DEFAULT 'en_cours' |
-| date_creation | DATE | DEFAULT CURRENT_DATE | |
-| date_essayage | DATE | | |
-| date_livraison | DATE | | |
-| search_vector | TSVECTOR | GENERATED ALWAYS AS … STORED | FTS (migration 010) |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | |
+
+| Colonne              | Type        | Contrainte                                    | Note                              |
+| -------------------- | ----------- | --------------------------------------------- | --------------------------------- |
+| id                   | UUID        | PK DEFAULT gen_random_uuid()                  |                                   |
+| couturier_id         | UUID        | FK auth.users ON DELETE CASCADE               |                                   |
+| client_id            | UUID        | FK clients ON DELETE CASCADE                  |                                   |
+| commande_id          | UUID        | FK orders ON DELETE SET NULL                  | Ajouté par migration 008          |
+| modele_id            | UUID        | FK catalog ON DELETE SET NULL                 |                                   |
+| fiche_mensuration_id | UUID        | FK fiches_mensuration ON DELETE SET NULL      |                                   |
+| tissu_id             | UUID        | FK tissus ON DELETE SET NULL                  | Ajouté par migration 007          |
+| tissu_label          | TEXT        |                                               | Libellé temporaire avant Module 6 |
+| couleur              | TEXT        | DEFAULT ''                                    |                                   |
+| accessoires          | TEXT[]      | DEFAULT '{}'                                  |                                   |
+| photos               | TEXT[]      | DEFAULT '{}'                                  | URLs bucket `realisation-photos`  |
+| observations         | TEXT        |                                               |                                   |
+| statut               | ENUM        | en_cours/essayage/corrections/terminee/livree | DEFAULT 'en_cours'                |
+| date_creation        | DATE        | DEFAULT CURRENT_DATE                          |                                   |
+| date_essayage        | DATE        |                                               |                                   |
+| date_livraison       | DATE        |                                               |                                   |
+| search_vector        | TSVECTOR    | GENERATED ALWAYS AS … STORED                  | FTS (migration 010)               |
+| created_at           | TIMESTAMPTZ | DEFAULT NOW()                                 |                                   |
+
 
 ---
+
+
 
 ### Table : `tissus` *(créée par migration 007)*
 
-| Colonne | Type | Contrainte | Note |
-|---|---|---|---|
-| id | UUID | PK DEFAULT gen_random_uuid() | |
-| couturier_id | UUID | FK auth.users ON DELETE CASCADE | |
-| type_tissu | TEXT | NOT NULL | bazin/wax/satin/... |
-| nom_commercial | TEXT | NOT NULL | Nom du tissu |
-| couleur | TEXT | DEFAULT '' | |
-| fournisseur | TEXT | | |
-| prix_unitaire | NUMERIC(10,2) | DEFAULT 0 | Par mètre |
-| quantite_utilisee | NUMERIC(10,2) | DEFAULT 0 | Mètres consommés |
-| photo | TEXT | | URL bucket `tissu-photos` |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | |
-| updated_at | TIMESTAMPTZ | DEFAULT NOW() | Auto-mis à jour par trigger |
+
+| Colonne           | Type          | Contrainte                      | Note                        |
+| ----------------- | ------------- | ------------------------------- | --------------------------- |
+| id                | UUID          | PK DEFAULT gen_random_uuid()    |                             |
+| couturier_id      | UUID          | FK auth.users ON DELETE CASCADE |                             |
+| type_tissu        | TEXT          | NOT NULL                        | bazin/wax/satin/...         |
+| nom_commercial    | TEXT          | NOT NULL                        | Nom du tissu                |
+| couleur           | TEXT          | DEFAULT ''                      |                             |
+| fournisseur       | TEXT          |                                 |                             |
+| prix_unitaire     | NUMERIC(10,2) | DEFAULT 0                       | Par mètre                   |
+| quantite_utilisee | NUMERIC(10,2) | DEFAULT 0                       | Mètres consommés            |
+| photo             | TEXT          |                                 | URL bucket `tissu-photos`   |
+| created_at        | TIMESTAMPTZ   | DEFAULT NOW()                   |                             |
+| updated_at        | TIMESTAMPTZ   | DEFAULT NOW()                   | Auto-mis à jour par trigger |
+
 
 ---
+
+
 
 ### Table : `historique_statuts_commande` *(créée par migration 008)*
 
-| Colonne | Type | Note |
-|---|---|---|
-| id | UUID | PK |
-| commande_id | UUID | FK orders ON DELETE CASCADE |
-| couturier_id | UUID | FK auth.users ON DELETE CASCADE |
-| ancien_statut | TEXT | Statut précédent (NULL si création) |
-| nouveau_statut | TEXT | NOT NULL |
-| commentaire | TEXT | Note libre du couturier |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() |
+
+| Colonne        | Type        | Note                                |
+| -------------- | ----------- | ----------------------------------- |
+| id             | UUID        | PK                                  |
+| commande_id    | UUID        | FK orders ON DELETE CASCADE         |
+| couturier_id   | UUID        | FK auth.users ON DELETE CASCADE     |
+| ancien_statut  | TEXT        | Statut précédent (NULL si création) |
+| nouveau_statut | TEXT        | NOT NULL                            |
+| commentaire    | TEXT        | Note libre du couturier             |
+| created_at     | TIMESTAMPTZ | DEFAULT NOW()                       |
+
 
 ---
+
+
 
 ### Vue : `vue_solde_commande` *(créée par migration 009)*
 
@@ -299,6 +353,8 @@ Buckets Storage :
 ```
 
 ---
+
+
 
 ### Fonction : `rechercher_realisations()` *(créée par migration 010)*
 
@@ -319,12 +375,16 @@ SELECT * FROM rechercher_realisations(
 
 ---
 
+
+
 ## Migrations — SQL à exécuter dans l'ordre
 
 > **Copier chaque bloc dans Supabase → SQL Editor → Run.**  
 > Exécuter dans l'ordre numérique. Chaque migration est idempotente (`IF NOT EXISTS`, `IF EXISTS`).
 
 ---
+
+
 
 ### Migration 001 — Profil Couturier (colonnes `users`)
 
@@ -350,6 +410,8 @@ CREATE INDEX IF NOT EXISTS idx_users_statut_catalogue
 ```
 
 ---
+
+
 
 ### Migration 002 — Contraintes & Paramètres & RLS `users`
 
@@ -397,6 +459,8 @@ CREATE POLICY "users_delete_policy" ON users
 ```
 
 ---
+
+
 
 ### Migration 003 — Gestion des clients
 
@@ -465,6 +529,8 @@ CREATE POLICY clients_delete_policy ON clients
 
 ---
 
+
+
 ### Migration 004 — Catalogue de modèles
 
 ```sql
@@ -527,6 +593,8 @@ CREATE POLICY "catalog_delete_policy" ON catalog
 
 ---
 
+
+
 ### Migration 005 — Fiches de mensuration
 
 > ⚠️ La FK `REFERENCES couturiers(id)` suppose qu'une table `couturiers` existe.  
@@ -588,6 +656,8 @@ CREATE POLICY "couturier_fiches_delete" ON fiches_mensuration
 ```
 
 ---
+
+
 
 ### Migration 006 — Réalisations + bucket Storage `realisation-photos`
 
@@ -653,6 +723,8 @@ CREATE POLICY "couturier_supprime_photos"
 ```
 
 ---
+
+
 
 ### Migration 007 — Tissus + bucket Storage `tissu-photos`
 
@@ -723,6 +795,8 @@ CREATE POLICY "couturier_supprime_tissu_photo"
 ```
 
 ---
+
+
 
 ### Migration 008 — Commandes : numérotation + historique statuts
 
@@ -801,6 +875,8 @@ END $$;
 
 ---
 
+
+
 ### Migration 009 — Paiements : type + vue solde
 
 ```sql
@@ -841,6 +917,8 @@ GROUP  BY o.id, o.client_id, o.total_amount, o.advance_payment;
 ```
 
 ---
+
+
 
 ### Migration 010 — Recherche Full-Text Search (Module 10)
 
@@ -948,32 +1026,42 @@ GRANT EXECUTE ON FUNCTION rechercher_realisations(text,uuid,text,date,date)
 
 ---
 
+
+
 ## Résumé RLS (Row Level Security)
 
-| Table | SELECT | INSERT | UPDATE | DELETE |
-|---|---|---|---|---|
-| `users` | propre profil + profils publics | soi-même | soi-même | soi-même |
-| `clients` | mes clients (deleted_at IS NULL) | couturier_id = uid | couturier_id = uid | **bloqué** (soft delete) |
-| `catalog` | mes modèles + modèles publics de catalogues publics | couturier_id = uid | couturier_id = uid | **bloqué** (soft delete) |
-| `fiches_mensuration` | couturier_id = uid | couturier_id = uid | couturier_id = uid | couturier_id = uid |
-| `realisations` | couturier_id = uid | couturier_id = uid | couturier_id = uid | couturier_id = uid |
-| `tissus` | couturier_id = uid | couturier_id = uid | couturier_id = uid | couturier_id = uid |
-| `historique_statuts_commande` | couturier_id = uid | couturier_id = uid | couturier_id = uid | couturier_id = uid |
+
+| Table                         | SELECT                                              | INSERT             | UPDATE             | DELETE                   |
+| ----------------------------- | --------------------------------------------------- | ------------------ | ------------------ | ------------------------ |
+| `users`                       | propre profil + profils publics                     | soi-même           | soi-même           | soi-même                 |
+| `clients`                     | mes clients (deleted_at IS NULL)                    | couturier_id = uid | couturier_id = uid | **bloqué** (soft delete) |
+| `catalog`                     | mes modèles + modèles publics de catalogues publics | couturier_id = uid | couturier_id = uid | **bloqué** (soft delete) |
+| `fiches_mensuration`          | couturier_id = uid                                  | couturier_id = uid | couturier_id = uid | couturier_id = uid       |
+| `realisations`                | couturier_id = uid                                  | couturier_id = uid | couturier_id = uid | couturier_id = uid       |
+| `tissus`                      | couturier_id = uid                                  | couturier_id = uid | couturier_id = uid | couturier_id = uid       |
+| `historique_statuts_commande` | couturier_id = uid                                  | couturier_id = uid | couturier_id = uid | couturier_id = uid       |
+
 
 > Les tables `orders`, `payments`, `activities`, `measurements` conservent les politiques créées lors de la mise en place initiale de Supabase (non incluses dans ces migrations).
 
 ---
 
+
+
 ## Storage Buckets
 
-| Bucket | Visibilité | Chemin des objets | Utilisé par |
-|---|---|---|---|
-| `realisation-photos` | Public | `{uid}/{filename}` | Module 5 — Réalisations |
-| `tissu-photos` | Public | `{uid}/{filename}` | Module 6 — Tissus |
+
+| Bucket               | Visibilité | Chemin des objets  | Utilisé par             |
+| -------------------- | ---------- | ------------------ | ----------------------- |
+| `realisation-photos` | Public     | `{uid}/{filename}` | Module 5 — Réalisations |
+| `tissu-photos`       | Public     | `{uid}/{filename}` | Module 6 — Tissus       |
+
 
 > Les buckets sont créés par les migrations 006 et 007. Pas besoin de les créer manuellement dans le Dashboard Supabase.
 
 ---
+
+
 
 ## Structure du projet
 
@@ -1014,9 +1102,592 @@ supabase/
 
 ---
 
+
+
 ## Préférences utilisateur
 
 - Conserver la stack existante (pas de remplacement Firebase/Supabase)
 - Pas de migrations auto — exécuter dans Supabase SQL Editor manuellement
 - UI : palette violet foncé `#16123A` + or `#D4AF37` + fond clair `#F5F4FB`
 - Langue : français partout (labels, commentaires, noms de colonnes)
+
+
+
+## Table `users`
+
+
+
+### Columns
+
+
+| Name               | Type          | Constraints |
+| ------------------ | ------------- | ----------- |
+| `id`               | `uuid`        | Primary     |
+| `phone`            | `text`        | Nullable    |
+| `display_name`     | `text`        | Nullable    |
+| `atelier_name`     | `text`        | Nullable    |
+| `email`            | `text`        | Nullable    |
+| `role`             | `text`        | Nullable    |
+| `whatsapp`         | `text`        | Nullable    |
+| `adresse`          | `text`        | Nullable    |
+| `horaires`         | `jsonb`       | Nullable    |
+| `reseaux_sociaux`  | `jsonb`       | Nullable    |
+| `description`      | `text`        | Nullable    |
+| `statut_catalogue` | `text`        | Nullable    |
+| `plan_abonnement`  | `text`        | Nullable    |
+| `city`             | `text`        | Nullable    |
+| `district`         | `text`        | Nullable    |
+| `specialities`     | `_text`       | Nullable    |
+| `avatar_url`       | `text`        | Nullable    |
+| `devise`           | `text`        | Nullable    |
+| `langue`           | `text`        | Nullable    |
+| `unite_mesure`     | `text`        | Nullable    |
+| `created_at`       | `timestamptz` |             |
+
+
+
+
+## Table `clients`
+
+
+
+### Columns
+
+
+| Name             | Type          | Constraints |
+| ---------------- | ------------- | ----------- |
+| `id`             | `uuid`        | Primary     |
+| `couturier_id`   | `uuid`        |             |
+| `nom`            | `text`        |             |
+| `telephone`      | `text`        |             |
+| `whatsapp`       | `text`        | Nullable    |
+| `email`          | `text`        | Nullable    |
+| `adresse`        | `text`        | Nullable    |
+| `sexe`           | `text`        | Nullable    |
+| `date_naissance` | `date`        | Nullable    |
+| `photo_url`      | `text`        | Nullable    |
+| `notes_internes` | `text`        | Nullable    |
+| `is_favorite`    | `bool`        |             |
+| `balance`        | `numeric`     |             |
+| `deleted_at`     | `timestamptz` | Nullable    |
+| `created_at`     | `timestamptz` |             |
+| `updated_at`     | `timestamptz` |             |
+
+
+
+
+## Table `catalog`
+
+
+
+### Columns
+
+
+| Name                      | Type          | Constraints |
+| ------------------------- | ------------- | ----------- |
+| `id`                      | `uuid`        | Primary     |
+| `couturier_id`            | `uuid`        |             |
+| `name`                    | `text`        |             |
+| `category`                | `text`        |             |
+| `description`             | `text`        | Nullable    |
+| `photos`                  | `_text`       |             |
+| `price`                   | `numeric`     |             |
+| `is_favorite`             | `bool`        |             |
+| `difficulte`              | `text`        |             |
+| `temps_moyen_realisation` | `int4`        | Nullable    |
+| `tissus_recommandes`      | `_text`       |             |
+| `accessoires_necessaires` | `_text`       |             |
+| `statut`                  | `text`        |             |
+| `deleted_at`              | `timestamptz` | Nullable    |
+| `created_at`              | `timestamptz` |             |
+| `updated_at`              | `timestamptz` | Nullable    |
+
+
+
+
+## Table `orders`
+
+
+
+### Columns
+
+
+| Name                    | Type          | Constraints |
+| ----------------------- | ------------- | ----------- |
+| `id`                    | `uuid`        | Primary     |
+| `couturier_id`          | `uuid`        |             |
+| `client_id`             | `uuid`        |             |
+| `client_name`           | `text`        | Nullable    |
+| `clothing_type`         | `text`        | Nullable    |
+| `description`           | `text`        | Nullable    |
+| `delivery_date`         | `date`        | Nullable    |
+| `urgency_level`         | `text`        | Nullable    |
+| `total_price`           | `numeric`     |             |
+| `advance_payment`       | `numeric`     |             |
+| `remaining_amount`      | `numeric`     |             |
+| `payment_status`        | `text`        | Nullable    |
+| `order_status`          | `text`        | Nullable    |
+| `numero_commande`       | `text`        | Nullable    |
+| `date_livraison_reelle` | `date`        | Nullable    |
+| `created_at`            | `timestamptz` |             |
+| `updated_at`            | `timestamptz` |             |
+| `project_id`            | `uuid`        | Nullable    |
+| `participant_id`        | `uuid`        | Nullable    |
+| `fiche_mensuration_id`  | `uuid`        | Nullable    |
+| `catalog_id`            | `uuid`        | Nullable    |
+
+
+
+
+## Table `payments`
+
+
+
+### Columns
+
+
+| Name           | Type          | Constraints |
+| -------------- | ------------- | ----------- |
+| `id`           | `uuid`        | Primary     |
+| `couturier_id` | `uuid`        |             |
+| `order_id`     | `uuid`        | Nullable    |
+| `client_id`    | `uuid`        |             |
+| `amount`       | `numeric`     |             |
+| `date`         | `date`        |             |
+| `method`       | `text`        | Nullable    |
+| `notes`        | `text`        | Nullable    |
+| `type`         | `text`        | Nullable    |
+| `created_at`   | `timestamptz` |             |
+| `project_id`   | `uuid`        | Nullable    |
+
+
+
+
+## Table `activities`
+
+
+
+### Columns
+
+
+| Name            | Type          | Constraints |
+| --------------- | ------------- | ----------- |
+| `id`            | `uuid`        | Primary     |
+| `couturier_id`  | `uuid`        |             |
+| `activity_type` | `text`        | Nullable    |
+| `title`         | `text`        | Nullable    |
+| `subtitle`      | `text`        | Nullable    |
+| `amount`        | `numeric`     | Nullable    |
+| `client_id`     | `uuid`        | Nullable    |
+| `order_id`      | `uuid`        | Nullable    |
+| `created_at`    | `timestamptz` |             |
+
+
+
+
+## Table `fiches_mensuration`
+
+
+
+### Columns
+
+
+| Name              | Type                | Constraints |
+| ----------------- | ------------------- | ----------- |
+| `id`              | `uuid`              | Primary     |
+| `client_id`       | `uuid`              |             |
+| `couturier_id`    | `uuid`              |             |
+| `type_vetement`   | `text`              |             |
+| `date_prise`      | `date`              |             |
+| `mesures`         | `jsonb`             |             |
+| `unite`           | `unite_mesure_enum` |             |
+| `notes`           | `text`              | Nullable    |
+| `is_active`       | `bool`              |             |
+| `created_at`      | `timestamptz`       |             |
+| `order_id`        | `uuid`              | Nullable    |
+| `source_fiche_id` | `uuid`              | Nullable    |
+| `updated_at`      | `timestamptz`       | Nullable    |
+
+
+
+
+## Table `tissus`
+
+
+
+### Columns
+
+
+| Name                | Type          | Constraints |
+| ------------------- | ------------- | ----------- |
+| `id`                | `uuid`        | Primary     |
+| `couturier_id`      | `uuid`        |             |
+| `type_tissu`        | `text`        |             |
+| `nom_commercial`    | `text`        |             |
+| `couleur`           | `text`        |             |
+| `fournisseur`       | `text`        | Nullable    |
+| `prix_unitaire`     | `numeric`     |             |
+| `quantite_utilisee` | `numeric`     |             |
+| `photo`             | `text`        | Nullable    |
+| `created_at`        | `timestamptz` |             |
+| `updated_at`        | `timestamptz` |             |
+
+
+
+
+## Table `realisations`
+
+
+
+### Columns
+
+
+| Name                   | Type                 | Constraints |
+| ---------------------- | -------------------- | ----------- |
+| `id`                   | `uuid`               | Primary     |
+| `couturier_id`         | `uuid`               |             |
+| `client_id`            | `uuid`               |             |
+| `commande_id`          | `uuid`               | Nullable    |
+| `modele_id`            | `uuid`               | Nullable    |
+| `fiche_mensuration_id` | `uuid`               | Nullable    |
+| `tissu_id`             | `uuid`               | Nullable    |
+| `tissu_label`          | `text`               | Nullable    |
+| `couleur`              | `text`               |             |
+| `accessoires`          | `_text`              |             |
+| `photos`               | `_text`              |             |
+| `observations`         | `text`               | Nullable    |
+| `statut`               | `statut_realisation` |             |
+| `date_creation`        | `date`               |             |
+| `date_essayage`        | `date`               | Nullable    |
+| `date_livraison`       | `date`               | Nullable    |
+| `created_at`           | `timestamptz`        |             |
+| `search_vector`        | `tsvector`           | Nullable    |
+
+
+
+
+## Table `historique_statuts_commande`
+
+
+
+### Columns
+
+
+| Name             | Type          | Constraints |
+| ---------------- | ------------- | ----------- |
+| `id`             | `uuid`        | Primary     |
+| `commande_id`    | `uuid`        |             |
+| `couturier_id`   | `uuid`        |             |
+| `ancien_statut`  | `text`        | Nullable    |
+| `nouveau_statut` | `text`        |             |
+| `commentaire`    | `text`        | Nullable    |
+| `created_at`     | `timestamptz` |             |
+
+
+
+
+## Table `catalog_photos`
+
+
+
+### Columns
+
+
+| Name           | Type          | Constraints |
+| -------------- | ------------- | ----------- |
+| `id`           | `uuid`        | Primary     |
+| `catalog_id`   | `uuid`        |             |
+| `couturier_id` | `uuid`        |             |
+| `photo_url`    | `text`        |             |
+| `created_at`   | `timestamptz` |             |
+| `updated_at`   | `timestamptz` | Nullable    |
+
+
+
+
+## Table `order_items`
+
+
+
+### Columns
+
+
+| Name           | Type          | Constraints |
+| -------------- | ------------- | ----------- |
+| `id`           | `uuid`        | Primary     |
+| `order_id`     | `uuid`        |             |
+| `couturier_id` | `uuid`        |             |
+| `item_type`    | `text`        |             |
+| `photo_url`    | `text`        |             |
+| `created_at`   | `timestamptz` |             |
+| `catalog_id`   | `uuid`        | Nullable    |
+
+
+
+
+## Table `garment_measurement_fields`
+
+
+
+### Columns
+
+
+| Name            | Type          | Constraints |
+| --------------- | ------------- | ----------- |
+| `id`            | `uuid`        | Primary     |
+| `couturier_id`  | `uuid`        | Nullable    |
+| `type_vetement` | `text`        |             |
+| `field_key`     | `text`        |             |
+| `label`         | `text`        |             |
+| `unite_defaut`  | `text`        |             |
+| `sort_order`    | `int4`        |             |
+| `created_at`    | `timestamptz` |             |
+
+
+
+
+## Table `projects`
+
+
+
+### Columns
+
+
+| Name             | Type          | Constraints |
+| ---------------- | ------------- | ----------- |
+| `id`             | `uuid`        | Primary     |
+| `couturier_id`   | `uuid`        |             |
+| `client_id`      | `uuid`        |             |
+| `nom`            | `text`        |             |
+| `type_projet`    | `text`        | Nullable    |
+| `statut`         | `text`        |             |
+| `date_evenement` | `date`        | Nullable    |
+| `notes`          | `text`        | Nullable    |
+| `deleted_at`     | `timestamptz` | Nullable    |
+| `created_at`     | `timestamptz` |             |
+| `updated_at`     | `timestamptz` |             |
+
+
+
+
+## Table `project_participants`
+
+
+
+### Columns
+
+
+| Name           | Type          | Constraints |
+| -------------- | ------------- | ----------- |
+| `id`           | `uuid`        | Primary     |
+| `project_id`   | `uuid`        |             |
+| `couturier_id` | `uuid`        |             |
+| `client_id`    | `uuid`        | Nullable    |
+| `nom`          | `text`        |             |
+| `telephone`    | `text`        | Nullable    |
+| `role`         | `text`        | Nullable    |
+| `is_temporary` | `bool`        |             |
+| `created_at`   | `timestamptz` |             |
+
+
+
+
+## Custom Types / Enums
+
+
+
+### `type_vetement`
+
+`robe` | `costume` | `chemise` | `pantalon` | `boubou` | `autre`
+
+### `unite_mesure_enum`
+
+`cm` | `pouces`
+
+### `statut_realisation`
+
+`en_cours` | `essayage` | `corrections` | `terminee` | `livree`
+
+## RLS Policies
+
+
+
+### `users`
+
+
+| Policy                | Command | Roles  | Action     | USING                                                        | WITH CHECK          |
+| --------------------- | ------- | ------ | ---------- | ------------------------------------------------------------ | ------------------- |
+| `users_select_policy` | SELECT  | public | PERMISSIVE | `((auth.uid() = id) OR (statut_catalogue = 'public'::text))` | —                   |
+| `users_insert_policy` | INSERT  | public | PERMISSIVE | —                                                            | `(auth.uid() = id)` |
+| `users_update_policy` | UPDATE  | public | PERMISSIVE | `(auth.uid() = id)`                                          | `(auth.uid() = id)` |
+| `users_delete_policy` | DELETE  | public | PERMISSIVE | `(auth.uid() = id)`                                          | —                   |
+
+
+
+
+### `clients`
+
+
+| Policy                  | Command | Roles  | Action     | USING                                                    | WITH CHECK                    |
+| ----------------------- | ------- | ------ | ---------- | -------------------------------------------------------- | ----------------------------- |
+| `clients_select_policy` | SELECT  | public | PERMISSIVE | `((auth.uid() = couturier_id) AND (deleted_at IS NULL))` | —                             |
+| `clients_insert_policy` | INSERT  | public | PERMISSIVE | —                                                        | `(auth.uid() = couturier_id)` |
+| `clients_update_policy` | UPDATE  | public | PERMISSIVE | `(auth.uid() = couturier_id)`                            | —                             |
+| `clients_delete_policy` | DELETE  | public | PERMISSIVE | `false`                                                  | —                             |
+
+
+
+
+### `catalog`
+
+
+| Policy                  | Command | Roles  | Action     | USING                                                                                                                                                                                                                 | WITH CHECK                    |
+| ----------------------- | ------- | ------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `catalog_select_policy` | SELECT  | public | PERMISSIVE | `((deleted_at IS NULL) AND ((couturier_id = auth.uid()) OR ((statut = 'public'::text) AND (EXISTS ( SELECT 1 FROM users WHERE ((users.id = catalog.couturier_id) AND (users.statut_catalogue = 'public'::text)))))))` | —                             |
+| `catalog_insert_policy` | INSERT  | public | PERMISSIVE | —                                                                                                                                                                                                                     | `(couturier_id = auth.uid())` |
+| `catalog_update_policy` | UPDATE  | public | PERMISSIVE | `(couturier_id = auth.uid())`                                                                                                                                                                                         | —                             |
+| `catalog_delete_policy` | DELETE  | public | PERMISSIVE | `false`                                                                                                                                                                                                               | —                             |
+
+
+
+
+### `orders`
+
+
+| Policy                 | Command | Roles  | Action     | USING                         | WITH CHECK                    |
+| ---------------------- | ------- | ------ | ---------- | ----------------------------- | ----------------------------- |
+| `orders_select_policy` | SELECT  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+| `orders_insert_policy` | INSERT  | public | PERMISSIVE | —                             | `(couturier_id = auth.uid())` |
+| `orders_update_policy` | UPDATE  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+| `orders_delete_policy` | DELETE  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+
+
+
+
+### `payments`
+
+
+| Policy                   | Command | Roles  | Action     | USING                         | WITH CHECK                    |
+| ------------------------ | ------- | ------ | ---------- | ----------------------------- | ----------------------------- |
+| `payments_select_policy` | SELECT  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+| `payments_insert_policy` | INSERT  | public | PERMISSIVE | —                             | `(couturier_id = auth.uid())` |
+| `payments_update_policy` | UPDATE  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+| `payments_delete_policy` | DELETE  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+
+
+
+
+### `activities`
+
+
+| Policy                  | Command | Roles  | Action     | USING                         | WITH CHECK                    |
+| ----------------------- | ------- | ------ | ---------- | ----------------------------- | ----------------------------- |
+| `activities_all_policy` | ALL     | public | PERMISSIVE | `(couturier_id = auth.uid())` | `(couturier_id = auth.uid())` |
+
+
+
+
+### `fiches_mensuration`
+
+
+| Policy                    | Command | Roles  | Action     | USING                         | WITH CHECK                    |
+| ------------------------- | ------- | ------ | ---------- | ----------------------------- | ----------------------------- |
+| `couturier_fiches_select` | SELECT  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+| `couturier_fiches_insert` | INSERT  | public | PERMISSIVE | —                             | `(couturier_id = auth.uid())` |
+| `couturier_fiches_update` | UPDATE  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+| `couturier_fiches_delete` | DELETE  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+
+
+
+
+### `realisations`
+
+
+| Policy                            | Command | Roles  | Action     | USING                         | WITH CHECK                    |
+| --------------------------------- | ------- | ------ | ---------- | ----------------------------- | ----------------------------- |
+| `couturier_voit_ses_realisations` | ALL     | public | PERMISSIVE | `(couturier_id = auth.uid())` | `(couturier_id = auth.uid())` |
+
+
+
+
+### `tissus`
+
+
+| Policy                      | Command | Roles  | Action     | USING                         | WITH CHECK                    |
+| --------------------------- | ------- | ------ | ---------- | ----------------------------- | ----------------------------- |
+| `couturier_voit_ses_tissus` | ALL     | public | PERMISSIVE | `(couturier_id = auth.uid())` | `(couturier_id = auth.uid())` |
+
+
+
+
+### `historique_statuts_commande`
+
+
+| Policy                          | Command | Roles  | Action     | USING                         | WITH CHECK                    |
+| ------------------------------- | ------- | ------ | ---------- | ----------------------------- | ----------------------------- |
+| `couturier_voit_son_historique` | ALL     | public | PERMISSIVE | `(couturier_id = auth.uid())` | `(couturier_id = auth.uid())` |
+
+
+
+
+### `catalog_photos`
+
+
+| Policy                         | Command | Roles  | Action     | USING                         | WITH CHECK                    |
+| ------------------------------ | ------- | ------ | ---------- | ----------------------------- | ----------------------------- |
+| `catalog_photos_select_policy` | SELECT  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+| `catalog_photos_insert_policy` | INSERT  | public | PERMISSIVE | —                             | `(couturier_id = auth.uid())` |
+| `catalog_photos_delete_policy` | DELETE  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+
+
+
+
+### `garment_measurement_fields`
+
+
+| Policy              | Command | Roles  | Action     | USING                                                     | WITH CHECK                    |
+| ------------------- | ------- | ------ | ---------- | --------------------------------------------------------- | ----------------------------- |
+| `gmf_select_policy` | SELECT  | public | PERMISSIVE | `((couturier_id IS NULL) OR (couturier_id = auth.uid()))` | —                             |
+| `gmf_insert_policy` | INSERT  | public | PERMISSIVE | —                                                         | `(couturier_id = auth.uid())` |
+| `gmf_update_policy` | UPDATE  | public | PERMISSIVE | `(couturier_id = auth.uid())`                             | —                             |
+| `gmf_delete_policy` | DELETE  | public | PERMISSIVE | `(couturier_id = auth.uid())`                             | —                             |
+
+
+
+
+### `projects`
+
+
+| Policy                   | Command | Roles  | Action     | USING                                                    | WITH CHECK                    |
+| ------------------------ | ------- | ------ | ---------- | -------------------------------------------------------- | ----------------------------- |
+| `projects_select_policy` | SELECT  | public | PERMISSIVE | `((couturier_id = auth.uid()) AND (deleted_at IS NULL))` | —                             |
+| `projects_insert_policy` | INSERT  | public | PERMISSIVE | —                                                        | `(couturier_id = auth.uid())` |
+| `projects_update_policy` | UPDATE  | public | PERMISSIVE | `(couturier_id = auth.uid())`                            | —                             |
+| `projects_delete_policy` | DELETE  | public | PERMISSIVE | `false`                                                  | —                             |
+
+
+
+
+### `project_participants`
+
+
+| Policy             | Command | Roles  | Action     | USING                         | WITH CHECK                    |
+| ------------------ | ------- | ------ | ---------- | ----------------------------- | ----------------------------- |
+| `pp_select_policy` | SELECT  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+| `pp_insert_policy` | INSERT  | public | PERMISSIVE | —                             | `(couturier_id = auth.uid())` |
+| `pp_update_policy` | UPDATE  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+| `pp_delete_policy` | DELETE  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+
+
+
+
+### `order_items`
+
+
+| Policy                      | Command | Roles  | Action     | USING                         | WITH CHECK                    |
+| --------------------------- | ------- | ------ | ---------- | ----------------------------- | ----------------------------- |
+| `order_items_select_policy` | SELECT  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+| `order_items_insert_policy` | INSERT  | public | PERMISSIVE | —                             | `(couturier_id = auth.uid())` |
+| `order_items_delete_policy` | DELETE  | public | PERMISSIVE | `(couturier_id = auth.uid())` | —                             |
+
+

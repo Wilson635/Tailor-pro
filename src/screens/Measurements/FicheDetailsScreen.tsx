@@ -3,9 +3,10 @@
 // ==========================================
 
 import React, { useState } from 'react';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Alert, Share,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -111,11 +112,12 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     setIsActing(true);
     await setFicheActive(ficheId, clientId, fiche.typeVetement);
     setIsActing(false);
+    showSuccess('Fiche activée', 'Cette fiche est maintenant la référence pour ce type de vêtement.');
   };
 
   // ── Dupliquer ──
   const handleDuplicate = () => {
-    Alert.alert(
+    showAlert(
       'Dupliquer cette fiche ?',
       'Une copie sera créée avec la date d\'aujourd\'hui pour compléter les nouvelles mesures.',
       [
@@ -127,7 +129,9 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             const copy = await duplicateFiche(ficheId, clientId);
             setIsActing(false);
             if (copy) {
-              navigation.replace('FicheDetails', { ficheId: copy.id, clientId });
+              showSuccess('Fiche dupliquée', 'Une copie a été créée avec la date du jour.', () =>
+                navigation.replace('FicheDetails', { ficheId: copy.id, clientId }),
+              );
             }
           },
         },
@@ -137,7 +141,7 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // ── Supprimer ──
   const handleDelete = () => {
-    Alert.alert(
+    showAlert(
       'Supprimer cette fiche ?',
       'Cette action est irréversible. L\'historique de versioning sera conservé pour les autres fiches.',
       [
@@ -147,7 +151,7 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           style: 'destructive',
           onPress: async () => {
             await deleteFiche(ficheId, clientId);
-            navigation.goBack();
+            showSuccess('Fiche supprimée', 'Les mesures ont été retirées.', () => navigation.goBack());
           },
         },
       ]
@@ -157,7 +161,7 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   // ── Comparer ──
   const handleCompare = () => {
     if (otherFiches.length === 0) {
-      Alert.alert('Comparaison impossible', 'Il n\'y a pas d\'autre fiche pour ce type de vêtement.');
+      showAlert('Comparaison impossible', 'Il n\'y a pas d\'autre fiche pour ce type de vêtement.');
       return;
     }
     if (otherFiches.length === 1) {
@@ -171,7 +175,7 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       text: new Date(f.datePrise).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }),
       onPress: () => navigation.navigate('CompareFiches', { ficheId1: ficheId, ficheId2: f.id, clientId }),
     }));
-    Alert.alert('Comparer avec…', 'Choisissez une fiche de référence', [
+    showAlert('Comparer avec…', 'Choisissez une fiche de référence', [
       ...options,
       { text: 'Annuler', style: 'cancel' },
     ]);

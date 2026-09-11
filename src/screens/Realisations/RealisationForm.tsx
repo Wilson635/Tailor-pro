@@ -7,24 +7,28 @@
 // ==========================================
 
 import React, { useCallback, useState } from 'react';
+import { showAlert } from '@/src/context/DialogContext';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
-  Alert, ActivityIndicator, Image,
+  ActivityIndicator, Image, KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { keyboardAvoidBehavior } from '@components/ui';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAppStore } from '@store/useAppStore';
 import { COULEURS_RAPIDES } from '@constants/realisationConstants';
 import { TYPE_VETEMENT_LABELS } from '@constants/mensurationConstants';
+import { DateField } from '@components/ui';
 
 // ── PALETTE "ATELIER" ────────────────────────────────────────────────
 // Encre aubergine + fil d'or : identité de la collection Réalisations.
 export const RC = {
-  ink: '#1D1033', plum: '#5B3E8F', plumSoft: '#EFE9FB',
-  gold: '#B8862E', goldSoft: '#F7EEDA',
-  ivory: '#FBF9F5', linen: '#F1ECE2', hairline: '#E7E0D2',
-  text: '#1D1033', textSec: '#7C7488', textTer: '#B4ABC2',
-  ember: '#B3452F', emberSoft: '#F8E6E0',
+  ink: '#16123A', plum: '#6C3EB8', plumSoft: 'rgba(108,62,184,0.08)',
+  gold: '#D4AF37', goldSoft: 'rgba(212,175,55,0.10)',
+  ivory: '#F5F4FB', linen: '#FFFFFF', hairline: 'rgba(108,62,184,0.15)',
+  text: '#1A1033', textSec: '#7C6FA8', textTer: '#7C6FA8',
+  ember: '#EF4444', emberSoft: 'rgba(239,68,68,0.10)',
 };
 
 export interface RealisationFormValues {
@@ -60,6 +64,14 @@ export const isoToDisplay = (iso?: string): string => {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
+};
+
+export const realisationTitle = (
+  r: { modeleId?: string; tissuLabel?: string },
+  catalog: { id: string; nom: string }[],
+): string => {
+  const m = r.modeleId ? catalog.find((c) => c.id === r.modeleId) : undefined;
+  return m?.nom || r.tissuLabel?.trim() || 'Réalisation';
 };
 
 // ── Champ à soulignement (carnet d'atelier plutôt que boîte grise) ──
@@ -152,15 +164,15 @@ const Chip = ({ label, sub, active, dashed, color, onPress }: {
   <TouchableOpacity
     style={[
       chipS.base,
-      active && { borderColor: RC.plum, backgroundColor: RC.plumSoft },
+      active && { borderColor: RC.gold, backgroundColor: RC.ink },
       dashed && { borderStyle: 'dashed', borderColor: color ?? RC.gold },
     ]}
     onPress={onPress}
   >
-    <Text style={[chipS.text, active && { color: RC.plum }, dashed && { color: color ?? RC.gold }]} numberOfLines={1}>
+    <Text style={[chipS.text, active && { color: '#fff' }, dashed && { color: color ?? RC.gold }]} numberOfLines={1}>
       {label}
     </Text>
-    {sub ? <Text style={chipS.sub}>{sub}</Text> : null}
+    {sub ? <Text style={[chipS.sub, active && { color: 'rgba(255,255,255,0.72)' }]}>{sub}</Text> : null}
   </TouchableOpacity>
 );
 const chipS = StyleSheet.create({
@@ -177,6 +189,7 @@ const chipS = StyleSheet.create({
 // FORMULAIRE
 // ==========================================
 export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues, isSaving, submitLabel, onSubmit }) => {
+  const insets = useSafeAreaInsets();
   const { catalog, fiches, tissus } = useAppStore();
   const clientFiches = fiches[clientId] ?? [];
   const availableModels = catalog.filter(m => !m.deletedAt && m.statut === 'public');
@@ -188,7 +201,7 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
   const pickPhotos = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission requise', "L'accès à la galerie est nécessaire pour ajouter des photos.");
+      showAlert('Permission requise', "L'accès à la galerie est nécessaire pour ajouter des photos.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -202,7 +215,7 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
   const takePhoto = useCallback(async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission requise', "L'accès à la caméra est nécessaire.");
+      showAlert('Permission requise', "L'accès à la caméra est nécessaire.");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
@@ -218,15 +231,23 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
 
   const handleSubmit = () => {
     if (mode === 'create' && !parseDate(v.dateCreation)) {
-      Alert.alert('Date invalide', 'La date de création doit être au format JJ/MM/AAAA.');
+      showAlert('Date invalide', 'La date de création doit être au format JJ/MM/AAAA.');
       return;
     }
     onSubmit(v);
   };
 
   return (
-    <>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={keyboardAvoidBehavior}
+      keyboardVerticalOffset={insets.top + 56}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
 
         {/* ── PHOTOS — bande "planche d'atelier" ── */}
         <View style={{ marginBottom: 26 }}>
@@ -384,34 +405,24 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
         <View style={{ marginBottom: 26 }}>
           <SectionHead icon="calendar-outline" title="Dates" />
           {mode === 'create' && (
-              <View style={{ marginBottom: 4 }}>
-                <FieldLabel>Date de création</FieldLabel>
-                <Underline
-                    value={v.dateCreation}
-                    onChangeText={t => patch({ dateCreation: t })}
-                    placeholder="JJ/MM/AAAA"
-                    keyboardType="numeric"
-                />
-              </View>
+              <DateField
+                  label="Date de création"
+                  value={v.dateCreation}
+                  onChange={t => patch({ dateCreation: t })}
+              />
           )}
-          <View style={{ marginBottom: 4, marginTop: mode === 'create' ? 8 : 0 }}>
-            <FieldLabel>Date d'essayage (optionnel)</FieldLabel>
-            <Underline
-                value={v.dateEssayage}
-                onChangeText={t => patch({ dateEssayage: t })}
-                placeholder="JJ/MM/AAAA"
-                keyboardType="numeric"
-            />
-          </View>
-          <View style={{ marginTop: 8 }}>
-            <FieldLabel>Date de livraison prévue (optionnel)</FieldLabel>
-            <Underline
-                value={v.dateLivraison}
-                onChangeText={t => patch({ dateLivraison: t })}
-                placeholder="JJ/MM/AAAA"
-                keyboardType="numeric"
-            />
-          </View>
+          <DateField
+              label="Date d'essayage (optionnel)"
+              value={v.dateEssayage}
+              onChange={t => patch({ dateEssayage: t })}
+              placeholder="Choisir une date d'essayage"
+          />
+          <DateField
+              label="Date de livraison prévue (optionnel)"
+              value={v.dateLivraison}
+              onChange={t => patch({ dateLivraison: t })}
+              placeholder="Choisir une date de livraison"
+          />
         </View>
 
         {/* ── NOTES ── */}
@@ -437,11 +448,11 @@ export const RealisationForm: React.FC<Props> = ({ mode, clientId, initialValues
             disabled={isSaving}
         >
           {isSaving
-              ? <ActivityIndicator color={RC.gold} />
+              ? <ActivityIndicator color="#fff" />
               : <Text style={styles.submitText}>{submitLabel}</Text>}
         </TouchableOpacity>
       </View>
-    </>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -457,7 +468,7 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 5, left: 5, backgroundColor: 'rgba(29,16,51,0.75)',
     borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
   },
-  newBadgeText: { fontSize: 9, color: RC.goldSoft, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  newBadgeText: { fontSize: 9, color: RC.gold, fontFamily: 'PlusJakartaSans_600SemiBold' },
   removePhoto: { position: 'absolute', top: -6, right: -6, backgroundColor: RC.ivory, borderRadius: 10 },
   addPhotoTile: {
     width: 92, height: 92, borderRadius: 14, borderWidth: 1.5, borderColor: RC.gold, borderStyle: 'dashed',
@@ -475,7 +486,10 @@ const styles = StyleSheet.create({
 
   noteBox: { backgroundColor: RC.linen, borderRadius: 14, paddingHorizontal: 12 },
 
-  footer: { borderTopWidth: 1, borderTopColor: RC.hairline, padding: 16, backgroundColor: RC.ivory },
-  submitBtn: { backgroundColor: RC.ink, borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
-  submitText: { fontSize: 15.5, fontFamily: 'PlusJakartaSans_700Bold', color: RC.gold },
+  footer: { borderTopWidth: 0.5, borderTopColor: RC.hairline, padding: 16, backgroundColor: RC.ivory },
+  submitBtn: {
+    backgroundColor: RC.ink, borderRadius: 16, paddingVertical: 16, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.28)',
+  },
+  submitText: { fontSize: 15.5, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
 });
