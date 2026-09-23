@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +22,7 @@ import { useProfile } from '@hooks/useProfile';
 import { formatCurrencyShort } from '@utils/formatters';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { useThemedStyles, type Palette } from '@/src/theme';
+import { AtelierIcon } from '@/src/components/ui';
 import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import { isCancelledOrder } from '@constants/commandeConstants';
 import { confectionRequestMessage, openTel, openWhatsApp } from '@utils/atelierContact';
@@ -100,9 +102,13 @@ export const ClientAccountScreen: React.FC = () => {
       >
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {(profile?.display_name ?? '?').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
-            </Text>
+            {profile?.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
+            ) : (
+              <Text style={styles.avatarText}>
+                {(profile?.display_name ?? '?').split(' ').map(n => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?'}
+              </Text>
+            )}
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.profileName}>{profile?.display_name ?? 'Client'}</Text>
@@ -127,7 +133,7 @@ export const ClientAccountScreen: React.FC = () => {
                 activeOpacity={0.85}
               >
                 <View style={styles.tailorAvatar}>
-                  <Ionicons name="cut-outline" size={20} color={P.gold} />
+                  <AtelierIcon size={20} color={P.gold} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.tailorName}>
@@ -370,7 +376,9 @@ const makeStyles = (P: Palette) => ({
     justifyContent: 'center' as const,
     borderWidth: 1,
     borderColor: P.goldRim,
+    overflow: 'hidden' as const,
   },
+  avatarImg: { width: 48, height: 48, borderRadius: 14 },
   avatarText: { color: P.gold, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14 },
   profileName: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
   profileSub: { fontSize: 12, color: P.sub, marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium' },

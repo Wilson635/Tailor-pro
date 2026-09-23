@@ -19,6 +19,7 @@ import {
     FlatList,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { AtelierIcon } from "@/src/components/ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
@@ -565,7 +566,7 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
                     <View style={styles.header}>
                         <View style={styles.profileBadge}>
                             <View style={[styles.profileBadgeIcon, { backgroundColor: C.purple100 }]}>
-                                <Ionicons name="cut-outline" size={14} color={C.purple600} />
+                                <AtelierIcon size={14} color={C.purple600} />
                             </View>
                             <Text style={[styles.profileBadgeText, { color: C.purple600 }]}>
                                 Espace tailleur

@@ -53,10 +53,12 @@ export interface PublicAtelier {
   whatsapp: string | null;
   city: string | null;
   avatarUrl: string | null;
+  coverUrl: string | null;
   description: string | null;
   specialities: string[] | null;
   horaires: Record<string, string> | null;
   adresse: string | null;
+  reseauxSociaux: { facebook?: string; instagram?: string; tiktok?: string } | null;
 }
 
 /** Atelier lié au compte client (fiche CRM) */
@@ -231,6 +233,8 @@ export interface Payment {
 export interface CatalogModel {
   id: string;
   couturierId: string;
+  /** Nom d’atelier (Découvrir) — optionnel hors browse public */
+  atelierName?: string | null;
   nom: string;                    // ← français
   categorie: CatalogCategory;     // ← français
   description?: string;

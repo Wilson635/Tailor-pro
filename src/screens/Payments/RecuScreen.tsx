@@ -16,7 +16,7 @@ import { TYPE_PAIEMENT_META, MODE_PAIEMENT_META, TypePaiement, ModePaiement } fr
 import { useAppStore } from '@store/useAppStore';
 import { useThemedStyles, type Palette } from '@/src/theme';
 import { showAlert } from '@/src/context/DialogContext';
-import { shareHtmlAsPdf, shareLocalFile, escapeHtml } from '@utils/exportFiles';
+import { AtelierIcon } from '@/src/components/ui';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Recu'>;
@@ -171,7 +171,7 @@ export function RecuScreen() {
                             <Image source={{ uri: avatarUrl }} style={styles.logoImg} />
                         ) : (
                             <View style={styles.receiptLogoWrap}>
-                                <Feather name="scissors" size={22} color={PAPER.gold} />
+                                <AtelierIcon size={22} color={PAPER.gold} />
                             </View>
                         )}
                         <Text style={styles.atelierName}>{atelierName}</Text>

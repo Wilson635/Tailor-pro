@@ -21,6 +21,7 @@ import {
     Easing,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { AtelierIcon } from "@/src/components/ui";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
@@ -257,7 +258,7 @@ export const TailorSetupScreen: React.FC<Props> = ({ navigation }) => {
                     <View style={styles.topRow}>
                         <StepIndicator />
                         <View style={styles.profileBadge}>
-                            <Ionicons name="cut-outline" size={13} color={C.purple600} />
+                            <AtelierIcon size={13} color={C.purple600} />
                             <Text style={styles.profileBadgeText}>Espace tailleur</Text>
                         </View>
                     </View>

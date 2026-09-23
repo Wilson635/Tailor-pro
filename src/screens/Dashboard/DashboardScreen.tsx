@@ -14,6 +14,7 @@ import {
   StatusBar,
   Animated,
   Pressable,
+  Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -27,6 +28,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { nativeDriver } from '@utils/animation';
 import { useThemedStyles, type Palette } from '@/src/theme';
+import { AtelierIcon } from '@/src/components/ui';
 import { usePreferences } from '@/src/context/PreferencesContext';
 import { t } from '@/src/i18n';
 import { formatLongDate } from '@utils/formatters';
@@ -124,7 +126,11 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
                   {unreadCount > 0 ? <View style={styles.notifDot} /> : null}
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.avatarBtn} onPress={openMenu}>
-                  <Text style={styles.avatarBtnText}>{getInitials()}</Text>
+                  {profile?.avatar_url ? (
+                    <Image source={{ uri: profile.avatar_url }} style={styles.avatarBtnImg} />
+                  ) : (
+                    <Text style={styles.avatarBtnText}>{getInitials()}</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
@@ -141,11 +147,11 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
                   </Text>
               )}
               <View style={[styles.rolePill, userRole === 'tailor' && styles.rolePillTailor]}>
-                <Feather
-                    name={userRole === 'tailor' ? 'scissors' : 'user'}
-                    size={10}
-                    color={userRole === 'tailor' ? P.gold : P.primary}
-                />
+                {userRole === 'tailor' ? (
+                  <AtelierIcon size={12} color={P.gold} />
+                ) : (
+                  <Feather name="user" size={10} color={P.primary} />
+                )}
                 <Text style={[styles.rolePillText, userRole === 'tailor' && styles.rolePillTextTailor]}>
                   {userRole === 'tailor' ? 'Couturier' : 'Client'}
                 </Text>
@@ -180,7 +186,11 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
             {/* En-tête profil */}
             <View style={styles.menuHeader}>
               <View style={styles.menuAvatar}>
-                <Text style={styles.menuAvatarText}>{getInitials()}</Text>
+                {profile?.avatar_url ? (
+                  <Image source={{ uri: profile.avatar_url }} style={styles.menuAvatarImg} />
+                ) : (
+                  <Text style={styles.menuAvatarText}>{getInitials()}</Text>
+                )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.menuName} numberOfLines={1}>{profile?.display_name ?? 'Utilisateur'}</Text>
@@ -321,7 +331,9 @@ const makeDashStyles = (P: Palette) => ({
     backgroundColor: P.bg,
     alignItems: 'center' as const, justifyContent: 'center' as const,
     borderWidth: 1, borderColor: P.goldRim,
+    overflow: 'hidden' as const,
   },
+  avatarBtnImg: { width: 40, height: 40, borderRadius: 12 },
   avatarBtnText: { fontSize: 12, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
 
   greetRow: {
@@ -389,7 +401,9 @@ const makeDashStyles = (P: Palette) => ({
     backgroundColor: P.bg,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: P.goldRim,
+    overflow: 'hidden' as const,
   },
+  menuAvatarImg: { width: 40, height: 40, borderRadius: 20 },
   menuAvatarText: { fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold },
   menuName:  { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
   menuEmail: { fontSize: 11, color: P.sub, marginTop: 1 },

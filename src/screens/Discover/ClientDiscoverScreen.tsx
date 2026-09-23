@@ -22,6 +22,7 @@ import { formatCurrencyShort } from '@utils/formatters';
 import { CATALOG_CATEGORY_LABELS, CATALOG_FILTER_CATEGORIES } from '@constants/catalogConstants';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { useThemedStyles, type Palette } from '@/src/theme';
+import { AtelierIcon } from '@/src/components/ui';
 import type { PublicAtelier } from '@/src/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -31,7 +32,8 @@ const GUTTER = 20;
 const GAP = 12;
 const CARD_W = (width - GUTTER * 2 - GAP) / 2;
 
-const atelierLabel = (a: PublicAtelier) => a.atelierName || a.displayName || 'Atelier';
+const atelierLabel = (a?: PublicAtelier | null, fallback?: string | null) =>
+  a?.atelierName || a?.displayName || fallback || 'Atelier';
 
 export const ClientDiscoverScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -55,27 +57,51 @@ export const ClientDiscoverScreen: React.FC = () => {
     publicAteliers.forEach(t => {
       if (!byId.has(t.id)) byId.set(t.id, t);
     });
+    catalog.forEach(m => {
+      if (!m.couturierId || byId.has(m.couturierId)) return;
+      byId.set(m.couturierId, {
+        id: m.couturierId,
+        displayName: m.atelierName ?? null,
+        atelierName: m.atelierName ?? null,
+        phone: null,
+        whatsapp: null,
+        city: null,
+        avatarUrl: null,
+        coverUrl: null,
+        description: null,
+        specialities: null,
+        horaires: null,
+        adresse: null,
+        reseauxSociaux: null,
+      });
+    });
     return [...byId.values()];
-  }, [linkedTailors, publicAteliers]);
+  }, [linkedTailors, publicAteliers, catalog]);
 
   const linkedIds = useMemo(() => new Set(linkedTailors.map(t => t.id)), [linkedTailors]);
 
+  const atelierFor = (id: string) => ateliers.find(a => a.id === id);
+
+  const modelAtelierName = (m: typeof catalog[number]) =>
+    atelierLabel(atelierFor(m.couturierId), m.atelierName);
+
   const models = useMemo(() => {
-    let list = catalog.filter(m => m.statut !== 'prive' || linkedIds.has(m.couturierId));
+    let list = catalog.filter(m => m.statut === 'public' || linkedIds.has(m.couturierId));
     if (atelierId !== 'all') list = list.filter(m => m.couturierId === atelierId);
     if (category !== 'all') list = list.filter(m => m.categorie === category);
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(
-        m =>
+      list = list.filter(m => {
+        const atelierNom = modelAtelierName(m).toLowerCase();
+        return (
           m.nom.toLowerCase().includes(q) ||
-          (m.description ?? '').toLowerCase().includes(q),
-      );
+          atelierNom.includes(q) ||
+          (m.description ?? '').toLowerCase().includes(q)
+        );
+      });
     }
     return list;
-  }, [catalog, atelierId, category, search, linkedIds]);
-
-  const atelierFor = (id: string) => ateliers.find(a => a.id === id);
+  }, [catalog, atelierId, category, search, linkedIds, ateliers]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -146,7 +172,7 @@ export const ClientDiscoverScreen: React.FC = () => {
             activeOpacity={0.85}
           >
             <View style={styles.atelierAvatar}>
-              <Ionicons name="cut-outline" size={18} color={P.gold} />
+              <AtelierIcon size={18} color={P.gold} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.atelierBannerTitle}>
@@ -190,9 +216,7 @@ export const ClientDiscoverScreen: React.FC = () => {
           </View>
         ) : (
           <View style={styles.grid}>
-            {models.map(item => {
-              const atelier = atelierFor(item.couturierId);
-              return (
+            {models.map(item => (
                 <TouchableOpacity
                   key={item.id}
                   style={styles.card}
@@ -206,16 +230,15 @@ export const ClientDiscoverScreen: React.FC = () => {
                       <Ionicons name="shirt-outline" size={22} color={P.gold} />
                     </View>
                   )}
-                  <Text style={styles.cardName} numberOfLines={1}>{item.nom}</Text>
-                  <Text style={styles.cardMeta} numberOfLines={1}>
-                    {atelier ? atelierLabel(atelier) : CATALOG_CATEGORY_LABELS[item.categorie] ?? item.categorie}
+                  <Text style={styles.cardAtelier} numberOfLines={1}>
+                    {modelAtelierName(item)}
                   </Text>
+                  <Text style={styles.cardName} numberOfLines={1}>{item.nom}</Text>
                   <Text style={styles.cardPrice}>
                     {item.prixIndicatif > 0 ? formatCurrencyShort(item.prixIndicatif) : 'Sur devis'}
                   </Text>
                 </TouchableOpacity>
-              );
-            })}
+            ))}
           </View>
         )}
       </ScrollView>
@@ -270,12 +293,15 @@ const makeStyles = (P: Palette) => ({
   catChipText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
   catChipTextOn: { color: P.gold },
   grid: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: GAP },
-  card: { width: CARD_W, gap: 6 },
-  cardImage: { width: CARD_W, height: CARD_W * 1.15, borderRadius: 16, backgroundColor: P.surface, resizeMode: 'cover' as const },
+  card: { width: CARD_W, gap: 4 },
+  cardImage: { width: CARD_W, height: CARD_W * 1.15, borderRadius: 16, backgroundColor: P.surface, resizeMode: 'cover' as const, marginBottom: 4 },
   cardPlaceholder: { alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 0.5, borderColor: P.borderHard },
+  cardAtelier: {
+    fontSize: 10, fontFamily: 'PlusJakartaSans_500Medium', color: P.muted,
+    letterSpacing: 0.4, textTransform: 'uppercase' as const,
+  },
   cardName: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.text },
-  cardMeta: { fontSize: 11, color: P.sub, fontFamily: 'PlusJakartaSans_500Medium' },
-  cardPrice: { fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', color: P.gold },
+  cardPrice: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.gold, marginTop: 1 },
   emptyCard: {
     backgroundColor: P.surface, borderRadius: 18, borderWidth: 0.5, borderColor: P.borderHard,
     padding: 18, alignItems: 'center' as const, gap: 8, borderStyle: 'dashed' as const,

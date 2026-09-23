@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
+import { AtelierIcon } from '@/src/components/ui';
 import type { RootStackParamList } from "@/src/navigation/AppNavigator";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ChooseProfile">;
@@ -176,11 +177,11 @@ const ProfileCard: React.FC<CardProps> = ({ type, selected, onPress }) => {
                 <View style={cardStyles.row}>
                     {/* Icon */}
                     <View style={[cardStyles.iconBox, { backgroundColor: iconBg }]}>
-                        <Ionicons
-                            name={isTailor ? "cut-outline" : "person-outline"}
-                            size={22}
-                            color={iconColor}
-                        />
+                        {isTailor ? (
+                            <AtelierIcon size={22} color={iconColor} />
+                        ) : (
+                            <Ionicons name="person-outline" size={22} color={iconColor} />
+                        )}
                     </View>
 
                     {/* Text */}

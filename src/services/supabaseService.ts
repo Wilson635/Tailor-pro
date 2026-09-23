@@ -157,10 +157,12 @@ export const mapPublicAtelier = (row: any): PublicAtelier => ({
     whatsapp: row?.whatsapp ?? null,
     city: row?.city ?? null,
     avatarUrl: row?.avatar_url ?? null,
+    coverUrl: row?.cover_url ?? null,
     description: row?.description ?? null,
     specialities: Array.isArray(row?.specialities) ? row.specialities : null,
     horaires: row?.horaires && typeof row.horaires === 'object' ? row.horaires : null,
     adresse: row?.adresse ?? null,
+    reseauxSociaux: row?.reseaux_sociaux && typeof row.reseaux_sociaux === 'object' ? row.reseaux_sociaux : null,
 });
 
 // ==========================================
@@ -201,7 +203,7 @@ export const clientLinkService = {
 
         const { data, error } = await supabase
             .from('users')
-            .select('id, display_name, atelier_name, phone, whatsapp, city, avatar_url, description, specialities, horaires, adresse')
+            .select('id, display_name, atelier_name, phone, whatsapp, city, avatar_url, cover_url, description, specialities, horaires, adresse, reseaux_sociaux')
             .in('id', tailorIds);
 
         if (error) return { data: [], error };
@@ -221,8 +223,27 @@ export const clientLinkService = {
     },
 
     getPublicAteliers: async () => {
-        const selectCols = 'id, display_name, atelier_name, phone, whatsapp, city, avatar_url, description, specialities, horaires, adresse';
+        const selectCols = 'id, display_name, atelier_name, phone, whatsapp, city, avatar_url, cover_url, description, specialities, horaires, adresse, reseaux_sociaux';
         const mapRows = (rows: any[]) => (rows ?? []).map(mapPublicAtelier);
+
+        const full = await supabase.rpc('browse_public_ateliers');
+        if (!full.error && (full.data?.length ?? 0) > 0) {
+            return { data: mapRows(full.data as any[]), error: null };
+        }
+
+        const { data: ids, error: idErr } = await supabase.rpc('browse_public_atelier_ids');
+        const idList = ((ids as string[] | null) ?? []).filter(Boolean);
+        if (!idErr && idList.length) {
+            const labels = await supabase.rpc('browse_atelier_labels', { p_ids: idList });
+            if (!labels.error && labels.data?.length) {
+                return { data: mapRows(labels.data as any[]), error: null };
+            }
+            const { data: byIds, error: byErr } = await supabase
+                .from('users')
+                .select(selectCols)
+                .in('id', idList);
+            if (!byErr && byIds?.length) return { data: mapRows(byIds), error: null };
+        }
 
         const { data, error } = await supabase
             .from('users')
@@ -231,29 +252,23 @@ export const clientLinkService = {
             .order('atelier_name', { ascending: true })
             .limit(60);
 
-        if (!error && (data?.length ?? 0) > 0) {
-            return { data: mapRows(data ?? []), error: null };
-        }
-
-        const { data: ids, error: idErr } = await supabase.rpc('browse_public_atelier_ids');
-        const idList = ((ids as string[] | null) ?? []).filter(Boolean);
-        if (!idErr && idList.length) {
-            const { data: byIds, error: byErr } = await supabase
-                .from('users')
-                .select(selectCols)
-                .in('id', idList);
-            if (!byErr && byIds?.length) return { data: mapRows(byIds), error: null };
-        }
-
-        return { data: [] as PublicAtelier[], error: error ?? idErr ?? null };
+        return { data: mapRows(data ?? []), error: error ?? idErr ?? null };
     },
 
     getPublicAtelierById: async (id: string) => {
-        const { data, error } = await supabase
-            .from('users')
-            .select('id, display_name, atelier_name, phone, whatsapp, city, avatar_url, description, specialities, horaires, adresse')
-            .eq('id', id)
-            .maybeSingle();
+        const pick = async (cols: string) =>
+            supabase.from('users').select(cols).eq('id', id).maybeSingle();
+
+        let { data, error } = await pick(
+            'id, display_name, atelier_name, phone, whatsapp, city, avatar_url, cover_url, description, specialities, horaires, adresse, reseaux_sociaux',
+        );
+        if (error) {
+            const retry = await pick(
+                'id, display_name, atelier_name, phone, whatsapp, city, avatar_url, description, specialities, horaires, adresse, reseaux_sociaux',
+            );
+            data = retry.data;
+            error = retry.error;
+        }
         if (error || !data) return { data: null as PublicAtelier | null, error };
         return { data: mapPublicAtelier(data), error: null };
     },
@@ -471,10 +486,11 @@ export const uploadClientPhoto = async (
 export const uploadProfilePhoto = async (
     localUri: string,
     userId: string,
+    kind: 'avatar' | 'cover' = 'avatar',
 ): Promise<{ publicUrl: string | null; error: Error | null }> => {
     try {
         const ext = guessImageExt(localUri);
-        const path = `${userId}/profile/avatar_${Date.now()}.${ext}`;
+        const path = `${userId}/profile/${kind}_${Date.now()}.${ext}`;
         const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
         const arrayBuffer = await uriToArrayBuffer(localUri);
 
@@ -1213,6 +1229,34 @@ const attachCatalogPhotos = async (rows: any[] | null) => {
     }));
 };
 
+const attachAtelierLabels = async (rows: any[] | null) => {
+    if (!rows?.length) return rows ?? [];
+    const ids = [...new Set(rows.map(r => r.couturier_id).filter(Boolean))];
+    if (!ids.length) return rows;
+
+    let labels: { id?: string; atelier_name?: string | null; display_name?: string | null }[] = [];
+    const rpc = await supabase.rpc('browse_atelier_labels', { p_ids: ids });
+    if (!rpc.error && rpc.data?.length) {
+        labels = rpc.data as any[];
+    } else {
+        const { data } = await supabase
+            .from('users')
+            .select('id, atelier_name, display_name')
+            .in('id', ids);
+        labels = (data ?? []) as any[];
+    }
+
+    const byId = new Map(labels.map(u => [u.id, u]));
+    return rows.map(r => {
+        const u = byId.get(r.couturier_id);
+        return {
+            ...r,
+            atelier_name: r.atelier_name ?? u?.atelier_name ?? null,
+            display_name: r.display_name ?? u?.display_name ?? null,
+        };
+    });
+};
+
 export const catalogService = {
 
     /** Récupère tous les modèles non archivés du couturier (avec leurs photos) */
@@ -1233,23 +1277,27 @@ export const catalogService = {
      * des ateliers au catalogue public.
      */
     getPublicBrowse: async () => {
-        let { data, error } = await supabase
-            .from('catalog')
-            .select('*, catalog_photos(photo_url)')
-            .eq('statut', 'public')
-            .is('deleted_at', null)
-            .order('created_at', { ascending: false })
-            .limit(80);
+        let data: any[] | null = null;
+        let error: any = null;
 
-        if (error || !data?.length) {
-            const rpc = await supabase.rpc('browse_public_catalog');
-            if (!rpc.error && rpc.data?.length) {
-                data = rpc.data as any[];
-                error = null;
-            }
+        const rpc = await supabase.rpc('browse_public_catalog');
+        if (!rpc.error && rpc.data) {
+            data = rpc.data as any[];
+        } else {
+            const direct = await supabase
+                .from('catalog')
+                .select('*, catalog_photos(photo_url)')
+                .eq('statut', 'public')
+                .is('deleted_at', null)
+                .order('created_at', { ascending: false })
+                .limit(200);
+            data = direct.data;
+            error = direct.error;
         }
+
         if (error) return { data: data ?? [], error };
-        return { data: await attachCatalogPhotos(data), error: null };
+        const withPhotos = await attachCatalogPhotos(data);
+        return { data: await attachAtelierLabels(withPhotos), error: null };
     },
 
     getPublicByCouturier: async (couturierId: string) => {
@@ -1485,6 +1533,7 @@ export const mapCatalogModel = (row: any): CatalogModel => {
     return {
     id:                      row.id,
     couturierId:             row.couturier_id ?? row.user_id ?? '',
+    atelierName:             row.atelier_name || row.display_name || null,
     nom:                     row.name ?? '',
     categorie:               row.category ?? 'casual',
     description:             row.description ?? undefined,

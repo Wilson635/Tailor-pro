@@ -163,6 +163,7 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+    const [isUploadingCover, setIsUploadingCover] = useState(false);
 
     // ── Profil tab state ──────────────────────────────────────────
     const [displayName, setDisplayName] = useState('');
@@ -353,6 +354,36 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
             showAlert('Erreur', e.message ?? 'Upload échoué');
         } finally {
             setIsUploadingAvatar(false);
+        }
+    };
+
+    const handleCoverPress = async () => {
+        if (profile?.role !== 'tailor') return;
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            showAlert('Permission requise', 'Autorisez l\'accès à la galerie.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [16, 9],
+            quality: 0.85,
+        });
+        if (result.canceled || !result.assets[0]) return;
+        setIsUploadingCover(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Non connecté');
+            const { publicUrl, error: upErr } = await uploadProfilePhoto(result.assets[0].uri, user.id, 'cover');
+            if (upErr || !publicUrl) throw upErr ?? new Error('Upload échoué');
+            const { error } = await updateProfile({ cover_url: publicUrl });
+            if (error) throw error;
+            showSuccess('Bannière mise à jour', 'Elle s’affiche sur votre page atelier.');
+        } catch (e: any) {
+            showAlert('Erreur', e.message ?? 'Upload échoué');
+        } finally {
+            setIsUploadingCover(false);
         }
     };
 
@@ -556,9 +587,23 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
             >
                 {/* ── HERO ── */}
                 <View style={styles.heroCard}>
-                    <View style={styles.heroBlob1} />
-                    <View style={styles.heroBlob2} />
+                    {profile?.role === 'tailor' && profile?.cover_url ? (
+                        <Image source={{ uri: profile.cover_url }} style={styles.coverFill} />
+                    ) : (
+                        <>
+                            <View style={styles.heroBlob1} />
+                            <View style={styles.heroBlob2} />
+                        </>
+                    )}
+                    {profile?.cover_url ? <View style={styles.coverDim} /> : null}
                     <View style={styles.heroGoldLine} />
+                    {profile?.role === 'tailor' && (
+                        <TouchableOpacity style={styles.coverCam} onPress={handleCoverPress} activeOpacity={0.8}>
+                            {isUploadingCover
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Ionicons name="image-outline" size={14} color="#fff" />}
+                        </TouchableOpacity>
+                    )}
 
                     {/* Avatar */}
                     <TouchableOpacity
@@ -1191,6 +1236,9 @@ const makeStyles = (P: Palette) => ({
     divider: { height: 0.5, backgroundColor: P.border, marginLeft: 66 },
 
     heroCard:    { borderRadius: 22, padding: 22, alignItems: 'center', backgroundColor: P.bg, borderWidth: 1, borderColor: P.goldRim, marginBottom: 16, overflow: 'hidden', position: 'relative' },
+    coverFill:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
+    coverDim:    { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(14,11,20,0.45)' },
+    coverCam:    { position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(14,11,20,0.45)', alignItems: 'center', justifyContent: 'center', zIndex: 2, borderWidth: 0.5, borderColor: P.goldRim },
     heroBlob1:   { position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(108,62,184,0.35)' },
     heroBlob2:   { position: 'absolute', bottom: -50, left: -30, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(212,175,55,0.05)' },
     heroGoldLine:{ position: 'absolute', top: 0, left: 24, right: 24, height: 0.5, backgroundColor: P.goldRim },

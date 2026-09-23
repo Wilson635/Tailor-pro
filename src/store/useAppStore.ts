@@ -58,6 +58,7 @@ export interface UserProfile {
   langue: string | null;
   unite_mesure: string | null;
   avatar_url: string | null;
+  cover_url: string | null;
   created_at: string | null;
 }
 
@@ -405,11 +406,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!user) return;
 
     const meta = (user.user_metadata ?? {}) as Record<string, any>;
-    const { data, error } = await supabase
+    let data: any = null;
+    let error: any = null;
+
+    const direct = await supabase
         .from('users')
-        .select('id, email, display_name, atelier_name, role, phone, whatsapp, city, adresse, description, specialities, horaires, reseaux_sociaux, statut_catalogue, plan_abonnement, devise, langue, unite_mesure, avatar_url, created_at')
+        .select('id, email, display_name, atelier_name, role, phone, whatsapp, city, adresse, description, specialities, horaires, reseaux_sociaux, statut_catalogue, plan_abonnement, devise, langue, unite_mesure, avatar_url, cover_url, created_at')
         .eq('id', user.id)
         .maybeSingle();
+    data = direct.data;
+    error = direct.error;
+
+    if (error || !data) {
+      const rpc = await supabase.rpc('get_my_profile');
+      if (!rpc.error && rpc.data) {
+        data = rpc.data;
+        error = null;
+      }
+    }
 
     const role = resolveAppRole(data?.role, meta.role);
     const profile: UserProfile = {
@@ -432,6 +446,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       langue: data?.langue ?? null,
       unite_mesure: data?.unite_mesure ?? null,
       avatar_url: data?.avatar_url ?? null,
+      cover_url: data?.cover_url ?? null,
       created_at: data?.created_at ?? user.created_at ?? null,
     };
 
@@ -454,6 +469,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateProfile: async (updates) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: new Error('Utilisateur non connecté') };
+
+    const rpc = await supabase.rpc('update_my_profile', { p_patch: updates });
+    if (!rpc.error) {
+      const current = get().profile;
+      const row = rpc.data && typeof rpc.data === 'object' ? rpc.data : {};
+      if (current) {
+        set({ profile: { ...current, ...updates, ...row } });
+      } else {
+        await get().fetchProfile();
+      }
+      return { error: null };
+    }
 
     const { error } = await supabase.from('users').update(updates).eq('id', user.id);
     if (error) return { error: new Error(error.message) };
@@ -517,7 +544,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (missing.length) {
       const { data: extra } = await supabase
         .from('users')
-        .select('id, display_name, atelier_name, phone, whatsapp, city, avatar_url, description, specialities, horaires, adresse')
+        .select('id, display_name, atelier_name, phone, whatsapp, city, avatar_url, cover_url, description, specialities, horaires, adresse, reseaux_sociaux')
         .in('id', missing);
       (extra ?? []).forEach((u: any) => byId.set(u.id, mapPublicAtelier(u)));
       missing.forEach(id => {

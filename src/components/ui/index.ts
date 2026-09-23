@@ -14,3 +14,4 @@ export * from './IconButton';
 export * from './Header';
 export * from './DateField';
 export * from './KeyboardScreen';
+export * from './AtelierIcon';

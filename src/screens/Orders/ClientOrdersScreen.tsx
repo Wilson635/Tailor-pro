@@ -24,6 +24,7 @@ import {
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useThemedStyles, type Palette } from '@/src/theme';
+import { AtelierIcon } from '@/src/components/ui';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MainTabs'>;
 
@@ -64,7 +65,7 @@ export const ClientOrdersScreen: React.FC<Props> = ({ navigation }) => {
                         <View style={styles.card}>
                             <View style={styles.tailorInfo}>
                                 <View style={styles.tailorAvatar}>
-                                    <Ionicons name="cut-outline" size={20} color={P.gold} />
+                                    <AtelierIcon size={20} color={P.gold} />
                                 </View>
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.tailorName}>
