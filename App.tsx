@@ -58,10 +58,10 @@ export default function App() {
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            (_event, session) => {
+            (event, session) => {
                 setSession(session);
                 setIsLoading(false);
-                if (session?.user) loadAll();
+                if (event === 'SIGNED_IN' && session?.user) loadAll();
             }
         );
 

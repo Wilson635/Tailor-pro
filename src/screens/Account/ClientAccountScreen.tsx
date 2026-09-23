@@ -3,7 +3,7 @@
 // Lien atelier, mesures, paiements, réglages
 // ==========================================
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { useProfile } from '@hooks/useProfile';
@@ -42,13 +42,23 @@ export const ClientAccountScreen: React.FC = () => {
         clientRequests,
         linkAtelierByInvite,
         logout,
+        loadLinkedClients,
+        getAtelierById,
     } = useAppStore();
 
   const [inviteCode, setInviteCode] = useState('');
   const [linking, setLinking] = useState(false);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadLinkedClients();
+    }, [loadLinkedClients]),
+  );
+
   const primaryClient = clients[0] ?? null;
-  const primaryTailor = linkedTailors[0] ?? null;
+  const primaryTailor = linkedTailors[0]
+    ?? (primaryClient ? getAtelierById(primaryClient.couturierId) : undefined)
+    ?? null;
 
   const ficheCount = useMemo(
     () => (primaryClient ? (fiches[primaryClient.id] ?? []).length : 0),

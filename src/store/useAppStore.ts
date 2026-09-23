@@ -26,6 +26,8 @@ import { isCancelledOrder } from '@constants/commandeConstants';
 import { expectedClientBalance } from '@/src/utils/clientBalance';
 import { splitGlobalAdvance } from '@/src/utils/splitGlobalAdvance';
 import { resolveAppRole } from '@/src/utils/userRole';
+
+let linkedLoadSeq = 0;
 import type {
   Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics, FicheMensuration, TypeVetement, Realisation, StatutRealisation, Tissu,
   Project, ProjectRecap, ProjectStatut, ProjectParticipant, GarmentMeasurementField, MeasurementChoiceResult,
@@ -517,8 +519,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadLinkedClients: async () => {
     const { profile } = get();
     if (profile?.role !== 'client') return;
+    const seq = ++linkedLoadSeq;
 
-    // Auto-revendication par téléphone si le profil en a un
     if (profile.phone) {
       try {
         await clientLinkService.claimByPhone(profile.phone);
@@ -526,13 +528,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const { data, error } = await clientLinkService.getLinkedClients();
-    if (error && !data?.length) { set({ error: error.message }); return; }
+    if (seq !== linkedLoadSeq) return;
+
+    if (error && !data?.length) {
+      if (get().linkedTailors.length || get().clients.length) return;
+      set({ error: error.message });
+      return;
+    }
 
     const linked = (data ?? []).map(mapClient);
-    const { data: tailors } = await clientLinkService.getLinkedTailors(linked);
-    set({ clients: linked, linkedTailors: tailors });
+    if (!linked.length && (get().linkedTailors.length || get().clients.length)) {
+      return;
+    }
 
-    // Charger les fiches de mensuration pour chaque fiche liée
+    const { data: tailors } = await clientLinkService.getLinkedTailors(linked);
+    if (seq !== linkedLoadSeq) return;
+
+    set({ clients: linked, linkedTailors: tailors });
     await Promise.all(linked.map(c => get().loadFiches(c.id)));
   },
 

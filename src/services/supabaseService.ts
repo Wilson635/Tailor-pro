@@ -176,6 +176,11 @@ export const clientLinkService = {
         const keepMine = (rows: any[] | null) =>
             (rows ?? []).filter(r => !r.client_user_id || r.client_user_id === uid);
 
+        const rpc = await supabase.rpc('my_linked_clients');
+        if (!rpc.error && (rpc.data?.length ?? 0) > 0) {
+            return { data: keepMine(rpc.data as any[]), error: null };
+        }
+
         const { data, error } = await supabase
             .from('clients')
             .select('*')
@@ -187,11 +192,6 @@ export const clientLinkService = {
             return { data: keepMine(data), error: null };
         }
 
-        const rpc = await supabase.rpc('my_linked_clients');
-        if (!rpc.error && (rpc.data?.length ?? 0) > 0) {
-            return { data: keepMine(rpc.data as any[]), error: null };
-        }
-
         return { data: keepMine(data), error: error ?? rpc.error };
     },
 
@@ -201,14 +201,21 @@ export const clientLinkService = {
         const tailorIds = [...new Set(clients.map(c => c.couturierId).filter(Boolean))];
         if (!tailorIds.length) return { data: [], error: null };
 
+        const byId = new Map<string, any>();
+
+        const labels = await supabase.rpc('browse_atelier_labels', { p_ids: tailorIds });
+        if (!labels.error && labels.data) {
+            (labels.data as any[]).forEach(u => byId.set(u.id, u));
+        }
+
         const { data, error } = await supabase
             .from('users')
             .select('id, display_name, atelier_name, phone, whatsapp, city, avatar_url, cover_url, description, specialities, horaires, adresse, reseaux_sociaux')
             .in('id', tailorIds);
+        if (!error && data) {
+            data.forEach((u: any) => byId.set(u.id, { ...byId.get(u.id), ...u }));
+        }
 
-        if (error) return { data: [], error };
-
-        const byId = new Map((data ?? []).map((u: any) => [u.id, u]));
         const linked: LinkedTailor[] = clients.map(c => {
             const u = byId.get(c.couturierId);
             return {
@@ -219,7 +226,7 @@ export const clientLinkService = {
                 whatsapp: u?.whatsapp ?? c.whatsapp ?? null,
             };
         });
-        return { data: linked, error: null };
+        return { data: linked, error: error && !linked.length ? error : null };
     },
 
     getPublicAteliers: async () => {
