@@ -63,7 +63,8 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const { ficheId, clientId } = route.params;
 
-  const { getFicheById, getFichesByType, setFicheActive, duplicateFiche, deleteFiche, getClientById } = useAppStore();
+  const { getFicheById, getFichesByType, setFicheActive, duplicateFiche, deleteFiche, getClientById, profile } = useAppStore();
+  const isClient = profile?.role === 'client';
   const fiche  = getFicheById(ficheId, clientId);
   const client = getClientById(clientId);
   const [isActing, setIsActing] = useState(false);
@@ -190,7 +191,7 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.headerTitle}>Détail de la fiche</Text>
-          <Text style={styles.headerSub}>{client?.nom ?? 'Client'}</Text>
+          <Text style={styles.headerSub}>{isClient ? 'Fiche atelier' : (client?.nom ?? 'Client')}</Text>
         </View>
         <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.7}>
           <Ionicons name="share-outline" size={18} color={C.text} />
@@ -266,6 +267,7 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         )}
 
         {/* ── Actions secondaires ── */}
+        {!isClient && (
         <View style={styles.actionsGrid}>
           {!fiche.isActive && (
             <TouchableOpacity
@@ -293,9 +295,11 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             <Text style={[styles.actionCardLabel, { color: C.error }]}>Supprimer</Text>
           </TouchableOpacity>
         </View>
+        )}
       </ScrollView>
 
       {/* ── Footer : Dupliquer pour mise à jour ── */}
+      {!isClient && (
       <View style={[styles.footer, { paddingBottom: insets.bottom + 8 }]}>
         <TouchableOpacity
           style={styles.duplicateBtn}
@@ -306,6 +310,7 @@ export const FicheDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.duplicateBtnText}>Nouvelle prise de mesure</Text>
         </TouchableOpacity>
       </View>
+      )}
     </View>
   );
 };

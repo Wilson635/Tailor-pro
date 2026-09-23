@@ -212,6 +212,12 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         setSpecialites(profile.specialities ?? []);
     }, [profile]);
 
+    useEffect(() => {
+        if (profile?.role === 'client' && activeTab === 'atelier') {
+            setActiveTab('profil');
+        }
+    }, [profile?.role, activeTab]);
+
     // ── Init biométrie ────────────────────────────────────────────
     useEffect(() => {
         const init = async () => {
@@ -429,7 +435,13 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         await setNotificationsEnabled(profile.id, true);
         await syncDeviceNotifications(
             profile.id,
-            buildInbox({ orders, clients, activities, statistics }),
+            buildInbox({
+              orders,
+              clients,
+              activities,
+              statistics,
+              role: profile.role === 'client' ? 'client' : 'tailor',
+            }),
         );
     };
 
@@ -572,18 +584,19 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                         )}
                     </TouchableOpacity>
 
-                    <Text style={styles.heroName}>{profile?.display_name ?? 'Couturier'}</Text>
+                    <Text style={styles.heroName}>{profile?.display_name ?? (profile?.role === 'client' ? 'Client' : 'Couturier')}</Text>
                     {profile?.atelier_name ? <Text style={styles.heroAtelier}>{profile.atelier_name}</Text> : null}
                     <Text style={styles.heroEmail}>{profile?.email ?? ''}</Text>
 
-                    {/* Plan badge */}
+                    {/* Plan badge + stats atelier */}
+                    {profile?.role === 'tailor' && (
+                    <>
                     <View style={[styles.planBadge, { backgroundColor: planMeta.bg }]}>
                         <Text style={[styles.planBadgeText, { color: planMeta.color }]}>
                             ✦ Plan {planMeta.label}
                         </Text>
                     </View>
 
-                    {/* Stats */}
                     <View style={styles.statsRow}>
                         <View style={styles.statItem}>
                             <Text style={styles.statVal}>{totalClients}</Text>
@@ -602,11 +615,16 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                             <Text style={styles.statLbl}>Impayés</Text>
                         </View>
                     </View>
+                    </>
+                    )}
                 </View>
 
                 {/* ── ONGLETS ── */}
                 <View style={styles.tabs}>
-                    {(['profil', 'atelier', 'securite'] as const).map(tab => (
+                    {(profile?.role === 'client'
+                        ? (['profil', 'securite'] as const)
+                        : (['profil', 'atelier', 'securite'] as const)
+                    ).map(tab => (
                         <TouchableOpacity
                             key={tab}
                             style={[styles.tab, activeTab === tab && styles.tabActive]}
@@ -717,6 +735,8 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                             />
                         </Card>
 
+                        {profile?.role === 'tailor' && (
+                        <>
                         <SectionTitle title="À propos de l'atelier" />
                         <Card style={{ marginBottom: 16 }}>
                             <View style={styles.descriptionRow}>
@@ -766,6 +786,8 @@ export const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                                 />
                             </View>
                         </Card>
+                        </>
+                        )}
 
                         {isEditing && (
                             <TouchableOpacity

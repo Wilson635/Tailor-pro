@@ -1,97 +1,92 @@
-import React, { useEffect, useState } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import 'react-native-url-polyfill/auto';
+import { useState, useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import * as Font from 'expo-font';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { NavigationContainer } from '@react-navigation/native';
+import { StatusBar } from 'expo-status-bar';
+import { Session } from '@supabase/supabase-js';
+import {
+    useFonts,
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+    PlusJakartaSans_800ExtraBold,
+} from '@expo-google-fonts/plus-jakarta-sans';
 
+import { supabase } from '@/src/lib/supabase';
 import AppNavigator from './src/navigation/AppNavigator';
-import { COLORS, Typography } from '@constants/theme';
+import { COLORS } from '@constants/theme';
 import { useAppStore } from '@store/useAppStore';
-import { ToastProvider } from './src/context/ToastContext';
-import { DialogProvider } from './src/context/DialogContext';
+import { ToastProvider } from '@/src/context/ToastContext';
+import { DialogProvider } from '@/src/context/DialogContext';
+import { PreferencesProvider } from '@/src/context/PreferencesContext';
+import { useTheme } from '@/src/theme';
 
-export default function App() {
-  const [isReady, setIsReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // @ts-ignore
-  const { loadMockData } = useAppStore();
-
-  useEffect(() => {
-    const prepare = async () => {
-      try {
-        await Font.loadAsync({});
-        loadMockData();
-        setIsReady(true);
-      } catch (e) {
-        console.error('Error loading app:', e);
-        setError("Erreur lors du chargement de l'application");
-        setIsReady(true);
-      }
-    };
-
-    prepare();
-  }, [loadMockData]);
-
-  if (!isReady) {
+function ThemedApp({ session }: { session: Session | null }) {
+    const { isDark } = useTheme();
     return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Chargement...</Text>
-        </View>
+        <>
+            <StatusBar style={isDark ? 'light' : (session ? 'dark' : 'light')} />
+            <NavigationContainer>
+                <AppNavigator session={session} />
+            </NavigationContainer>
+        </>
     );
-  }
-
-  if (error) {
-    return (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-    );
-  }
-
-  return (
-      <GestureHandlerRootView style={styles.container}>
-        {/* 1. SafeAreaProvider en premier */}
-        <SafeAreaProvider>
-          {/* 2. ToastProvider à l'intérieur */}
-          <ToastProvider>
-            <DialogProvider>
-              <StatusBar style="dark" />
-              <AppNavigator session={null} />
-            </DialogProvider>
-          </ToastProvider>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-  );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-  },
-  loadingText: {
-    marginTop: 16,
-    ...Typography.body,
-    color: COLORS.textSecondary,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    padding: 20,
-  },
-  errorText: {
-    ...Typography.body,
-    color: COLORS.danger,
-    textAlign: 'center',
-  },
-});
+export default function App() {
+    const [session, setSession] = useState<Session | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const [fontsLoaded] = useFonts({
+        PlusJakartaSans_400Regular,
+        PlusJakartaSans_500Medium,
+        PlusJakartaSans_600SemiBold,
+        PlusJakartaSans_700Bold,
+        PlusJakartaSans_800ExtraBold,
+    });
+
+    const loadAll = useAppStore(s => s.loadAll);
+
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setSession(session);
+            setIsLoading(false);
+            if (session?.user) loadAll();
+        });
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            (_event, session) => {
+                setSession(session);
+                setIsLoading(false);
+                if (session?.user) loadAll();
+            }
+        );
+
+        return () => subscription.unsubscribe();
+    }, []);
+
+    if (isLoading || !fontsLoaded) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        );
+    }
+
+    return (
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <SafeAreaProvider>
+                <PreferencesProvider>
+                    <ToastProvider>
+                        <DialogProvider>
+                            <ThemedApp session={session} />
+                        </DialogProvider>
+                    </ToastProvider>
+                </PreferencesProvider>
+            </SafeAreaProvider>
+        </GestureHandlerRootView>
+    );
+}

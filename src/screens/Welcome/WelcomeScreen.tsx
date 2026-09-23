@@ -1,169 +1,149 @@
 // ==========================================
-// ÉCRAN BIENVENUE - TailorPro
+// ÉCRAN BIENVENUE — TailorPro
+// Clair, soft, illustration atelier
 // ==========================================
 
-import React from "react";
+import React from 'react';
 import {
     View,
     Text,
     Image,
     TouchableOpacity,
     StatusBar,
-    ScrollView,
-} from "react-native";
-import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { LinearGradient } from "expo-linear-gradient";
-import type { RootStackParamList} from "../../navigation/AppNavigator";
+    StyleSheet,
+    Dimensions,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '@/src/navigation/AppNavigator';
+import { useTheme } from '@/src/theme';
+import { ThemeToggle } from '@/src/components/ThemeToggle';
 
-type Props = NativeStackScreenProps<RootStackParamList, "Welcome">;
+type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
+const { height } = Dimensions.get('window');
+const ILLU_H = Math.min(height * 0.38, 340);
 
-export const WelcomeScreen : React.FC<Props> = ({ navigation }) => {
+export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
+    const insets = useSafeAreaInsets();
+    const { isDark, colors: P } = useTheme();
+
     return (
-        <>
-            <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <View style={[styles.root, { backgroundColor: P.pageBg, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 22 }]}>
+            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-            <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{
-                    flexGrow: 1,
-                    backgroundColor: "#FFFFFF",
-                    paddingHorizontal: 22,
-                    paddingTop: 58,
-                    paddingBottom: 40,
-                }}
+            <View style={styles.top}>
+                <Text style={[styles.brand, { color: P.text }]}>
+                    Tailor<Text style={{ color: P.gold }}>Pro</Text>
+                </Text>
+                <ThemeToggle />
+            </View>
+
+            <View style={[styles.illuWrap, { backgroundColor: P.surface, borderColor: P.goldRim }]}>
+                <Image
+                    source={require('../../../assets/images/welcome.png')}
+                    style={styles.illu}
+                />
+            </View>
+
+            <Text style={[styles.tag, { color: P.gold }]}>Atelier</Text>
+            <Text style={[styles.title, { color: P.text }]}>Bienvenue</Text>
+            <Text style={[styles.body, { color: P.sub }]}>
+                Gérez votre atelier — ou suivez vos confections — simplement, avec élégance.
+            </Text>
+
+            <View style={{ flex: 1 }} />
+
+            <TouchableOpacity
+                activeOpacity={0.88}
+                onPress={() => navigation.navigate('Login')}
+                style={[styles.primary, { backgroundColor: isDark ? P.bg : '#16123A' }]}
             >
-                {/* ── HEADER ── */}
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <View
-                        style={{
-                            width: 75,
-                            height: 75,
-                            borderRadius: 20,
-                            backgroundColor: "#1A0033",
-                            justifyContent: "center",
-                            alignItems: "center",
-                        }}
-                    >
-                        <Image
-                            source={require("../../assets/images/icon.png")}
-                            style={{ width: 52, height: 52, resizeMode: "contain" }}
-                        />
-                    </View>
+                <Text style={[styles.primaryText, { color: P.gold }]}>Se connecter</Text>
+                <Ionicons name="arrow-forward" size={16} color={P.gold} />
+            </TouchableOpacity>
 
-                    <Text
-                        style={{
-                            marginLeft: 14,
-                            fontSize: 31,
-                            fontWeight: "900",
-                            color: "#120022",
-                            letterSpacing: -1,
-                        }}
-                    >
-                        Tailor
-                        <Text style={{ color: "#D4AF37" }}>Pro</Text>
-                    </Text>
-                </View>
-
-                {/* ── TITRE ── */}
-                <View style={{ marginTop: 42 }}>
-                    <Text
-                        style={{
-                            fontSize: 42,
-                            fontWeight: "900",
-                            color: "#121212",
-                            letterSpacing: -1,
-                        }}
-                    >
-                        Bienvenue !
-                    </Text>
-                    <Text
-                        style={{
-                            marginTop: 12,
-                            fontSize: 20,
-                            lineHeight: 32,
-                            color: "#3A3A3A",
-                            fontWeight: "500",
-                        }}
-                    >
-                        Gérez votre atelier{"\n"}simplement et efficacement.
-                    </Text>
-                </View>
-
-                {/* ── IMAGE ── */}
-                <View
-                    style={{
-                        marginTop: 24,
-                        position: "relative",
-                        justifyContent: "center",
-                        alignItems: "center",
-                    }}
-                >
-                    <Image
-                        source={require("../../assets/images/welcome.png")}
-                        style={{ width: "115%", height: 260, resizeMode: "cover" }}
-                    />
-                    <LinearGradient
-                        colors={["#FFFFFF", "transparent"]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 0, y: 1 }}
-                        style={{ position: "absolute", top: 0, width: "112%", height: 5 }}
-                    />
-                    <LinearGradient
-                        colors={["transparent", "#FFFFFF"]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 0, y: 1 }}
-                        style={{ position: "absolute", bottom: 0, width: "112%", height: 6 }}
-                    />
-                </View>
-
-                {/* ── BOUTONS ── */}
-                <View style={{ marginTop: 15 }}>
-
-                    {/* SE CONNECTER */}
-                    <TouchableOpacity
-                        activeOpacity={0.92}
-                        onPress={() => navigation.navigate('Login')}
-                    >
-                        <LinearGradient
-                            colors={["#2E0057", "#18002E"]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={{
-                                height: 64,
-                                borderRadius: 20,
-                                justifyContent: "center",
-                                alignItems: "center",
-                            }}
-                        >
-                            <Text style={{ color: "#FFFFFF", fontSize: 20, fontWeight: "800" }}>
-                                Se connecter
-                            </Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
-
-                    {/* CRÉER UN COMPTE */}
-                    <TouchableOpacity
-                        activeOpacity={0.92}
-                        onPress={() => navigation.navigate("ChooseProfile")}
-                        style={{
-                            height: 64,
-                            borderRadius: 20,
-                            justifyContent: "center",
-                            alignItems: "center",
-                            borderWidth: 1.5,
-                            borderColor: "#D8D8D8",
-                            marginTop: 18,
-                            backgroundColor: "#FFFFFF",
-                            marginBottom: 10,
-                        }}
-                    >
-                        <Text style={{ color: "#1F1F1F", fontSize: 20, fontWeight: "700" }}>
-                            Créer un compte
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-            </ScrollView>
-        </>
+            <TouchableOpacity
+                activeOpacity={0.88}
+                onPress={() => navigation.navigate('ChooseProfile')}
+                style={[styles.secondary, { borderColor: P.borderHard, backgroundColor: P.surface }]}
+            >
+                <Text style={[styles.secondaryText, { color: P.text }]}>Créer un compte</Text>
+            </TouchableOpacity>
+        </View>
     );
-}
+};
+
+const styles = StyleSheet.create({
+    root: {
+        flex: 1,
+        paddingHorizontal: 22,
+    },
+    top: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 18,
+    },
+    brand: {
+        fontSize: 20,
+        fontFamily: 'PlusJakartaSans_800ExtraBold',
+        letterSpacing: -0.4,
+    },
+    illuWrap: {
+        height: ILLU_H,
+        borderRadius: 28,
+        overflow: 'hidden',
+        borderWidth: 0.5,
+        marginBottom: 22,
+    },
+    illu: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover',
+    },
+    tag: {
+        fontSize: 11,
+        fontFamily: 'PlusJakartaSans_700Bold',
+        letterSpacing: 1.8,
+        textTransform: 'uppercase',
+        marginBottom: 8,
+    },
+    title: {
+        fontSize: 34,
+        fontFamily: 'PlusJakartaSans_800ExtraBold',
+        letterSpacing: -0.8,
+        marginBottom: 10,
+    },
+    body: {
+        fontSize: 15,
+        fontFamily: 'PlusJakartaSans_500Medium',
+        lineHeight: 23,
+        maxWidth: 340,
+    },
+    primary: {
+        height: 52,
+        borderRadius: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        marginBottom: 12,
+    },
+    primaryText: {
+        fontSize: 15,
+        fontFamily: 'PlusJakartaSans_700Bold',
+    },
+    secondary: {
+        height: 52,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+    },
+    secondaryText: {
+        fontSize: 15,
+        fontFamily: 'PlusJakartaSans_600SemiBold',
+    },
+});

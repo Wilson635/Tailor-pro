@@ -101,3 +101,34 @@ export const getKanbanColumn = (statut: string): string => {
   const col = KANBAN_COLUMNS.find(c => c.matchKeys.includes(statut));
   return col?.key ?? 'en_attente';
 };
+
+/** Étapes de suivi côté client (machine FR, legacy EN mappé via getKanbanColumn) */
+export const CLIENT_PROGRESS_STEPS = [
+  'en_attente',
+  'en_confection',
+  'essayage',
+  'retouches',
+  'terminee',
+  'livree',
+] as const;
+
+export type ClientProgressStep = (typeof CLIENT_PROGRESS_STEPS)[number];
+
+/** Normalise un statut (FR ou EN) vers une étape de suivi client */
+export const toClientProgressStep = (statut?: string | null): ClientProgressStep => {
+  const col = getKanbanColumn(statut ?? 'en_attente');
+  if ((CLIENT_PROGRESS_STEPS as readonly string[]).includes(col)) {
+    return col as ClientProgressStep;
+  }
+  return 'en_attente';
+};
+
+export const getClientProgressIndex = (statut?: string | null): number => {
+  if (isCancelledOrder(statut)) return -1;
+  return CLIENT_PROGRESS_STEPS.indexOf(toClientProgressStep(statut));
+};
+
+export const DONE_ORDER_STATUSES = ['completed', 'delivered', 'terminee', 'livree'] as const;
+
+export const isDoneOrder = (status?: string | null) =>
+  !!status && (DONE_ORDER_STATUSES as readonly string[]).includes(status);

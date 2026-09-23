@@ -2,7 +2,7 @@
 // DÉTAILS CLIENT — TailorPro
 // ==========================================
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
   Linking,
   Image,
+  Share,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +30,7 @@ import { STATUT_REALISATION_LABELS, STATUT_REALISATION_COLORS } from '@constants
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { Avatar } from '@components/ui';
 import { useThemedStyles, type Palette } from '@/src/theme';
+import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import type { FicheMensuration, Realisation } from '../../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ClientDetails'>;
@@ -66,6 +69,13 @@ const latestFichesByType = (fiches: FicheMensuration[]) => {
 const typeLabel = (type: string) =>
   TYPE_VETEMENT_LABELS[type] ?? (type === 'global' ? 'Mesures générales' : type);
 
+const formatInviteCode = (code?: string | null) => {
+  const raw = (code ?? '').replace(/\s/g, '').toUpperCase();
+  if (!raw) return null;
+  const mid = Math.ceil(raw.length / 2);
+  return `${raw.slice(0, mid)}  ${raw.slice(mid)}`;
+};
+
 export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const { colors: P, styles } = useThemedStyles(makeStyles);
@@ -80,6 +90,7 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     loadRealisations,
     fiches,
     realisations,
+    regenerateClientInvite,
   } = useAppStore();
 
   const client = getClientById(clientId);
@@ -92,6 +103,10 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     loadMeasurements(clientId);
     loadFiches(clientId);
     loadRealisations(clientId);
+    const current = useAppStore.getState().getClientById(clientId);
+    if (current && !current.inviteCode) {
+      regenerateClientInvite(clientId);
+    }
   }, [clientId]);
 
   const fichePreviews = useMemo(() => latestFichesByType(clientFiches), [clientFiches]);
@@ -100,6 +115,7 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     measurements &&
     (measurements.chestCircumference || measurements.waistCircumference || measurements.hipCircumference || measurements.shoulderWidth)
   );
+  const [inviteBusy, setInviteBusy] = useState(false);
 
   if (!client) {
     return (
@@ -124,6 +140,53 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   );
   const lastOrder = sortedOrders[0] ?? null;
   const isFidele = orders.length > 2;
+  const inviteDisplay = formatInviteCode(client.inviteCode);
+  const inviteLinked = !!client.clientUserId;
+
+  const sendInviteCode = async () => {
+    const code = client.inviteCode;
+    if (!code) {
+      showAlert('Aucun code', 'Générez d’abord un code d’invitation.');
+      return;
+    }
+    const message =
+      `Bonjour ${client.nom},\n\n` +
+      `Voici votre code TailorPro pour lier votre compte client :\n\n${code}\n\n` +
+      `Dans l’app : Compte → saisissez ce code.`;
+    const phone = client.telephone.replace(/\s/g, '').replace(/^\+/, '');
+    try {
+      await Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`);
+    } catch {
+      await Share.share({ message, title: 'Code TailorPro' });
+    }
+  };
+
+  const refreshInviteCode = () => {
+    showAlert(
+      'Régénérer le code ?',
+      'L’ancien code ne fonctionnera plus. Transmettez le nouveau au client.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Régénérer',
+          style: 'destructive',
+          onPress: async () => {
+            setInviteBusy(true);
+            const code = await regenerateClientInvite(clientId);
+            setInviteBusy(false);
+            if (code) {
+              showSuccess('Accès mis à jour', 'Le nouveau code est prêt à être envoyé.');
+            } else {
+              showAlert(
+                'Impossible',
+                useAppStore.getState().error ?? 'Le code n’a pas pu être régénéré. Vérifiez la migration 025.',
+              );
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const handleCall = () => Linking.openURL(`tel:${client.telephone.replace(/\s/g, '')}`);
   const handleWhatsApp = () => {
@@ -205,6 +268,60 @@ export const ClientDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               <Text style={styles.actionLabel}>{a.label}</Text>
             </TouchableOpacity>
           ))}
+        </View>
+
+        <View style={styles.inviteVault}>
+          <View style={styles.inviteBlob} />
+          <View style={styles.inviteGoldLine} />
+
+          <View style={styles.inviteHead}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inviteKicker}>Accès application</Text>
+              <Text style={styles.inviteTitle}>Code d’invitation</Text>
+            </View>
+            <View style={[styles.inviteStatus, inviteLinked ? styles.inviteStatusOn : styles.inviteStatusWait]}>
+              <View style={[styles.inviteStatusDot, { backgroundColor: inviteLinked ? '#34D399' : P.gold }]} />
+              <Text style={[styles.inviteStatusText, inviteLinked && { color: '#34D399' }]}>
+                {inviteLinked ? 'Compte lié' : 'En attente'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.inviteWell}>
+            <Text style={styles.inviteCode}>{inviteDisplay ?? '········'}</Text>
+          </View>
+          <Text style={styles.inviteHint}>
+            {inviteLinked
+              ? 'Ce client a déjà rattaché son compte. Un nouveau code sert à le relier à nouveau si besoin.'
+              : 'À transmettre au client : Compte → saisir ce code pour synchroniser commandes et mesures.'}
+          </Text>
+
+          <View style={styles.inviteActions}>
+            <TouchableOpacity
+              style={styles.invitePrimary}
+              onPress={sendInviteCode}
+              disabled={!client.inviteCode}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="logo-whatsapp" size={16} color={P.gold} />
+              <Text style={styles.invitePrimaryText}>Envoyer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inviteGhost}
+              onPress={refreshInviteCode}
+              disabled={inviteBusy}
+              activeOpacity={0.85}
+            >
+              {inviteBusy ? (
+                <ActivityIndicator size="small" color={P.gold} />
+              ) : (
+                <>
+                  <Ionicons name="refresh" size={15} color="rgba(255,255,255,0.85)" />
+                  <Text style={styles.inviteGhostText}>Régénérer</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.statGrid}>
@@ -531,6 +648,76 @@ const makeStyles = (P: Palette) => ({
     alignItems: 'center' as const, justifyContent: 'center' as const,
   },
   actionLabel: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: P.sub },
+
+  inviteVault: {
+    backgroundColor: '#16123A',
+    borderRadius: 22,
+    padding: 16,
+    marginBottom: 12,
+    overflow: 'hidden' as const,
+    borderWidth: 1,
+    borderColor: P.goldRim,
+    position: 'relative' as const,
+  },
+  inviteBlob: {
+    position: 'absolute' as const, top: -48, right: -36,
+    width: 140, height: 140, borderRadius: 70,
+    backgroundColor: 'rgba(108,62,184,0.32)',
+  },
+  inviteGoldLine: {
+    position: 'absolute' as const, top: 0, left: 20, right: 20, height: 1,
+    backgroundColor: P.goldRim,
+  },
+  inviteHead: {
+    flexDirection: 'row' as const, alignItems: 'flex-start' as const,
+    justifyContent: 'space-between' as const, gap: 10, marginBottom: 14,
+  },
+  inviteKicker: {
+    fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: P.gold,
+    letterSpacing: 1.6, textTransform: 'uppercase' as const, marginBottom: 4,
+  },
+  inviteTitle: {
+    fontSize: 17, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#fff', letterSpacing: -0.3,
+  },
+  inviteStatus: {
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
+    borderWidth: 0.5,
+  },
+  inviteStatusOn: { backgroundColor: 'rgba(52,211,153,0.12)', borderColor: 'rgba(52,211,153,0.35)' },
+  inviteStatusWait: { backgroundColor: P.goldBg, borderColor: P.goldRim },
+  inviteStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  inviteStatusText: { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: P.gold },
+  inviteWell: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.28)',
+    paddingVertical: 16,
+    alignItems: 'center' as const,
+  },
+  inviteCode: {
+    fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.gold,
+    letterSpacing: 3,
+  },
+  inviteHint: {
+    fontSize: 12, color: 'rgba(255,255,255,0.52)', marginTop: 12, lineHeight: 18,
+    fontFamily: 'PlusJakartaSans_500Medium',
+  },
+  inviteActions: { flexDirection: 'row' as const, gap: 8, marginTop: 14 },
+  invitePrimary: {
+    flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const,
+    gap: 8, height: 46, borderRadius: 14, backgroundColor: 'rgba(212,175,55,0.12)',
+    borderWidth: 1, borderColor: P.goldRim,
+  },
+  invitePrimaryText: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: P.gold },
+  inviteGhost: {
+    flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const,
+    gap: 8, height: 46, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)',
+  },
+  inviteGhostText: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: 'rgba(255,255,255,0.88)' },
+
   statGrid: {
     flexDirection: 'row' as const, flexWrap: 'wrap' as const,
     backgroundColor: P.surface, borderRadius: 18, borderWidth: 0.5, borderColor: P.borderHard,

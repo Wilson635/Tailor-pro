@@ -8,6 +8,10 @@
 export interface Client {
   id: string;
   couturierId: string;
+  /** Compte app (users/auth) lié à cette fiche CRM — null si non lié */
+  clientUserId: string | null;
+  /** Code d'invitation pour que le client rattache son compte */
+  inviteCode: string | null;
   nom: string;
   telephone: string;
   whatsapp: string | null;
@@ -22,6 +26,42 @@ export interface Client {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+}
+
+export type ClientRequestKind = 'devis' | 'rdv';
+export type ClientRequestStatus = 'pending' | 'accepted' | 'declined' | 'converted';
+
+export interface ClientRequest {
+  id: string;
+  clientUserId: string;
+  couturierId: string;
+  clientId: string | null;
+  kind: ClientRequestKind;
+  message: string;
+  modelId: string | null;
+  preferredAt: Date | null;
+  status: ClientRequestStatus;
+  createdAt: Date;
+}
+
+/** Profil public d'un atelier (catalogue / fiche) */
+export interface PublicAtelier {
+  id: string;
+  displayName: string | null;
+  atelierName: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  city: string | null;
+  avatarUrl: string | null;
+  description: string | null;
+  specialities: string[] | null;
+  horaires: Record<string, string> | null;
+  adresse: string | null;
+}
+
+/** Atelier lié au compte client (fiche CRM) */
+export interface LinkedTailor extends PublicAtelier {
+  clientRowId: string;
 }
 
 // Mesures
@@ -118,6 +158,7 @@ export interface OrderItem {
 export interface Order {
   id: string;
   clientId: string;
+  couturierId?: string;
   clientName: string;
   clothingType: ClothingType;
   description?: string;

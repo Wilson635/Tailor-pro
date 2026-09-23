@@ -17,13 +17,21 @@ import {
   participantService, mapParticipant,
   measurementFieldService, mapMeasurementField,
   resolveClientPhotoForSave, isRemotePhoto,
+  clientLinkService,
+  clientRequestService,
+  mapClientRequest,
+  mapPublicAtelier,
 } from '@services/supabaseService';
 import { isCancelledOrder } from '@constants/commandeConstants';
 import { expectedClientBalance } from '@/src/utils/clientBalance';
 import { splitGlobalAdvance } from '@/src/utils/splitGlobalAdvance';
+import { resolveAppRole } from '@/src/utils/userRole';
 import type {
   Client, Order, Measurements, Payment, CatalogModel, Activity, Statistics, FicheMensuration, TypeVetement, Realisation, StatutRealisation, Tissu,
   Project, ProjectRecap, ProjectStatut, ProjectParticipant, GarmentMeasurementField, MeasurementChoiceResult,
+  LinkedTailor,
+  PublicAtelier,
+  ClientRequest,
 } from '../types';
 
 // ==========================================
@@ -95,6 +103,9 @@ interface AppState {
 
   // ── Données ──
   clients: Client[];
+  linkedTailors: LinkedTailor[];
+  publicAteliers: PublicAtelier[];
+  clientRequests: ClientRequest[];
   orders: Order[];
   catalog: CatalogModel[];
   tissus: Tissu[];
@@ -126,6 +137,20 @@ interface AppState {
 
   // ── Actions Data (Supabase) ──
   loadClients: () => Promise<void>;
+  loadLinkedClients: () => Promise<void>;
+  loadPublicAteliers: () => Promise<void>;
+  getAtelierById: (id: string) => PublicAtelier | LinkedTailor | undefined;
+  linkAtelierByInvite: (code: string) => Promise<{ ok: boolean; error?: string }>;
+  regenerateClientInvite: (clientId: string) => Promise<string | null>;
+  loadClientRequests: () => Promise<void>;
+  createClientRequest: (input: {
+    couturierId: string;
+    kind: ClientRequest['kind'];
+    message: string;
+    modelId?: string | null;
+    preferredAt?: Date | null;
+  }) => Promise<{ ok: boolean; error?: string }>;
+  updateClientRequestStatus: (id: string, status: ClientRequest['status']) => Promise<boolean>;
   loadOrders: () => Promise<void>;
   loadActivities: () => Promise<void>;
   loadStatistics: () => Promise<void>;
@@ -133,7 +158,10 @@ interface AppState {
   reconcileCancelledOrderBalances: () => Promise<void>;
 
   // ── Actions Clients (locales + sync) ──
-  addClient: (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Client | null>;
+  addClient: (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt' | 'clientUserId' | 'inviteCode'> & {
+    clientUserId?: string | null;
+    inviteCode?: string | null;
+  }) => Promise<Client | null>;
   updateClient: (clientId: string, data: Partial<Client>) => Promise<boolean>;
   deleteClient: (clientId: string) => Promise<void>;
 
@@ -321,6 +349,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   profile: null,
 
   clients: [],
+  linkedTailors: [],
+  publicAteliers: [],
+  clientRequests: [],
   orders: [],
   catalog: [],
   activities: [],
@@ -356,10 +387,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       userId: null,
       profile: null,
       clients: [],
+      linkedTailors: [],
+      publicAteliers: [],
+      clientRequests: [],
       orders: [],
       activities: [],
       statistics: DEFAULT_STATISTICS,
       measurements: {},
+      fiches: {},
+      payments: {},
+      catalog: [],
     });
   },
 
@@ -367,14 +404,50 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    const meta = (user.user_metadata ?? {}) as Record<string, any>;
     const { data, error } = await supabase
         .from('users')
         .select('id, email, display_name, atelier_name, role, phone, whatsapp, city, adresse, description, specialities, horaires, reseaux_sociaux, statut_catalogue, plan_abonnement, devise, langue, unite_mesure, avatar_url, created_at')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
-    if (!error && data) {
-      set({ profile: data as UserProfile, userId: user.id, isAuthenticated: true });
+    const role = resolveAppRole(data?.role, meta.role);
+    const profile: UserProfile = {
+      id: user.id,
+      email: data?.email ?? user.email ?? '',
+      display_name: data?.display_name ?? meta.display_name ?? null,
+      atelier_name: data?.atelier_name ?? meta.atelier_name ?? null,
+      role,
+      phone: data?.phone ?? meta.phone ?? null,
+      whatsapp: data?.whatsapp ?? null,
+      city: data?.city ?? null,
+      adresse: data?.adresse ?? null,
+      description: data?.description ?? null,
+      specialities: data?.specialities ?? null,
+      horaires: data?.horaires ?? null,
+      reseaux_sociaux: data?.reseaux_sociaux ?? null,
+      statut_catalogue: data?.statut_catalogue ?? 'prive',
+      plan_abonnement: data?.plan_abonnement ?? 'gratuit',
+      devise: data?.devise ?? null,
+      langue: data?.langue ?? null,
+      unite_mesure: data?.unite_mesure ?? null,
+      avatar_url: data?.avatar_url ?? null,
+      created_at: data?.created_at ?? user.created_at ?? null,
+    };
+
+    set({ profile, userId: user.id, isAuthenticated: true });
+
+    if (role === 'client' && data?.role !== 'client') {
+      await supabase.from('users').update({ role: 'client' }).eq('id', user.id);
+    }
+    if (error && !data) {
+      await supabase.from('users').upsert({
+        id: user.id,
+        email: profile.email,
+        display_name: profile.display_name,
+        phone: profile.phone,
+        role,
+      }, { onConflict: 'id' });
     }
   },
 
@@ -401,18 +474,151 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadClients: async () => {
     const { data, error } = await clientService.getAll();
     if (error) { set({ error: error.message }); return; }
-    set({ clients: (data ?? []).map(mapClient) });
+    let mapped = (data ?? []).map(mapClient);
+    const missing = mapped.filter(c => !c.inviteCode);
+    if (missing.length) {
+      const filled = await Promise.all(missing.map(async (c) => {
+        const { data: code } = await clientLinkService.regenerateInvite(c.id);
+        return code ? { id: c.id, code } : null;
+      }));
+      const byId = new Map(filled.filter(Boolean).map(x => [x!.id, x!.code]));
+      mapped = mapped.map(c => byId.has(c.id) ? { ...c, inviteCode: byId.get(c.id)! } : c);
+    }
+    set({ clients: mapped });
+  },
+
+  loadLinkedClients: async () => {
+    const { profile } = get();
+    if (profile?.role !== 'client') return;
+
+    // Auto-revendication par téléphone si le profil en a un
+    if (profile.phone) {
+      try {
+        await clientLinkService.claimByPhone(profile.phone);
+      } catch (_) { /* ignore — RPC peut être absente avant migration */ }
+    }
+
+    const { data, error } = await clientLinkService.getLinkedClients();
+    if (error && !data?.length) { set({ error: error.message }); return; }
+
+    const linked = (data ?? []).map(mapClient);
+    const { data: tailors } = await clientLinkService.getLinkedTailors(linked);
+    set({ clients: linked, linkedTailors: tailors });
+
+    // Charger les fiches de mensuration pour chaque fiche liée
+    await Promise.all(linked.map(c => get().loadFiches(c.id)));
+  },
+
+  loadPublicAteliers: async () => {
+    const { data } = await clientLinkService.getPublicAteliers();
+    const byId = new Map((data ?? []).map(a => [a.id, a]));
+    const missing = [...new Set(get().catalog.map(m => m.couturierId).filter(Boolean))]
+      .filter(id => !byId.has(id));
+    if (missing.length) {
+      const { data: extra } = await supabase
+        .from('users')
+        .select('id, display_name, atelier_name, phone, whatsapp, city, avatar_url, description, specialities, horaires, adresse')
+        .in('id', missing);
+      (extra ?? []).forEach((u: any) => byId.set(u.id, mapPublicAtelier(u)));
+      missing.forEach(id => {
+        if (!byId.has(id)) byId.set(id, mapPublicAtelier({ id }));
+      });
+    }
+    set({ publicAteliers: [...byId.values()] });
+  },
+
+  getAtelierById: (id) => {
+    const linked = get().linkedTailors.find(t => t.id === id);
+    if (linked) return linked;
+    return get().publicAteliers.find(t => t.id === id);
+  },
+
+  linkAtelierByInvite: async (code) => {
+    const { data, error } = await clientLinkService.linkByInvite(code);
+    if (error || !data) {
+      return { ok: false, error: error?.message ?? 'Code invalide' };
+    }
+    await get().loadLinkedClients();
+    await Promise.all([
+      get().loadOrders(),
+      get().loadActivities(),
+      get().loadCatalog(),
+      get().loadPublicAteliers(),
+    ]);
+    return { ok: true };
+  },
+
+  regenerateClientInvite: async (clientId) => {
+    const { data, error } = await clientLinkService.regenerateInvite(clientId);
+    if (error || !data) {
+      const msg = error?.message ?? '';
+      const hint = /does not exist|schema cache|42703|invite_code/i.test(msg)
+        ? 'Exécutez la migration 025 sur le projet TailorPro (SQL Editor).'
+        : 'Impossible de régénérer le code';
+      set({ error: hint });
+      return null;
+    }
+    set(state => ({
+      clients: state.clients.map(c =>
+        c.id === clientId ? { ...c, inviteCode: data } : c
+      ),
+    }));
+    return data;
+  },
+
+  loadClientRequests: async () => {
+    const { data, error } = await clientRequestService.listMine();
+    if (error) {
+      if (!error.message?.toLowerCase().includes('does not exist') && error.code !== 'PGRST205') {
+        set({ error: error.message });
+      }
+      set({ clientRequests: [] });
+      return;
+    }
+    set({ clientRequests: (data ?? []).map(mapClientRequest) });
+  },
+
+  createClientRequest: async (input) => {
+    const { clients, profile } = get();
+    const clientId = profile?.role === 'client'
+      ? (clients.find(c => c.couturierId === input.couturierId)?.id ?? clients[0]?.id ?? null)
+      : null;
+    const { data, error } = await clientRequestService.create({
+      couturierId: input.couturierId,
+      kind: input.kind,
+      message: input.message,
+      modelId: input.modelId ?? null,
+      preferredAt: input.preferredAt ? input.preferredAt.toISOString() : null,
+      clientId,
+    });
+    if (error || !data) {
+      return { ok: false, error: error?.message ?? 'Impossible d’envoyer la demande' };
+    }
+    const mapped = mapClientRequest(data);
+    set(state => ({ clientRequests: [mapped, ...state.clientRequests] }));
+    return { ok: true };
+  },
+
+  updateClientRequestStatus: async (id, status) => {
+    const { data, error } = await clientRequestService.updateStatus(
+      id,
+      status as 'accepted' | 'declined' | 'converted',
+    );
+    if (error || !data) return false;
+    const mapped = mapClientRequest(data);
+    set(state => ({
+      clientRequests: state.clientRequests.map(r => (r.id === id ? mapped : r)),
+    }));
+    return true;
   },
 
   loadOrders: async () => {
-    const { profile, userId } = get();
-    if (!userId) return;
+    const { profile, clients } = get();
+    if (!get().userId) return;
 
     if (profile?.role === 'client') {
-      const { data, error } = await supabase
-          .from('orders')
-          .select('*, order_items(*)')
-          .eq('client_id', userId);
+      const ids = clients.map(c => c.id);
+      const { data, error } = await orderService.getForLinkedClients(ids);
       if (error) { set({ error: error.message }); return; }
       set({ orders: (data ?? []).map(mapOrder) });
     } else {
@@ -423,16 +629,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadActivities: async () => {
-    const { profile, userId } = get();
+    const { profile, clients, userId } = get();
     if (!userId) return;
 
     if (profile?.role === 'client') {
+      const ids = clients.map(c => c.id);
+      if (!ids.length) { set({ activities: [] }); return; }
       const { data, error } = await supabase
           .from('activities')
           .select('*')
-          .eq('client_id', userId)
+          .in('client_id', ids)
           .order('created_at', { ascending: false })
-          .limit(10);
+          .limit(20);
       if (error) { set({ error: error.message }); return; }
       set({ activities: (data ?? []).map(mapActivity) });
     } else {
@@ -454,9 +662,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const currentProfile = get().profile;
 
     if (currentProfile?.role === 'client') {
+      await get().loadLinkedClients();
+      await get().loadCatalog();
       await Promise.all([
         get().loadOrders(),
         get().loadActivities(),
+        get().loadPublicAteliers(),
+        get().loadClientRequests(),
       ]);
     } else {
       await Promise.all([
@@ -466,6 +678,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().loadCatalog(),
         get().loadStatistics(),
         get().loadProjects(),
+        get().loadClientRequests(),
       ]);
       await get().reconcileCancelledOrderBalances();
     }
@@ -500,6 +713,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const userId = get().profile?.id ?? get().userId ?? '';
     const { data, error } = await clientService.create({
       ...clientData,
+      clientUserId: clientData.clientUserId ?? null,
+      inviteCode: clientData.inviteCode ?? null,
       photo: isRemotePhoto(clientData.photo) ? clientData.photo : null,
     });
     if (error || !data) { set({ error: error?.message }); return null; }
@@ -1366,6 +1581,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ==========================================
 
   loadCatalog: async () => {
+    const { profile } = get();
+    if (profile?.role === 'client') {
+      const { data, error } = await catalogService.getPublicBrowse();
+      if (error) { set({ error: error.message }); return; }
+      set({ catalog: (data ?? []).map(mapCatalogModel) });
+      return;
+    }
     const { data, error } = await catalogService.getAll();
     if (error) { set({ error: error.message }); return; }
     set({ catalog: (data ?? []).map(mapCatalogModel) });

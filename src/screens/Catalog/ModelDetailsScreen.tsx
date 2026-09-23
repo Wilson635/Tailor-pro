@@ -45,7 +45,10 @@ export const ModelDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     toggleCatalogStatut,
     duplicateCatalogModel,
     archiveCatalogModel,
+    profile,
+    getAtelierById,
   } = useAppStore();
+  const isClient = profile?.role === 'client';
 
   const model = getModelById(modelId);
   const [photoIndex, setPhotoIndex] = useState(0);
@@ -157,11 +160,13 @@ export const ModelDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           <TouchableOpacity style={styles.roundBtn} onPress={() => navigation.goBack()} activeOpacity={0.85}>
             <Ionicons name="chevron-back" size={20} color="#fff" />
           </TouchableOpacity>
+          {!isClient && (
           <TouchableOpacity style={styles.roundBtn} onPress={handleFavorite} activeOpacity={0.85}>
             <Animated.View style={{ transform: [{ scale: heart }] }}>
               <Ionicons name={model.isFavorite ? 'heart' : 'heart-outline'} size={18} color={model.isFavorite ? P.gold : '#fff'} />
             </Animated.View>
           </TouchableOpacity>
+          )}
         </View>
 
         {photos.length > 1 && (
@@ -203,6 +208,14 @@ export const ModelDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             <Text style={styles.price}>
               {model.prixIndicatif > 0 ? formatCurrencyShort(model.prixIndicatif) : 'Prix sur devis'}
             </Text>
+            {isClient && model.couturierId ? (
+              <TouchableOpacity
+                style={styles.goldPill}
+                onPress={() => navigation.navigate('ClientAtelier', { tailorId: model.couturierId })}
+              >
+                <Text style={styles.goldPillText}>Voir l’atelier</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <View style={styles.stats}>
@@ -213,7 +226,7 @@ export const ModelDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 <Text style={styles.statLbl}>Réalisation</Text>
               </View>
             )}
-            <TouchableOpacity style={styles.stat} onPress={() => toggleCatalogStatut(model.id)}>
+            <TouchableOpacity style={styles.stat} onPress={isClient ? undefined : () => toggleCatalogStatut(model.id)}>
               <Ionicons name={model.statut === 'public' ? 'globe-outline' : 'lock-closed-outline'} size={16} color={P.gold} />
               <Text style={styles.statVal}>{model.statut === 'public' ? 'Public' : 'Privé'}</Text>
               <Text style={styles.statLbl}>Visibilité</Text>
@@ -254,6 +267,7 @@ export const ModelDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           )}
 
+          {!isClient && (
           <View style={styles.actions}>
             <TouchableOpacity style={styles.action} onPress={() => navigation.navigate('EditCatalogModel', { modelId: model.id })}>
               <Ionicons name="create-outline" size={18} color={P.primary} />
@@ -268,12 +282,29 @@ export const ModelDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               <Text style={[styles.actionText, { color: P.error }]}>Retirer</Text>
             </TouchableOpacity>
           </View>
+          )}
         </ScrollView>
       </Animated.View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 10 }]}>
         {isActing ? (
           <ActivityIndicator color={P.gold} />
+        ) : isClient ? (
+          <TouchableOpacity
+            style={styles.shareBtn}
+            onPress={() =>
+              navigation.navigate('ClientRequest', {
+                tailorId: model.couturierId,
+                kind: 'devis',
+                modelId: model.id,
+                modelName: model.nom,
+              })
+            }
+            activeOpacity={0.88}
+          >
+            <Ionicons name="clipboard-outline" size={18} color={P.gold} />
+            <Text style={styles.shareText}>Demander un devis</Text>
+          </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.88}>
             <Ionicons name="share-outline" size={18} color={P.gold} />

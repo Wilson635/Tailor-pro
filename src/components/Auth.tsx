@@ -35,8 +35,8 @@ const C = {
     textTertiary:  "#B0ACBA",
     error:         "#EF4444",
 
-    purple900:  "#1A0033",
-    purple700:  "#2E0057",
+    purple900:  "#16123A",
+    purple700:  "#221E4E",
     purple600:  "#534AB7",
     purple200:  "#AFA9EC",
     purple100:  "#EEEDFE",

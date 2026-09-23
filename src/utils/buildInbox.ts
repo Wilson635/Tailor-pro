@@ -1,8 +1,8 @@
-import type { Activity, Client, Order, Statistics } from '../types';
+import type { Activity, Client, ClientRequest, Order, Statistics } from '../types';
 import { formatCurrencyShort, formatDate } from '@utils/formatters';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 
-export type InboxKind = 'order' | 'payment' | 'client' | 'stats' | 'activity';
+export type InboxKind = 'order' | 'payment' | 'client' | 'stats' | 'activity' | 'request';
 
 export type InboxItem = {
   id: string;
@@ -31,14 +31,33 @@ export const buildInbox = ({
   clients,
   activities,
   statistics,
+  requests = [],
+  role = 'tailor',
 }: {
   orders: Order[];
   clients: Client[];
   activities: Activity[];
   statistics: Statistics;
+  requests?: ClientRequest[];
+  role?: 'tailor' | 'client';
 }): InboxItem[] => {
   const items: InboxItem[] = [];
   const today = startOfDay(new Date());
+  const isClient = role === 'client';
+  const primaryClientId = clients[0]?.id;
+
+  for (const r of requests) {
+    if (r.status !== 'pending') continue;
+    items.push({
+      id: `req-${r.id}`,
+      kind: 'request',
+      title: r.kind === 'rdv' ? 'Demande de rendez-vous' : 'Demande de devis',
+      body: r.message || (isClient ? 'En attente de réponse' : 'À traiter'),
+      timestamp: r.createdAt,
+      priority: 'high',
+      route: isClient ? undefined : { name: 'AtelierRequests' },
+    });
+  }
 
   for (const o of orders) {
     if (!OPEN(o.orderStatus)) continue;
@@ -99,19 +118,27 @@ export const buildInbox = ({
     items.push({
       id: 'pay-summary',
       kind: 'payment',
-      title: `${unpaid.length} commandes non soldées`,
-      body: `${formatCurrencyShort(total)} encore à encaisser`,
+      title: isClient ? `${unpaid.length} commandes à régler` : `${unpaid.length} commandes non soldées`,
+      body: isClient
+        ? `${formatCurrencyShort(total)} restant`
+        : `${formatCurrencyShort(total)} encore à encaisser`,
       timestamp: new Date(),
       priority: 'high',
-      route: { name: 'Payments', params: { clientId: '' } },
+      route: isClient && primaryClientId
+        ? { name: 'ClientPaiements', params: { clientId: primaryClientId } }
+        : { name: 'Payments' },
     });
   } else {
     for (const o of unpaid) {
       items.push({
         id: `pay-${o.id}`,
         kind: 'payment',
-        title: o.paymentStatus === 'partial' ? 'Paiement partiel' : 'Impayé',
-        body: `${o.clientName} · reste ${formatCurrencyShort(o.remainingAmount)}`,
+        title: isClient
+          ? (o.paymentStatus === 'partial' ? 'Solde partiel' : 'Reste à payer')
+          : (o.paymentStatus === 'partial' ? 'Paiement partiel' : 'Impayé'),
+        body: isClient
+          ? `Reste ${formatCurrencyShort(o.remainingAmount)}`
+          : `${o.clientName} · reste ${formatCurrencyShort(o.remainingAmount)}`,
         timestamp: asDate(o.updatedAt ?? o.createdAt),
         priority: o.remainingAmount > 0 ? 'high' : 'normal',
         route: { name: 'OrderDetails', params: { orderId: o.id } },
@@ -119,45 +146,52 @@ export const buildInbox = ({
     }
   }
 
-  for (const c of clients) {
-    const age = Date.now() - asDate(c.createdAt).getTime();
-    if (age < 7 * DAY) {
+  if (!isClient) {
+    for (const c of clients) {
+      const age = Date.now() - asDate(c.createdAt).getTime();
+      if (age < 7 * DAY) {
+        items.push({
+          id: `client-new-${c.id}`,
+          kind: 'client',
+          title: 'Nouveau client',
+          body: `${c.nom} a été ajouté cette semaine`,
+          timestamp: asDate(c.createdAt),
+          priority: 'normal',
+          route: { name: 'ClientDetails', params: { clientId: c.id } },
+        });
+      }
+    }
+
+    if (statistics.unpaidAmount > 0) {
       items.push({
-        id: `client-new-${c.id}`,
-        kind: 'client',
-        title: 'Nouveau client',
-        body: `${c.nom} a été ajouté cette semaine`,
-        timestamp: asDate(c.createdAt),
+        id: 'stats-unpaid',
+        kind: 'stats',
+        title: 'Point encaissements',
+        body: `${formatCurrencyShort(statistics.unpaidAmount)} en attente · ${statistics.unpaidInvoices} facture${statistics.unpaidInvoices > 1 ? 's' : ''}`,
+        timestamp: new Date(),
         priority: 'normal',
-        route: { name: 'ClientDetails', params: { clientId: c.id } },
+        route: { name: 'Statistics' },
+      });
+    }
+    if (statistics.ordersInProgress > 0) {
+      items.push({
+        id: 'stats-progress',
+        kind: 'stats',
+        title: 'Atelier en cours',
+        body: `${statistics.ordersInProgress} commande${statistics.ordersInProgress > 1 ? 's' : ''} en confection`,
+        timestamp: new Date(),
+        priority: 'normal',
+        route: { name: 'CommandeKanban' },
       });
     }
   }
 
-  if (statistics.unpaidAmount > 0) {
-    items.push({
-      id: 'stats-unpaid',
-      kind: 'stats',
-      title: 'Point encaissements',
-      body: `${formatCurrencyShort(statistics.unpaidAmount)} en attente · ${statistics.unpaidInvoices} facture${statistics.unpaidInvoices > 1 ? 's' : ''}`,
-      timestamp: new Date(),
-      priority: 'normal',
-      route: { name: 'Statistics' },
-    });
-  }
-  if (statistics.ordersInProgress > 0) {
-    items.push({
-      id: 'stats-progress',
-      kind: 'stats',
-      title: 'Atelier en cours',
-      body: `${statistics.ordersInProgress} commande${statistics.ordersInProgress > 1 ? 's' : ''} en confection`,
-      timestamp: new Date(),
-      priority: 'normal',
-      route: { name: 'CommandeKanban' },
-    });
-  }
-
   for (const a of activities) {
+    const route = a.orderId
+      ? { name: 'OrderDetails' as const, params: { orderId: a.orderId } }
+      : !isClient && a.clientId
+        ? { name: 'ClientDetails' as const, params: { clientId: a.clientId } }
+        : { name: 'Notifications' as const };
     items.push({
       id: `act-${a.id}`,
       kind: 'activity',
@@ -165,11 +199,7 @@ export const buildInbox = ({
       body: a.subtitle,
       timestamp: asDate(a.timestamp),
       priority: 'normal',
-      route: a.orderId
-        ? { name: 'OrderDetails', params: { orderId: a.orderId } }
-        : a.clientId
-          ? { name: 'ClientDetails', params: { clientId: a.clientId } }
-          : { name: 'Statistics' },
+      route,
     });
   }
 

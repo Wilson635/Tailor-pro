@@ -1,84 +1,95 @@
 // ==========================================
 // COMMANDES — CÔTÉ CLIENT
+// Suivi lecture seule (pas de création atelier)
 // ==========================================
 
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
     ScrollView,
     TouchableOpacity,
-    TextInput,
+    Linking,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@store/useAppStore';
 import { formatCurrencyShort } from '@utils/formatters';
 import { CLOTHING_TYPE_LABELS } from '@constants/theme';
-import { STATUT_COMMANDE_LABELS, STATUT_COMMANDE_COLORS } from '@constants/commandeConstants';
+import {
+    STATUT_COMMANDE_LABELS,
+    STATUT_COMMANDE_COLORS,
+    isDoneOrder,
+} from '@constants/commandeConstants';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useProfile } from '@hooks/useProfile';
 import { useThemedStyles, type Palette } from '@/src/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MainTabs'>;
 
-const DONE = ['completed', 'delivered', 'terminee', 'livree'];
-
 export const ClientOrdersScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
     const { colors: P, styles } = useThemedStyles(makeStyles);
-    const { orders } = useAppStore();
-    const [searchTailor, setSearchTailor] = useState('');
-    const { profile } = useProfile();
+    const { orders, clients, linkedTailors } = useAppStore();
 
-    const activeOrders = orders.filter((o) => !DONE.includes(o.orderStatus));
-    const pastOrders = orders.filter((o) => DONE.includes(o.orderStatus));
+    const linkedIds = useMemo(() => new Set(clients.map(c => c.id)), [clients]);
+    const myOrders = useMemo(
+        () => orders.filter(o => linkedIds.has(o.clientId)),
+        [orders, linkedIds],
+    );
+    const activeOrders = myOrders.filter((o) => !isDoneOrder(o.orderStatus));
+    const pastOrders = myOrders.filter((o) => isDoneOrder(o.orderStatus));
+    const primaryTailor = linkedTailors[0] ?? null;
+
+    const contactTailor = () => {
+        if (!primaryTailor) return;
+        const phone = (primaryTailor.whatsapp ?? primaryTailor.phone ?? '').replace(/\s/g, '');
+        if (!phone) return;
+        Linking.openURL(`https://wa.me/${phone.replace('+', '')}`);
+    };
 
     return (
         <View style={[styles.container, { paddingTop: insets.top }]}>
             <View style={styles.header}>
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.kicker}>Espace client</Text>
                     <Text style={styles.headerTitle}>Mes commandes</Text>
                 </View>
-                <TouchableOpacity
-                    style={styles.addBtn}
-                    onPress={() => navigation.navigate('AddOrder', { clientId: profile?.id })}
-                >
-                    <Ionicons name="add" size={18} color={P.gold} />
-                </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Trouver un atelier</Text>
-                    <View style={styles.searchBar}>
-                        <Ionicons name="search-outline" size={18} color={P.sub} />
-                        <TextInput
-                            style={styles.searchInput}
-                            placeholder="Nom, ville, spécialité…"
-                            value={searchTailor}
-                            onChangeText={setSearchTailor}
-                            placeholderTextColor={P.muted}
-                        />
-                    </View>
-
-                    <View style={styles.card}>
-                        <View style={styles.tailorInfo}>
-                            <View style={styles.tailorAvatar}>
-                                <Ionicons name="cut-outline" size={20} color={P.gold} />
+                {primaryTailor ? (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Mon atelier</Text>
+                        <View style={styles.card}>
+                            <View style={styles.tailorInfo}>
+                                <View style={styles.tailorAvatar}>
+                                    <Ionicons name="cut-outline" size={20} color={P.gold} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.tailorName}>
+                                        {primaryTailor.atelierName ?? primaryTailor.displayName ?? 'Atelier'}
+                                    </Text>
+                                    {!!primaryTailor.city && (
+                                        <Text style={styles.tailorSub}>{primaryTailor.city}</Text>
+                                    )}
+                                </View>
+                                <TouchableOpacity style={styles.connectBtn} onPress={contactTailor}>
+                                    <Text style={styles.connectBtnText}>Contacter</Text>
+                                </TouchableOpacity>
                             </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.tailorName}>Atelier Haute Couture Pro</Text>
-                                <Text style={styles.tailorSub}>À 1.2 km · Costume, robes de mariée</Text>
-                            </View>
-                            <TouchableOpacity style={styles.connectBtn}>
-                                <Text style={styles.connectBtnText}>Contacter</Text>
-                            </TouchableOpacity>
                         </View>
                     </View>
-                </View>
+                ) : (
+                    <View style={styles.section}>
+                        <View style={styles.emptyCard}>
+                            <Feather name="link" size={24} color={P.gold} />
+                            <Text style={styles.emptyText}>
+                                Liez votre atelier depuis l’onglet Compte pour synchroniser vos commandes.
+                            </Text>
+                        </View>
+                    </View>
+                )}
 
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>En confection ({activeOrders.length})</Text>
@@ -164,23 +175,12 @@ const makeStyles = (P: Palette) => ({
         letterSpacing: 1.4, textTransform: 'uppercase' as const, marginBottom: 2,
     },
     headerTitle: { fontSize: 26, fontFamily: 'PlusJakartaSans_800ExtraBold', color: P.text, letterSpacing: -0.6 },
-    addBtn: {
-        width: 40, height: 40, borderRadius: 12, backgroundColor: P.bg,
-        alignItems: 'center' as const, justifyContent: 'center' as const,
-        borderWidth: 1, borderColor: P.goldRim, marginBottom: 2,
-    },
     scrollContent: { paddingHorizontal: 20, paddingBottom: 32 },
     section: { marginBottom: 24 },
     sectionTitle: {
         fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', color: P.sub,
         textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 12,
     },
-    searchBar: {
-        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8,
-        backgroundColor: P.surface, borderWidth: 0.5, borderColor: P.borderHard,
-        borderRadius: 14, paddingHorizontal: 14, height: 44, marginBottom: 10,
-    },
-    searchInput: { flex: 1, fontSize: 14, fontFamily: 'PlusJakartaSans_500Medium', color: P.text },
     card: {
         backgroundColor: P.surface, borderRadius: 18, padding: 14,
         borderWidth: 0.5, borderColor: P.borderHard,

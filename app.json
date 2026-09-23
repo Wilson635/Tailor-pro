@@ -7,16 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "tailorpro",
     "userInterfaceStyle": "automatic",
-    "notification": {
-      "color": "#16123A",
-      "androidMode": "default",
-      "androidCollapsedTitle": "TailorPro"
-    },
-    "splash": {
-      "image": "./assets/logo/logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#6B21A8"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -51,11 +41,18 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/logo/logo.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#6B21A8"
+        }
+      ],
       [
         "expo-notifications",
         {
@@ -85,13 +82,15 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-font"
+      "expo-font",
+      "expo-asset",
+      "expo-localization",
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-sqlite",
+      "expo-status-bar"
     ],
-    "experiments": {
-      "typedRoutes": true
-    },
     "extra": {
-      "router": {},
       "eas": {
         "projectId": "3fda2270-9a15-4b79-b964-929b10e9ebb4"
       }

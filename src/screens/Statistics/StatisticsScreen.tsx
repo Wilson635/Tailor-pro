@@ -388,7 +388,7 @@ export const StatisticsScreen = () => {
           <View style={[s.card, { marginTop: 16, flexDirection: 'row', alignItems: 'center', padding: 14, gap: 16 }]}>
             <View style={s.fideleStat}>
               <Text style={s.fideleNum}>{clientsStats.fideles}</Text>
-              <Text style={s.fideleLabel}>Clients fidèles{'\n'}(> 2 commandes)</Text>
+              <Text style={s.fideleLabel}>Clients fidèles{'\n'}{'(> 2 commandes)'}</Text>
             </View>
             <View style={s.fideleDivider} />
             <View style={s.fideleStat}>

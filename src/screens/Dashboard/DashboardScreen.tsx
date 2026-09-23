@@ -93,7 +93,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
     );
   }
 
-  const userRole = profile?.role ?? 'tailor';
+  const userRole = profile?.role === 'client' ? 'client' : 'tailor';
   const menuTranslateY = menuAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] });
 
   return (
@@ -108,7 +108,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.topbar}>
             <View style={styles.topRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.kicker}>Atelier</Text>
+                <Text style={styles.kicker}>{userRole === 'client' ? 'Espace client' : 'Atelier'}</Text>
                 <Text style={styles.greetingName} numberOfLines={1}>
                   {getGreeting()}, {profile?.display_name?.split(' ')[0] ?? 'là'}
                 </Text>
@@ -214,6 +214,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
               <Feather name="chevron-right" size={14} color={P.muted} />
             </TouchableOpacity>
 
+            {userRole === 'tailor' && (
             <TouchableOpacity style={styles.menuRow} onPress={() => { closeMenu(); navigation.navigate('Statistics'); }} activeOpacity={0.7}>
               <View style={[styles.menuRowIcon, { backgroundColor: P.primaryBg }]}>
                 <Feather name="bar-chart-2" size={14} color={P.primary} />
@@ -221,6 +222,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.menuRowText}>Statistiques</Text>
               <Feather name="chevron-right" size={14} color={P.muted} />
             </TouchableOpacity>
+            )}
 
             <View style={styles.menuDivider} />
 

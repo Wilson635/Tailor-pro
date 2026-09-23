@@ -1,8 +1,8 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import { isRunningInExpoGo } from 'expo';
 import { supabase } from '@/src/lib/supabase';
 import { requestNotificationPermission } from '@/src/notifications/deviceNotifications';
 
@@ -52,13 +52,19 @@ const projectId =
 const getExpoPushToken = async (): Promise<string | null> => {
   try {
     if (Platform.OS === 'web' || !Device.isDevice) return null;
+    // SDK 53+ : le push distant n'existe plus dans Expo Go Android (crash si on demande un token).
+    if (isRunningInExpoGo()) return null;
     const ok = await requestNotificationPermission();
     if (!ok) return null;
+    const { getExpoPushTokenAsync } = await import(
+      'expo-notifications/build/getExpoPushTokenAsync'
+    );
     const token = projectId
-      ? await Notifications.getExpoPushTokenAsync({ projectId })
-      : await Notifications.getExpoPushTokenAsync();
+      ? await getExpoPushTokenAsync({ projectId })
+      : await getExpoPushTokenAsync();
     return token.data ?? null;
-  } catch {
+  } catch (e) {
+    console.warn('Expo push token unavailable', e);
     return null;
   }
 };
@@ -86,6 +92,7 @@ const sendExpoPush = async (to: string, title: string, body: string) => {
         sound: 'default',
         priority: 'high',
         channelId: 'atelier',
+        data: { routeName: 'Profile' },
       }),
     });
   } catch {

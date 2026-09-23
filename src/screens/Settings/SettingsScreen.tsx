@@ -18,6 +18,7 @@ import { useTheme, useThemedStyles, type Palette } from '@/src/theme';
 import { DEVISES, type DeviseCode } from '@constants/currencies';
 import { t } from '@/src/i18n';
 import type { AppLangue, UniteMesure } from '@/src/preferences/runtime';
+import { useProfile } from '@hooks/useProfile';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
@@ -33,6 +34,7 @@ const THEMES: { value: 'light' | 'dark' | 'system'; icon: keyof typeof Ionicons.
 ];
 
 export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
+    const { profile } = useProfile();
     const insets = useSafeAreaInsets();
     const { langue, devise, uniteMesure, setLangue, setDevise, setUniteMesure } = usePreferences();
     const { scheme, setScheme, isDark } = useTheme();
@@ -61,7 +63,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
                     <Ionicons name="arrow-back" size={18} color={P.text} />
                 </TouchableOpacity>
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.kicker}>{profile?.role === 'client' ? 'Espace client' : 'Atelier'}</Text>
                     <Text style={styles.headerTitle}>{t('settings.title')}</Text>
                 </View>
                 {savingKey ? <ActivityIndicator size="small" color={P.gold} /> : null}

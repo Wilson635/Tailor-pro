@@ -1,6 +1,6 @@
 // ==========================================
 // TABLEAU DE BORD CLIENT — TailorPro
-// Suivi des confections, mesures, catalogue
+// Suivi des confections, mesures, atelier
 // Sans ombres
 // ==========================================
 
@@ -16,51 +16,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
-import { useProfile } from '@hooks/useProfile';
 import { formatCurrencyShort } from '@utils/formatters';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { useThemedStyles, type Palette } from '@/src/theme';
-import { isCancelledOrder } from '@constants/commandeConstants';
+import {
+    CLIENT_PROGRESS_STEPS,
+    STATUT_COMMANDE_LABELS,
+    getClientProgressIndex,
+    isCancelledOrder,
+    isDoneOrder,
+} from '@constants/commandeConstants';
+import { showAlert } from '@/src/context/DialogContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-// ──────────────────────────────────────────
-// HELPERS
-// ──────────────────────────────────────────
-
-const ORDER_STATUS_STEPS = ['pending', 'in_progress', 'completed', 'delivered'];
-
-const ORDER_STATUS_LABELS: Record<string, string> = {
-    pending:     'En attente',
-    in_progress: 'En cours de confection',
-    completed:   'Prêt à livrer',
-    delivered:   'Livré',
-    cancelled:   'Annulée',
-};
-
-const ORDER_STATUS_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
-    pending:     'clock',
-    in_progress: 'scissors',
-    completed:   'check-circle',
-    delivered:   'package',
-    cancelled:   'x-circle',
-};
-
-const statusColor = (P: Palette): Record<string, string> => ({
-    pending:     P.warning,
-    in_progress: P.info,
-    completed:   P.success,
-    delivered:   P.gold,
-    cancelled:   P.error,
-});
-
-const statusBg = (P: Palette): Record<string, string> => ({
-    pending:     P.warningBg,
-    in_progress: P.infoBg,
-    completed:   P.successBg,
-    delivered:   P.goldBg,
-    cancelled:   P.errorBg,
-});
 
 const CLOTHING_LABELS: Record<string, string> = {
     robe_longue:  'Robe longue',  robe_courte: 'Robe courte',
@@ -73,21 +41,47 @@ const CLOTHING_LABELS: Record<string, string> = {
 const daysUntil = (date: Date) =>
     Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
-// ──────────────────────────────────────────
-// SOUS-COMPOSANT : barre de progression
-// ──────────────────────────────────────────
+const STEP_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
+    en_attente:    'clock',
+    en_confection: 'scissors',
+    essayage:      'user',
+    retouches:     'edit-2',
+    terminee:      'check-circle',
+    livree:        'package',
+    annulee:       'x-circle',
+};
+
+const statusColor = (P: Palette): Record<string, string> => ({
+    en_attente:    P.warning,
+    en_confection: P.info,
+    essayage:      P.primary,
+    retouches:     P.warning,
+    terminee:      P.success,
+    livree:        P.gold,
+    annulee:       P.error,
+});
+
+const statusBg = (P: Palette): Record<string, string> => ({
+    en_attente:    P.warningBg,
+    en_confection: P.infoBg,
+    essayage:      P.primaryBg,
+    retouches:     P.warningBg,
+    terminee:      P.successBg,
+    livree:        P.goldBg,
+    annulee:       P.errorBg,
+});
 
 const ProgressStepper = ({ status }: { status: string }) => {
     const { colors: P, styles: ps } = useThemedStyles(makeStepperStyles);
-    const stepIndex = ORDER_STATUS_STEPS.indexOf(status);
+    const stepIndex = getClientProgressIndex(status);
     if (stepIndex < 0) return null;
 
     return (
         <View style={ps.row}>
-            {ORDER_STATUS_STEPS.map((step, i) => (
+            {CLIENT_PROGRESS_STEPS.map((step, i) => (
                 <React.Fragment key={step}>
                     <View style={[ps.dot, i <= stepIndex && { backgroundColor: P.primary }]} />
-                    {i < ORDER_STATUS_STEPS.length - 1 && (
+                    {i < CLIENT_PROGRESS_STEPS.length - 1 && (
                         <View style={[ps.line, i < stepIndex && { backgroundColor: P.primary }]} />
                     )}
                 </React.Fragment>
@@ -102,45 +96,56 @@ const makeStepperStyles = (P: Palette) => ({
     line: { flex: 1, height: 2, backgroundColor: P.borderHard },
 });
 
-// ──────────────────────────────────────────
-// COMPOSANT PRINCIPAL
-// ──────────────────────────────────────────
-
 export const ClientDashboard: React.FC = () => {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<Nav>();
     const { colors: P, styles } = useThemedStyles(makeStyles);
-    const { profile } = useProfile();
-    const { orders, measurements } = useAppStore();
+    const { orders, clients, linkedTailors, fiches } = useAppStore();
 
-    const myId = profile?.id ?? '';
+    const linkedIds = useMemo(() => new Set(clients.map(c => c.id)), [clients]);
+    const primaryClient = clients[0] ?? null;
+    const primaryTailor = linkedTailors[0] ?? null;
 
-    const myOrders = useMemo(() =>
-            orders.filter(o => o.clientId === myId),
-        [orders, myId]
+    const myOrders = useMemo(
+        () => orders.filter(o => linkedIds.has(o.clientId)),
+        [orders, linkedIds],
     );
 
-    const activeOrders = useMemo(() =>
-            myOrders.filter(o =>
-                o.orderStatus !== 'delivered' &&
-                o.orderStatus !== 'livree' &&
-                !isCancelledOrder(o.orderStatus)
-            ),
-        [myOrders]
+    const activeOrders = useMemo(
+        () => myOrders.filter(o => !isDoneOrder(o.orderStatus) && !isCancelledOrder(o.orderStatus)),
+        [myOrders],
     );
 
-    const totalDue = useMemo(() =>
-            activeOrders.reduce((sum, o) => sum + (o.remainingAmount ?? 0), 0),
-        [activeOrders]
+    const deliveredOrders = useMemo(
+        () => myOrders.filter(o => isDoneOrder(o.orderStatus)),
+        [myOrders],
+    );
+
+    const totalDue = useMemo(
+        () => activeOrders.reduce((sum, o) => sum + (o.remainingAmount ?? 0), 0),
+        [activeOrders],
     );
 
     const nextDelivery = useMemo(() => {
-        const pending = activeOrders
-            .sort((a, b) => new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime());
+        const pending = [...activeOrders].sort(
+            (a, b) => new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime(),
+        );
         return pending[0] ?? null;
     }, [activeOrders]);
 
-    const hasMeasurements = measurements !== null && Object.values(measurements ?? {}).some(v => v != null);
+    const hasMeasurements = useMemo(() => {
+        if (!primaryClient) return false;
+        const list = fiches[primaryClient.id] ?? [];
+        return list.length > 0;
+    }, [fiches, primaryClient]);
+
+    const goToMesures = () => {
+        if (!primaryClient) {
+            showAlert('Atelier requis', 'Liez d’abord votre atelier depuis l’onglet Compte.');
+            return;
+        }
+        navigation.navigate('Measurements', { clientId: primaryClient.id });
+    };
 
     return (
         <ScrollView
@@ -148,8 +153,20 @@ export const ClientDashboard: React.FC = () => {
             contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 110 }]}
             showsVerticalScrollIndicator={false}
         >
+            {!primaryClient && !primaryTailor && (
+                <View style={styles.linkBanner}>
+                    <View style={styles.linkBannerIcon}>
+                        <Feather name="link" size={18} color={P.gold} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.linkBannerTitle}>Liez votre atelier</Text>
+                        <Text style={styles.linkBannerSub}>
+                            Entrez le code d’invitation dans l’onglet Compte pour voir vos commandes.
+                        </Text>
+                    </View>
+                </View>
+            )}
 
-            {/* ══ HERO ══ */}
             <View style={styles.heroCard}>
                 <View style={styles.heroBlob1} />
                 <View style={styles.heroBlob2} />
@@ -169,87 +186,134 @@ export const ClientDashboard: React.FC = () => {
                                     (() => {
                                         const d = daysUntil(new Date(nextDelivery.deliveryDate));
                                         if (d <= 0) return "aujourd'hui";
-                                        if (d === 1) return "demain";
+                                        if (d === 1) return 'demain';
                                         return `dans ${d} jours`;
                                     })()
                                 }
                                 </Text>
                             </View>
                         )}
+                        {primaryTailor && (
+                            <Text style={styles.heroAtelier}>
+                                {primaryTailor.atelierName ?? primaryTailor.displayName ?? 'Mon atelier'}
+                            </Text>
+                        )}
                     </View>
 
                     {totalDue > 0 && (
-                        <View style={styles.heroDueCard}>
+                        <TouchableOpacity
+                            style={styles.heroDueCard}
+                            onPress={() => {
+                                if (primaryClient) {
+                                    navigation.navigate('ClientPaiements', { clientId: primaryClient.id });
+                                }
+                            }}
+                        >
                             <Text style={styles.heroDueLabel}>À régler</Text>
                             <Text style={styles.heroDueValue}>{formatCurrencyShort(totalDue)}</Text>
-                        </View>
+                        </TouchableOpacity>
                     )}
                 </View>
             </View>
 
-            {/* ══ ALERTE PAIEMENT ══ */}
             {totalDue > 0 && (
-                <View style={styles.alertBanner}>
+                <TouchableOpacity
+                    style={styles.alertBanner}
+                    onPress={() => {
+                        if (primaryClient) {
+                            navigation.navigate('ClientPaiements', { clientId: primaryClient.id });
+                        }
+                    }}
+                    activeOpacity={0.85}
+                >
                     <View style={styles.alertLeft}>
                         <Feather name="alert-circle" size={16} color={P.error} />
                         <Text style={styles.alertText}>
-                            Vous avez {formatCurrencyShort(totalDue)} à régler pour vos commandes en cours.
+                            Vous avez {formatCurrencyShort(totalDue)} à régler — voir l’historique des paiements.
                         </Text>
                     </View>
-                </View>
+                    <Feather name="chevron-right" size={14} color={P.error} />
+                </TouchableOpacity>
             )}
 
-            {/* ══ ACCÈS RAPIDE ══ */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Accès rapide</Text>
                 <View style={styles.quickRow}>
-                    <TouchableOpacity
-                        style={styles.quickCard}
-                        onPress={() => navigation.navigate('Measurements', { clientId: myId })}
-                        activeOpacity={0.8}
-                    >
+                    <TouchableOpacity style={styles.quickCard} onPress={goToMesures} activeOpacity={0.8}>
                         <View style={[styles.quickIcon, { backgroundColor: P.infoBg }]}>
                             <Ionicons name="body-outline" size={22} color={P.info} />
                         </View>
                         <Text style={styles.quickLabel}>Mes{'\n'}mesures</Text>
-                        {!hasMeasurements && (
+                        {!hasMeasurements && primaryClient && (
                             <View style={styles.quickBadge}>
                                 <Text style={styles.quickBadgeText}>!</Text>
                             </View>
                         )}
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.quickCard} activeOpacity={0.8}>
+                    <TouchableOpacity
+                        style={styles.quickCard}
+                        onPress={() => {
+                            if (primaryClient) {
+                                navigation.navigate('ClientPaiements', { clientId: primaryClient.id });
+                            } else {
+                                showAlert('Atelier requis', 'Liez d’abord votre atelier depuis l’onglet Compte.');
+                            }
+                        }}
+                        activeOpacity={0.8}
+                    >
                         <View style={[styles.quickIcon, { backgroundColor: P.primaryBg }]}>
-                            <Feather name="grid" size={22} color={P.primary} />
+                            <Feather name="credit-card" size={22} color={P.primary} />
                         </View>
-                        <Text style={styles.quickLabel}>Catalogue{'\n'}inspiration</Text>
+                        <Text style={styles.quickLabel}>Mes{'\n'}paiements</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.quickCard} activeOpacity={0.8}>
-                        <View style={[styles.quickIcon, { backgroundColor: P.successBg }]}>
-                            <Feather name="message-circle" size={22} color={P.success} />
+                    <TouchableOpacity
+                        style={styles.quickCard}
+                        onPress={() => {
+                            if (!primaryTailor) {
+                                showAlert('Atelier requis', 'Liez d’abord votre atelier depuis l’onglet Compte.');
+                                return;
+                            }
+                            navigation.navigate('ClientRequest', { tailorId: primaryTailor.id, kind: 'devis' });
+                        }}
+                        activeOpacity={0.8}
+                    >
+                        <View style={[styles.quickIcon, { backgroundColor: P.goldBg }]}>
+                            <Feather name="file-text" size={22} color={P.gold} />
                         </View>
-                        <Text style={styles.quickLabel}>Mon{'\n'}couturier</Text>
+                        <Text style={styles.quickLabel}>Devis{'\n'}& RDV</Text>
                     </TouchableOpacity>
                 </View>
             </View>
 
-            {/* ══ MESURES MANQUANTES ══ */}
-            {!hasMeasurements && (
-                <TouchableOpacity
-                    style={styles.measuresBanner}
-                    onPress={() => navigation.navigate('AddMeasurements', { clientId: myId })}
-                    activeOpacity={0.85}
-                >
+            <TouchableOpacity
+                style={styles.measuresBanner}
+                onPress={() => navigation.navigate('MainTabs', { screen: 'Decouvrir' })}
+                activeOpacity={0.85}
+            >
+                <View style={styles.measuresBannerLeft}>
+                    <View style={[styles.measuresBannerIcon, { backgroundColor: P.goldBg }]}>
+                        <Feather name="compass" size={20} color={P.gold} />
+                    </View>
+                    <View>
+                        <Text style={styles.measuresBannerTitle}>Découvrir les modèles</Text>
+                        <Text style={styles.measuresBannerSub}>Catalogues publics des ateliers</Text>
+                    </View>
+                </View>
+                <Feather name="arrow-right" size={16} color={P.gold} />
+            </TouchableOpacity>
+
+            {!hasMeasurements && primaryClient && (
+                <TouchableOpacity style={styles.measuresBanner} onPress={goToMesures} activeOpacity={0.85}>
                     <View style={styles.measuresBannerLeft}>
                         <View style={styles.measuresBannerIcon}>
                             <Ionicons name="body-outline" size={20} color={P.primary} />
                         </View>
                         <View>
-                            <Text style={styles.measuresBannerTitle}>Ajoutez vos mesures</Text>
+                            <Text style={styles.measuresBannerTitle}>Consultez vos mesures</Text>
                             <Text style={styles.measuresBannerSub}>
-                                Pour des confections parfaitement ajustées
+                                Fiches prises par votre couturier
                             </Text>
                         </View>
                     </View>
@@ -257,12 +321,13 @@ export const ClientDashboard: React.FC = () => {
                 </TouchableOpacity>
             )}
 
-            {/* ══ SUIVI COMMANDES ══ */}
             <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                     <Text style={styles.sectionTitle}>Suivi de mes commandes</Text>
                     {myOrders.length > 0 && (
-                        <Text style={styles.seeAll}>{myOrders.length} commande{myOrders.length !== 1 ? 's' : ''}</Text>
+                        <Text style={styles.seeAll}>
+                            {myOrders.length} commande{myOrders.length !== 1 ? 's' : ''}
+                        </Text>
                     )}
                 </View>
 
@@ -271,19 +336,27 @@ export const ClientDashboard: React.FC = () => {
                         <Feather name="inbox" size={32} color={P.gold} />
                         <Text style={styles.emptyTitle}>Aucune commande en cours</Text>
                         <Text style={styles.emptySub}>
-                            Vos commandes apparaîtront ici dès que votre couturier les créera.
+                            {primaryClient
+                                ? 'Vos commandes apparaîtront ici dès que votre couturier les créera.'
+                                : 'Liez votre atelier pour synchroniser vos confections.'}
                         </Text>
                     </View>
                 ) : (
                     activeOrders.map((order) => {
-                        const days        = daysUntil(new Date(order.deliveryDate));
-                        const stColor = statusColor(P)[order.orderStatus] ?? P.sub;
-                        const stBg    = statusBg(P)[order.orderStatus]    ?? P.border;
-                        const statusIcon  = ORDER_STATUS_ICONS[order.orderStatus] ?? 'circle';
-                        const statusLabel = ORDER_STATUS_LABELS[order.orderStatus] ?? order.orderStatus;
+                        const days = daysUntil(new Date(order.deliveryDate));
+                        const step = CLIENT_PROGRESS_STEPS[Math.max(0, getClientProgressIndex(order.orderStatus))] ?? 'en_attente';
+                        const stColor = statusColor(P)[step] ?? P.sub;
+                        const stBg = statusBg(P)[step] ?? P.border;
+                        const statusIcon = STEP_ICONS[step] ?? 'circle';
+                        const statusLabel = STATUT_COMMANDE_LABELS[order.orderStatus] ?? order.orderStatus;
 
                         return (
-                            <View key={order.id} style={styles.orderCard}>
+                            <TouchableOpacity
+                                key={order.id}
+                                style={styles.orderCard}
+                                onPress={() => navigation.navigate('OrderDetails', { orderId: order.id })}
+                                activeOpacity={0.82}
+                            >
                                 <View style={styles.orderCardTop}>
                                     <View style={[styles.orderIconBox, { backgroundColor: stBg }]}>
                                         <Feather name={statusIcon} size={18} color={stColor} />
@@ -313,63 +386,78 @@ export const ClientDashboard: React.FC = () => {
                                     <View style={styles.orderPayRow}>
                                         <Feather name="credit-card" size={12} color={P.error} />
                                         <Text style={styles.orderPayText}>
-                                            Reste à régler : <Text style={{ fontFamily: 'PlusJakartaSans_700Bold' }}>{formatCurrencyShort(order.remainingAmount)}</Text>
+                                            Reste à régler :{' '}
+                                            <Text style={{ fontFamily: 'PlusJakartaSans_700Bold' }}>
+                                                {formatCurrencyShort(order.remainingAmount)}
+                                            </Text>
                                         </Text>
                                     </View>
                                 )}
-                            </View>
+                            </TouchableOpacity>
                         );
                     })
                 )}
             </View>
 
-            {/* ══ HISTORIQUE LIVRÉES ══ */}
-            {myOrders.filter(o => o.orderStatus === 'delivered').length > 0 && (
+            {deliveredOrders.length > 0 && (
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Mes confections reçues</Text>
                     <View style={styles.historyCard}>
-                        {myOrders
-                            .filter(o => o.orderStatus === 'delivered')
-                            .slice(0, 3)
-                            .map((order, index, arr) => (
-                                <View key={order.id}>
-                                    <View style={styles.historyRow}>
-                                        <View style={[styles.historyDot, { backgroundColor: P.successBg }]}>
-                                            <Feather name="package" size={14} color={P.success} />
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.historyTitle}>
-                                                {CLOTHING_LABELS[order.clothingType] ?? order.clothingType}
-                                            </Text>
-                                            <Text style={styles.historySub}>
-                                                Livrée • {formatCurrencyShort(order.totalPrice)}
-                                            </Text>
-                                        </View>
-                                        <View style={[styles.paidBadge, order.remainingAmount > 0 && styles.unpaidBadge]}>
-                                            <Text style={[styles.paidText, order.remainingAmount > 0 && { color: P.error }]}>
-                                                {order.remainingAmount > 0 ? 'Impayée' : 'Soldée'}
-                                            </Text>
-                                        </View>
+                        {deliveredOrders.slice(0, 3).map((order, index, arr) => (
+                            <TouchableOpacity
+                                key={order.id}
+                                onPress={() => navigation.navigate('OrderDetails', { orderId: order.id })}
+                                activeOpacity={0.8}
+                            >
+                                <View style={styles.historyRow}>
+                                    <View style={[styles.historyDot, { backgroundColor: P.successBg }]}>
+                                        <Feather name="package" size={14} color={P.success} />
                                     </View>
-                                    {index < arr.length - 1 && <View style={styles.historyDivider} />}
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.historyTitle}>
+                                            {CLOTHING_LABELS[order.clothingType] ?? order.clothingType}
+                                        </Text>
+                                        <Text style={styles.historySub}>
+                                            Livrée • {formatCurrencyShort(order.totalPrice)}
+                                        </Text>
+                                    </View>
+                                    <View style={[styles.paidBadge, order.remainingAmount > 0 && styles.unpaidBadge]}>
+                                        <Text style={[styles.paidText, order.remainingAmount > 0 && { color: P.error }]}>
+                                            {order.remainingAmount > 0 ? 'Impayée' : 'Soldée'}
+                                        </Text>
+                                    </View>
                                 </View>
-                            ))
-                        }
+                                {index < arr.length - 1 && <View style={styles.historyDivider} />}
+                            </TouchableOpacity>
+                        ))}
                     </View>
                 </View>
             )}
-
         </ScrollView>
     );
 };
 
-// ==========================================
-// STYLES — Aucune ombre, borderWidth 0.5
-// ==========================================
-
 const makeStyles = (P: Palette) => ({
     scroll:  { flex: 1, backgroundColor: P.pageBg },
     content: { padding: 20, gap: 16 },
+
+    linkBanner: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 12,
+        backgroundColor: '#16123A',
+        borderRadius: 18,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: P.goldRim,
+    },
+    linkBannerIcon: {
+        width: 40, height: 40, borderRadius: 12,
+        backgroundColor: P.goldBg,
+        alignItems: 'center' as const, justifyContent: 'center' as const,
+    },
+    linkBannerTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: '#fff' },
+    linkBannerSub: { fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium' },
 
     heroCard: {
         backgroundColor: '#16123A',
@@ -384,6 +472,7 @@ const makeStyles = (P: Palette) => ({
     heroTop:    { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'flex-start' as const },
     heroLabel:  { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'PlusJakartaSans_700Bold', letterSpacing: 1.5, marginBottom: 6 },
     heroAmount: { fontSize: 34, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#fff', letterSpacing: -0.5 },
+    heroAtelier: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 8, fontFamily: 'PlusJakartaSans_500Medium' },
     heroDeliveryPill: {
         flexDirection: 'row' as const, alignItems: 'center' as const, gap: 5,
         backgroundColor: P.goldBg,
@@ -406,7 +495,7 @@ const makeStyles = (P: Palette) => ({
         flexDirection: 'row' as const, alignItems: 'center' as const,
         backgroundColor: P.errorBg,
         borderRadius: 16, padding: 14,
-        borderWidth: 0.5, borderColor: P.error,
+        borderWidth: 0.5, borderColor: P.error, gap: 8,
     },
     alertLeft: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 8, flex: 1 },
     alertText: { flex: 1, fontSize: 12, color: P.error, fontFamily: 'PlusJakartaSans_600SemiBold', lineHeight: 18 },

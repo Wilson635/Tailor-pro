@@ -76,6 +76,11 @@ import { ProfileScreen } from '@screens/Userprofile/Profilescreen';
 import { EditClientScreen } from '@screens/Clients/EditClientScreen';
 import { SettingsScreen } from '@screens/Settings/SettingsScreen';
 import {OrderDetailsScreen} from "@screens/Orders/OrderDetailsScreen";
+import { ClientAccountScreen } from '@screens/Account/ClientAccountScreen';
+import { ClientDiscoverScreen } from '@screens/Discover/ClientDiscoverScreen';
+import { ClientAtelierScreen } from '@screens/Discover/ClientAtelierScreen';
+import { ClientRequestScreen } from '@screens/Requests/ClientRequestScreen';
+import { AtelierRequestsScreen } from '@screens/Requests/AtelierRequestsScreen';
 import { nativeDriver } from '@utils/animation';
 import { NotificationBinder } from '@/src/notifications/NotificationBinder';
 import { usePreferences } from '@/src/context/PreferencesContext';
@@ -216,7 +221,10 @@ const makeNavStyles = (P: Palette) => ({
 
 export type RootStackParamList = {
     Dashboard: undefined;
-    MainTabs: undefined;
+    MainTabs: { screen?: string } | undefined;
+    ClientAtelier: { tailorId: string };
+    ClientRequest: { tailorId: string; kind?: 'devis' | 'rdv'; modelId?: string; modelName?: string };
+    AtelierRequests: undefined;
     ClientDetails: { clientId: string };
     AddClient: undefined;
     EditClient: { clientId: string };
@@ -274,6 +282,11 @@ export type RootStackParamList = {
     Profile: undefined;
     Settings: undefined;
     Notifications: undefined;
+    ProjectList: undefined;
+    ProjectDetails: { projectId: string };
+    AddProject: undefined;
+    ParticipantDetails: { participantId: string; projectId: string };
+    AddParticipant: { projectId: string };
 };
 
 export type TailorTabParamList = {
@@ -286,9 +299,9 @@ export type TailorTabParamList = {
 
 export type ClientTabParamList = {
     Accueil: undefined;
+    Decouvrir: undefined;
     Commandes: undefined;
-    Catalogue: undefined;
-    Mesures: { clientId: string };
+    Compte: undefined;
 };
 
 const Stack     = createNativeStackNavigator<RootStackParamList>();
@@ -463,6 +476,12 @@ const TailorTabNavigator = ({ navigation }: any) => {
 
     const plusItems: PlusMenuItem[] = [
         {
+            key: 'requests',
+            label: t('nav.requests'),
+            icon: 'inbox',
+            onPress: () => { setPlusOpen(false); navigation.navigate('AtelierRequests'); },
+        },
+        {
             key: 'projects',
             label: t('nav.projects'),
             icon: 'users',
@@ -514,7 +533,7 @@ const TailorTabNavigator = ({ navigation }: any) => {
 
     return (
         <>
-            <NotificationBinder />
+            <NotificationBinder stackNavigation={navigation} />
             <TailorTab.Navigator
                 screenOptions={{
                     headerShown: false,
@@ -591,15 +610,13 @@ const TailorTabNavigator = ({ navigation }: any) => {
 // ==========================================
 
 const ClientTabNavigator = ({ navigation }: any) => {
-    const { profile } = useProfile();
-    const myId = profile?.id ?? '';
     const insets = useSafeAreaInsets();
     const { colors, styles } = useThemedStyles(makeNavStyles);
     usePreferences();
 
     return (
         <>
-            <NotificationBinder />
+            <NotificationBinder stackNavigation={navigation} />
             <ClientTab.Navigator
             screenOptions={{
                 headerShown: false,
@@ -620,6 +637,14 @@ const ClientTabNavigator = ({ navigation }: any) => {
                 }}
             />
             <ClientTab.Screen
+                name="Decouvrir"
+                component={ClientDiscoverScreen}
+                options={{
+                    tabBarIcon: ({ focused }) => <TabIcon name="compass" focused={focused} />,
+                    tabBarLabel: ({ focused }) => <TabLabel label={t('nav.discover')} focused={focused} />,
+                }}
+            />
+            <ClientTab.Screen
                 name="Commandes"
                 component={ClientOrdersScreen}
                 options={{
@@ -628,20 +653,11 @@ const ClientTabNavigator = ({ navigation }: any) => {
                 }}
             />
             <ClientTab.Screen
-                name="Catalogue"
-                component={CatalogScreen}
+                name="Compte"
+                component={ClientAccountScreen}
                 options={{
-                    tabBarIcon: ({ focused }) => <TabIcon name="grid" focused={focused} />,
-                    tabBarLabel: ({ focused }) => <TabLabel label={t('nav.catalog')} focused={focused} />,
-                }}
-            />
-            <ClientTab.Screen
-                name="Mesures"
-                component={MeasurementsScreen}
-                initialParams={{ clientId: myId }}
-                options={{
-                    tabBarIcon: ({ focused }) => <TabIcon name="scissors" focused={focused} />,
-                    tabBarLabel: ({ focused }) => <TabLabel label={t('nav.measurements')} focused={focused} />,
+                    tabBarIcon: ({ focused }) => <TabIcon name="user" focused={focused} />,
+                    tabBarLabel: ({ focused }) => <TabLabel label={t('nav.account')} focused={focused} />,
                 }}
             />
             </ClientTab.Navigator>
@@ -662,7 +678,7 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
     const { colors, styles } = useThemedStyles(makeNavStyles);
     usePreferences();
 
-    if (session && loading) {
+    if (session && (loading || !profile)) {
         return (
             <View style={styles.loader}>
                 <ActivityIndicator size="large" color={colors.gold} />
@@ -724,6 +740,9 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({ session }) => {
 
                     {/* ── Catalogue ── */}
                     <Stack.Screen name="ModelDetails"     component={ModelDetailsScreen} />
+                    <Stack.Screen name="ClientAtelier"    component={ClientAtelierScreen} />
+                    <Stack.Screen name="ClientRequest"    component={ClientRequestScreen} />
+                    <Stack.Screen name="AtelierRequests"  component={AtelierRequestsScreen} />
                     <Stack.Screen name="AddCatalogModel"  component={AddCatalogModelScreen} />
                     <Stack.Screen name="EditCatalogModel" component={EditCatalogModelScreen} />
 

@@ -11,11 +11,19 @@ export const useInbox = () => {
   const clients = useAppStore((s) => s.clients);
   const activities = useAppStore((s) => s.activities);
   const statistics = useAppStore((s) => s.statistics);
+  const clientRequests = useAppStore((s) => s.clientRequests);
   const uid = profile?.id ?? 'anon';
 
   const items = useMemo(
-    () => buildInbox({ orders, clients, activities, statistics }),
-    [orders, clients, activities, statistics],
+    () => buildInbox({
+      orders,
+      clients,
+      activities,
+      statistics,
+      requests: clientRequests,
+      role: profile?.role === 'client' ? 'client' : 'tailor',
+    }),
+    [orders, clients, activities, statistics, clientRequests, profile?.role],
   );
 
   const [readIds, setReadIds] = useState<Set<string>>(new Set());

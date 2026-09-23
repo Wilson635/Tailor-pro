@@ -25,7 +25,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { paymentService, activityService, createPaiementM8 } from '@services/supabaseService';
 import { TYPE_PAIEMENT_META, TYPES_PAIEMENT, TypePaiement } from '@constants/paiementConstants';
-import { isCancelledOrder } from '@constants/commandeConstants';
+import { isCancelledOrder, CLIENT_PROGRESS_STEPS, getClientProgressIndex, STATUT_COMMANDE_LABELS } from '@constants/commandeConstants';
 import { formatCurrency, formatCurrencyShort, formatDate } from '@utils/formatters';
 import { SPACING } from '@constants/theme';
 import { getDeviseMeta } from '@constants/currencies';
@@ -33,6 +33,7 @@ import { getRuntimePrefs } from '@/src/preferences/runtime';
 import { Avatar, keyboardAvoidBehavior } from '@components/ui';
 import { useThemedStyles, type Palette } from '@/src/theme';
 import {RootStackParamList} from "@/src/navigation/AppNavigator";
+import { useProfile } from '@hooks/useProfile';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderDetails'>;
 
@@ -112,6 +113,8 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const ORDER_STATUS_META = orderStatusMeta(P);
     const PAYMENT_STATUS_META = paymentStatusMeta(P);
     const URGENCY_META = urgencyMetaMap(P);
+    const { profile } = useProfile();
+    const isClientView = profile?.role === 'client';
 
     const { orders, updateOrder, loadStatistics, loadActivities, realisations, loadRealisations, getProjectById, getParticipantsByProject, loadProjects, loadParticipants, getClientById } = useAppStore();
     const order = orders.find(o => o.id === orderId);
@@ -181,10 +184,14 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     const cancelled         = isCancelledOrder(order.orderStatus);
     const currentStatusMeta = ORDER_STATUS_META[order.orderStatus as OrderStatus]
         ?? (cancelled ? ORDER_STATUS_META.cancelled : ORDER_STATUS_META.pending);
+    const clientStatusLabel = STATUT_COMMANDE_LABELS[order.orderStatus]
+        ?? currentStatusMeta.label;
     const currentPayMeta    = PAYMENT_STATUS_META[order.paymentStatus as PaymentStatus] ?? PAYMENT_STATUS_META.unpaid;
     const remaining         = Math.max(0, order.remainingAmount ?? 0);
     const totalPaid         = Math.max(0, (order.totalPrice ?? 0) - remaining);
-    const currentStepIndex  = ORDER_STATUS_FLOW.indexOf(order.orderStatus as OrderStatus);
+    const currentStepIndex  = isClientView
+        ? getClientProgressIndex(order.orderStatus)
+        : ORDER_STATUS_FLOW.indexOf(order.orderStatus as OrderStatus);
     const urgencyMeta       = URGENCY_META[order.urgencyLevel] ?? URGENCY_META.medium;
 
     // ── Changer le statut ──
@@ -345,15 +352,18 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                     </View>
                     <TouchableOpacity
                         style={styles.clientBtn}
-                        onPress={() => navigation.navigate('ClientDetails', { clientId: order.clientId })}
+                        onPress={() => {
+                            if (isClientView) return;
+                            navigation.navigate('ClientDetails', { clientId: order.clientId });
+                        }}
                     >
                         <Feather name="user" size={16} color={P.primary} />
-                        <Text style={styles.clientBtnText}>Fiche</Text>
+                        <Text style={styles.clientBtnText}>{isClientView ? 'Suivi' : 'Fiche'}</Text>
                     </TouchableOpacity>
                 </View>
 
                 {/* ══ FIL D'ARIANE PROJET ══ */}
-                {project && (
+                {project && !isClientView && (
                     <TouchableOpacity
                         style={styles.projectBreadcrumb}
                         onPress={() => navigation.navigate('ProjectDetails', { projectId: project.id })}
@@ -385,7 +395,8 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         </View>
                     )}
 
-                    {/* ══ CARTE CLIENT ══ */}
+                    {/* ══ CARTE CLIENT / ATELIER ══ */}
+                    {!isClientView ? (
                     <TouchableOpacity
                         style={styles.clientCard}
                         onPress={() => navigation.navigate('ClientDetails', { clientId: order.clientId })}
@@ -398,6 +409,17 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         </View>
                         <Feather name="chevron-right" size={16} color={P.muted} />
                     </TouchableOpacity>
+                    ) : (
+                    <View style={styles.clientCard}>
+                        <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: P.goldBg, alignItems: 'center', justifyContent: 'center' }}>
+                            <Feather name="scissors" size={18} color={P.gold} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.clientName}>{order.clientName}</Text>
+                            <Text style={styles.clientSub}>Votre confection</Text>
+                        </View>
+                    </View>
+                    )}
 
                     {/* ══ STATUT COMMANDE ══ */}
                     <View style={styles.card}>
@@ -410,16 +432,18 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                         <View style={[styles.statusBadge, { backgroundColor: currentStatusMeta.bg }]}>
                             <Feather name={currentStatusMeta.icon} size={16} color={currentStatusMeta.color} />
                             <Text style={[styles.statusBadgeText, { color: currentStatusMeta.color }]}>
-                                {currentStatusMeta.label}
+                                {isClientView ? clientStatusLabel : currentStatusMeta.label}
                             </Text>
                         </View>
 
                         {/* Barre de progression */}
                         {order.orderStatus !== 'cancelled' && order.orderStatus !== 'annulee' && (
                             <View style={styles.progressWrap}>
-                                {ORDER_STATUS_FLOW.map((step, i) => {
+                                {(isClientView ? [...CLIENT_PROGRESS_STEPS] : ORDER_STATUS_FLOW).map((step, i) => {
                                     const done = i <= currentStepIndex;
-                                    const meta = ORDER_STATUS_META[step];
+                                    const meta = isClientView
+                                        ? { label: STATUT_COMMANDE_LABELS[step] ?? step }
+                                        : ORDER_STATUS_META[step as OrderStatus];
                                     return (
                                         <React.Fragment key={step}>
                                             <View style={styles.progressStep}>
@@ -430,7 +454,7 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                                     {meta.label}
                                                 </Text>
                                             </View>
-                                            {i < ORDER_STATUS_FLOW.length - 1 && (
+                                            {i < (isClientView ? CLIENT_PROGRESS_STEPS.length : ORDER_STATUS_FLOW.length) - 1 && (
                                                 <View style={[styles.progressConnector, i < currentStepIndex && { backgroundColor: P.primary }]} />
                                             )}
                                         </React.Fragment>
@@ -439,10 +463,10 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             </View>
                         )}
 
-                        {/* Boutons action */}
-                        {!cancelled && order.orderStatus !== 'delivered' && order.orderStatus !== 'livree' && (
+                        {/* Boutons action — couturier uniquement */}
+                        {!isClientView && !cancelled && order.orderStatus !== 'delivered' && order.orderStatus !== 'livree' && (
                             <View style={styles.statusActions}>
-                                {currentStepIndex < ORDER_STATUS_FLOW.length - 1 && (
+                                {currentStepIndex < ORDER_STATUS_FLOW.length - 1 && currentStepIndex >= 0 && (
                                     <TouchableOpacity
                                         style={styles.advanceBtn}
                                         onPress={() => handleStatusChange(ORDER_STATUS_FLOW[currentStepIndex + 1])}
@@ -518,21 +542,24 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                     {linkedRealisation ? (
                         <TouchableOpacity
                             style={styles.card}
-                            onPress={() => navigation.navigate('RealisationDetails', {
-                                realisationId: (linkedRealisation as any).id,
-                                clientId:      (linkedRealisation as any).clientId,
-                            })}
-                            activeOpacity={0.8}
+                            onPress={() => {
+                                if (isClientView) return;
+                                navigation.navigate('RealisationDetails', {
+                                    realisationId: (linkedRealisation as any).id,
+                                    clientId:      (linkedRealisation as any).clientId,
+                                });
+                            }}
+                            activeOpacity={isClientView ? 1 : 0.8}
                         >
                             <View style={styles.cardHeaderRow}>
                                 <Text style={styles.cardTitle}>Réalisation associée</Text>
-                                <Feather name="chevron-right" size={14} color={P.muted} />
+                                {!isClientView && <Feather name="chevron-right" size={14} color={P.muted} />}
                             </View>
                             <Text style={styles.clientSub}>
                                 Statut : {String((linkedRealisation as any).statut).replace(/_/g, ' ')}
                             </Text>
                         </TouchableOpacity>
-                    ) : order && !cancelled ? (
+                    ) : order && !cancelled && !isClientView ? (
                         <TouchableOpacity
                             style={styles.card}
                             onPress={() => navigation.navigate('AddRealisation', {
@@ -579,8 +606,8 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             </View>
                         </View>
 
-                        {/* Boutons paiement */}
-                        {remaining > 0 && !cancelled && (
+                        {/* Boutons paiement — couturier uniquement */}
+                        {!isClientView && remaining > 0 && !cancelled && (
                             <>
                                 <TouchableOpacity
                                     style={styles.payFullBtn}
@@ -599,6 +626,11 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                     <Text style={styles.payPartialBtnText}>Paiement partiel</Text>
                                 </TouchableOpacity>
                             </>
+                        )}
+                        {isClientView && remaining > 0 && !cancelled && (
+                            <Text style={[styles.clientSub, { marginTop: 8 }]}>
+                                Réglez le solde directement auprès de votre couturier.
+                            </Text>
                         )}
 
                         {/* Historique */}

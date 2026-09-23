@@ -13,9 +13,7 @@ export const useProfile = () => {
     let mounted = true;
     (async () => {
       try {
-        if (!useAppStore.getState().profile) {
-          await fetchProfile();
-        }
+        await fetchProfile();
       } finally {
         if (mounted) setLoading(false);
       }

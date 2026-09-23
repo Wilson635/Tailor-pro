@@ -7,9 +7,10 @@
 // Chaque fonction retourne { data, error }.
 
 import { supabase } from '@/src/lib/supabase';
-import * as FileSystem from 'expo-file-system/legacy'; // SDK 54 : API string-based (readAsStringAsync, EncodingType) déplacée ici
+import * as FileSystem from 'expo-file-system/legacy'; // API string-based (readAsStringAsync, EncodingType)
 import { decode } from 'base64-arraybuffer';
-import type { Client, Order, Measurements, Payment, Statistics, CatalogModel, FicheMensuration, TypeVetement } from '../types';
+import type { Client, Order, Measurements, Payment, Statistics, CatalogModel, FicheMensuration, TypeVetement, LinkedTailor, PublicAtelier } from '../types';
+import { generateInviteCode, normalizeInviteCode, normalizePhone } from '@utils/inviteCode';
 
 // ==========================================
 // HELPERS INTERNES
@@ -20,6 +21,41 @@ const getUserId = async (): Promise<string> => {
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) throw new Error('Utilisateur non connecté');
     return user.id;
+};
+
+const dbMsg = (error: { message?: string; code?: string; details?: string } | null) =>
+    `${error?.message ?? ''} ${error?.details ?? ''} ${error?.code ?? ''}`.toLowerCase();
+
+export const isMissingDbObject = (error: { message?: string; code?: string; details?: string } | null) => {
+    const msg = dbMsg(error);
+    return (
+        error?.code === 'PGRST202' ||
+        error?.code === 'PGRST205' ||
+        error?.code === '42P01' ||
+        error?.code === '42703' ||
+        error?.code === '42883' ||
+        msg.includes('schema cache') ||
+        msg.includes('does not exist') ||
+        msg.includes('could not find the function') ||
+        msg.includes('could not find the table')
+    );
+};
+
+const isMissingInviteColumn = (error: { message?: string; code?: string; details?: string } | null) => {
+    const msg = dbMsg(error);
+    return msg.includes('invite_code') || msg.includes('client_user_id') || isMissingDbObject(error);
+};
+
+const formatLinkError = (error: { message?: string } | null) => {
+    const raw = error?.message ?? '';
+    const msg = raw.toLowerCase();
+    if (msg.includes('introuvable') || msg.includes('not found')) return 'Code introuvable. Vérifiez-le auprès de votre couturier.';
+    if (msg.includes('déjà liée') || msg.includes('already')) return 'Cette fiche est déjà liée à un autre compte.';
+    if (msg.includes('non authentifié') || msg.includes('jwt')) return 'Reconnectez-vous pour lier votre atelier.';
+    if (isMissingDbObject(error)) {
+        return 'La liaison n’est pas encore activée. Exécutez la migration 025 sur le projet TailorPro (SQL Editor).';
+    }
+    return raw || 'Impossible de lier cet atelier.';
 };
 
 // ==========================================
@@ -43,28 +79,33 @@ export const clientService = {
     /** Crée un nouveau client */
     create: async (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) => {
         const userId = await getUserId();
-        const { data, error } = await supabase
-            .from('clients')
-            .insert({
-                couturier_id:   userId,
-                nom:            client.nom,
-                telephone:          client.telephone,
-                whatsapp:       client.whatsapp ?? null,
-                email:          client.email ?? null,
-                adresse:        client.adresse ?? null,
-                sexe:           client.sexe ?? 'femme',
-                date_naissance: client.dateNaissance
-                    ? (client.dateNaissance instanceof Date
-                        ? client.dateNaissance.toISOString().split('T')[0]
-                        : client.dateNaissance)
-                    : null,
-                photo_url:      client.photo ?? null,
-                notes_internes: client.notesInternes ?? null,
-                is_favorite:    client.isFavorite ?? false,
-                balance:        client.balance ?? 0,
-            })
-            .select()
-            .single();
+        const base = {
+            couturier_id:   userId,
+            nom:            client.nom,
+            telephone:          client.telephone,
+            whatsapp:       client.whatsapp ?? null,
+            email:          client.email ?? null,
+            adresse:        client.adresse ?? null,
+            sexe:           client.sexe ?? 'femme',
+            date_naissance: client.dateNaissance
+                ? (client.dateNaissance instanceof Date
+                    ? client.dateNaissance.toISOString().split('T')[0]
+                    : client.dateNaissance)
+                : null,
+            photo_url:      client.photo ?? null,
+            notes_internes: client.notesInternes ?? null,
+            is_favorite:    client.isFavorite ?? false,
+            balance:        client.balance ?? 0,
+        };
+        const withInvite = {
+            ...base,
+            invite_code:    client.inviteCode ?? generateInviteCode(),
+            client_user_id: client.clientUserId ?? null,
+        };
+        let { data, error } = await supabase.from('clients').insert(withInvite).select().single();
+        if (error && isMissingInviteColumn(error)) {
+            ({ data, error } = await supabase.from('clients').insert(base).select().single());
+        }
         return { data, error };
     },
 
@@ -86,6 +127,8 @@ export const clientService = {
         if (updates.notesInternes  !== undefined) payload.notes_internes = updates.notesInternes;
         if (updates.isFavorite     !== undefined) payload.is_favorite    = updates.isFavorite;
         if (updates.balance        !== undefined) payload.balance        = updates.balance;
+        if (updates.inviteCode     !== undefined) payload.invite_code    = updates.inviteCode;
+        if (updates.clientUserId   !== undefined) payload.client_user_id = updates.clientUserId;
 
         const { data, error } = await supabase
             .from('clients')
@@ -103,6 +146,269 @@ export const clientService = {
             .update({ deleted_at: new Date().toISOString() })
             .eq('id', clientId);
         return { error };
+    },
+};
+
+export const mapPublicAtelier = (row: any): PublicAtelier => ({
+    id: row?.id ?? '',
+    displayName: row?.display_name ?? null,
+    atelierName: row?.atelier_name ?? null,
+    phone: row?.phone ?? null,
+    whatsapp: row?.whatsapp ?? null,
+    city: row?.city ?? null,
+    avatarUrl: row?.avatar_url ?? null,
+    description: row?.description ?? null,
+    specialities: Array.isArray(row?.specialities) ? row.specialities : null,
+    horaires: row?.horaires && typeof row.horaires === 'object' ? row.horaires : null,
+    adresse: row?.adresse ?? null,
+});
+
+// ==========================================
+// LIEN COMPTE CLIENT ↔ FICHE ATELIER
+// ==========================================
+
+export const clientLinkService = {
+    /** Fiches CRM liées au compte connecté */
+    getLinkedClients: async () => {
+        const uid = await getUserId();
+        const keepMine = (rows: any[] | null) =>
+            (rows ?? []).filter(r => !r.client_user_id || r.client_user_id === uid);
+
+        const { data, error } = await supabase
+            .from('clients')
+            .select('*')
+            .eq('client_user_id', uid)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false });
+
+        if (!error && (data?.length ?? 0) > 0) {
+            return { data: keepMine(data), error: null };
+        }
+
+        const rpc = await supabase.rpc('my_linked_clients');
+        if (!rpc.error && (rpc.data?.length ?? 0) > 0) {
+            return { data: keepMine(rpc.data as any[]), error: null };
+        }
+
+        return { data: keepMine(data), error: error ?? rpc.error };
+    },
+
+    /** Profils publics des ateliers liés */
+    getLinkedTailors: async (clients: Client[]): Promise<{ data: LinkedTailor[]; error: Error | null }> => {
+        if (!clients.length) return { data: [], error: null };
+        const tailorIds = [...new Set(clients.map(c => c.couturierId).filter(Boolean))];
+        if (!tailorIds.length) return { data: [], error: null };
+
+        const { data, error } = await supabase
+            .from('users')
+            .select('id, display_name, atelier_name, phone, whatsapp, city, avatar_url, description, specialities, horaires, adresse')
+            .in('id', tailorIds);
+
+        if (error) return { data: [], error };
+
+        const byId = new Map((data ?? []).map((u: any) => [u.id, u]));
+        const linked: LinkedTailor[] = clients.map(c => {
+            const u = byId.get(c.couturierId);
+            return {
+                ...mapPublicAtelier(u ?? { id: c.couturierId }),
+                id: c.couturierId,
+                clientRowId: c.id,
+                phone: u?.phone ?? c.telephone ?? null,
+                whatsapp: u?.whatsapp ?? c.whatsapp ?? null,
+            };
+        });
+        return { data: linked, error: null };
+    },
+
+    getPublicAteliers: async () => {
+        const selectCols = 'id, display_name, atelier_name, phone, whatsapp, city, avatar_url, description, specialities, horaires, adresse';
+        const mapRows = (rows: any[]) => (rows ?? []).map(mapPublicAtelier);
+
+        const { data, error } = await supabase
+            .from('users')
+            .select(selectCols)
+            .eq('role', 'tailor')
+            .order('atelier_name', { ascending: true })
+            .limit(60);
+
+        if (!error && (data?.length ?? 0) > 0) {
+            return { data: mapRows(data ?? []), error: null };
+        }
+
+        const { data: ids, error: idErr } = await supabase.rpc('browse_public_atelier_ids');
+        const idList = ((ids as string[] | null) ?? []).filter(Boolean);
+        if (!idErr && idList.length) {
+            const { data: byIds, error: byErr } = await supabase
+                .from('users')
+                .select(selectCols)
+                .in('id', idList);
+            if (!byErr && byIds?.length) return { data: mapRows(byIds), error: null };
+        }
+
+        return { data: [] as PublicAtelier[], error: error ?? idErr ?? null };
+    },
+
+    getPublicAtelierById: async (id: string) => {
+        const { data, error } = await supabase
+            .from('users')
+            .select('id, display_name, atelier_name, phone, whatsapp, city, avatar_url, description, specialities, horaires, adresse')
+            .eq('id', id)
+            .maybeSingle();
+        if (error || !data) return { data: null as PublicAtelier | null, error };
+        return { data: mapPublicAtelier(data), error: null };
+    },
+
+    linkByInvite: async (code: string) => {
+        const normalized = normalizeInviteCode(code);
+        if (normalized.length < 4) {
+            return { data: null as string | null, error: new Error('Code trop court') };
+        }
+
+        const { data, error } = await supabase.rpc('link_client_by_invite', { p_code: normalized });
+        if (!error && data) return { data: data as string, error: null };
+
+        // RPC métier (code introuvable, déjà liée…) : ne pas masquer par un UPDATE RLS.
+        if (error && !isMissingDbObject(error)) {
+            return { data: null as string | null, error: new Error(formatLinkError(error)) };
+        }
+
+        const uid = await getUserId();
+        const { data: claimed, error: updErr } = await supabase
+            .from('clients')
+            .update({ client_user_id: uid, updated_at: new Date().toISOString() })
+            .eq('invite_code', normalized)
+            .is('deleted_at', null)
+            .select('id')
+            .maybeSingle();
+
+        if (!updErr && claimed?.id) return { data: claimed.id as string, error: null };
+
+        const { data: claimedUpper, error: updErr2 } = await supabase
+            .from('clients')
+            .update({ client_user_id: uid, updated_at: new Date().toISOString() })
+            .ilike('invite_code', normalized)
+            .is('deleted_at', null)
+            .select('id')
+            .maybeSingle();
+
+        if (!updErr2 && claimedUpper?.id) return { data: claimedUpper.id as string, error: null };
+
+        return {
+            data: null as string | null,
+            error: new Error(formatLinkError(error ?? updErr ?? updErr2)),
+        };
+    },
+
+    claimByPhone: async (phone?: string | null) => {
+        const normalized = normalizePhone(phone);
+        if (normalized.length < 8) return { data: [] as string[], error: null };
+        const { data, error } = await supabase.rpc('claim_client_by_phone', { p_phone: normalized });
+        return { data: (data as string[] | null) ?? [], error };
+    },
+
+    regenerateInvite: async (clientId: string) => {
+        const { data, error } = await supabase.rpc('regenerate_client_invite', { p_client_id: clientId });
+        if (!error && data) return { data: String(data), error: null };
+        if (error && !isMissingDbObject(error)) {
+            return { data: null as string | null, error };
+        }
+
+        let lastError = error;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const code = generateInviteCode();
+            const { data: row, error: upErr } = await supabase
+                .from('clients')
+                .update({ invite_code: code, updated_at: new Date().toISOString() })
+                .eq('id', clientId)
+                .select('invite_code')
+                .single();
+            if (!upErr && row?.invite_code) return { data: String(row.invite_code), error: null };
+            if (!upErr) return { data: code, error: null };
+            lastError = upErr;
+            if (!isMissingInviteColumn(upErr) && !String(upErr?.message ?? '').toLowerCase().includes('unique')) {
+                break;
+            }
+        }
+        return { data: null as string | null, error: lastError };
+    },
+};
+
+export type ClientRequestRow = {
+    id: string;
+    client_user_id: string;
+    couturier_id: string;
+    client_id: string | null;
+    kind: 'devis' | 'rdv';
+    message: string | null;
+    model_id: string | null;
+    preferred_at: string | null;
+    status: 'pending' | 'accepted' | 'declined' | 'converted';
+    created_at: string;
+};
+
+export const mapClientRequest = (row: ClientRequestRow) => ({
+    id: row.id,
+    clientUserId: row.client_user_id,
+    couturierId: row.couturier_id,
+    clientId: row.client_id,
+    kind: row.kind,
+    message: row.message ?? '',
+    modelId: row.model_id,
+    preferredAt: row.preferred_at ? new Date(row.preferred_at) : null,
+    status: row.status,
+    createdAt: new Date(row.created_at),
+});
+
+export const clientRequestService = {
+    listMine: async () => {
+        const uid = await getUserId();
+        const { data, error } = await supabase
+            .from('client_requests')
+            .select('*')
+            .or(`client_user_id.eq.${uid},couturier_id.eq.${uid}`)
+            .order('created_at', { ascending: false })
+            .limit(50);
+        return { data: (data ?? []) as ClientRequestRow[], error };
+    },
+    create: async (input: {
+        couturierId: string;
+        kind: 'devis' | 'rdv';
+        message: string;
+        modelId?: string | null;
+        preferredAt?: string | null;
+        clientId?: string | null;
+    }) => {
+        const uid = await getUserId();
+        const { data, error } = await supabase
+            .from('client_requests')
+            .insert({
+                client_user_id: uid,
+                couturier_id: input.couturierId,
+                client_id: input.clientId ?? null,
+                kind: input.kind,
+                message: input.message || null,
+                model_id: input.modelId ?? null,
+                preferred_at: input.preferredAt ?? null,
+                status: 'pending',
+            })
+            .select()
+            .single();
+        if (error && isMissingDbObject(error)) {
+            return {
+                data: null as ClientRequestRow | null,
+                error: { ...error, message: 'Les demandes devis/RDV ne sont pas encore activées (migration 025).' },
+            };
+        }
+        return { data: data as ClientRequestRow | null, error };
+    },
+    updateStatus: async (id: string, status: 'accepted' | 'declined' | 'converted') => {
+        const { data, error } = await supabase
+            .from('client_requests')
+            .update({ status })
+            .eq('id', id)
+            .select()
+            .single();
+        return { data: data as ClientRequestRow | null, error };
     },
 };
 
@@ -302,8 +608,19 @@ export const orderService = {
     getByClient: async (clientId: string) => {
         const { data, error } = await supabase
             .from('orders')
-            .select('*')
+            .select('*, order_items(*)')
             .eq('client_id', clientId)
+            .order('created_at', { ascending: false });
+        return { data, error };
+    },
+
+    /** Commandes des fiches CRM liées au compte client (RLS) */
+    getForLinkedClients: async (clientIds: string[]) => {
+        if (!clientIds.length) return { data: [], error: null };
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*, order_items(*)')
+            .in('client_id', clientIds)
             .order('created_at', { ascending: false });
         return { data, error };
     },
@@ -863,6 +1180,39 @@ export const statisticsService = {
 // CATALOGUE
 // ==========================================
 
+const attachCatalogPhotos = async (rows: any[] | null) => {
+    if (!rows?.length) return rows ?? [];
+    const withJoin = rows.filter(r => Array.isArray(r.catalog_photos) && r.catalog_photos.length);
+    if (withJoin.length === rows.length) return rows;
+
+    const ids = rows.map(r => r.id).filter(Boolean);
+    let photos: { catalog_id?: string; photo_url?: string }[] = [];
+
+    const direct = await supabase
+        .from('catalog_photos')
+        .select('catalog_id, photo_url')
+        .in('catalog_id', ids);
+    if (!direct.error && direct.data?.length) {
+        photos = direct.data as any[];
+    } else {
+        const rpc = await supabase.rpc('browse_catalog_photos', { p_ids: ids });
+        if (!rpc.error && rpc.data?.length) photos = rpc.data as any[];
+    }
+
+    const byId = new Map<string, { photo_url: string }[]>();
+    photos.forEach(p => {
+        const url = p.photo_url;
+        const id = p.catalog_id;
+        if (!id || !url) return;
+        byId.set(id, [...(byId.get(id) ?? []), { photo_url: url }]);
+    });
+
+    return rows.map(r => ({
+        ...r,
+        catalog_photos: (r.catalog_photos?.length ? r.catalog_photos : null) ?? byId.get(r.id) ?? [],
+    }));
+};
+
 export const catalogService = {
 
     /** Récupère tous les modèles non archivés du couturier (avec leurs photos) */
@@ -875,6 +1225,44 @@ export const catalogService = {
             .is('deleted_at', null)
             .order('created_at', { ascending: false });
         return { data, error };
+    },
+
+    /**
+     * Modèles publics (browse client).
+     * S'appuie sur la politique catalog qui autorise les modèles publics
+     * des ateliers au catalogue public.
+     */
+    getPublicBrowse: async () => {
+        let { data, error } = await supabase
+            .from('catalog')
+            .select('*, catalog_photos(photo_url)')
+            .eq('statut', 'public')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(80);
+
+        if (error || !data?.length) {
+            const rpc = await supabase.rpc('browse_public_catalog');
+            if (!rpc.error && rpc.data?.length) {
+                data = rpc.data as any[];
+                error = null;
+            }
+        }
+        if (error) return { data: data ?? [], error };
+        return { data: await attachCatalogPhotos(data), error: null };
+    },
+
+    getPublicByCouturier: async (couturierId: string) => {
+        const { data, error } = await supabase
+            .from('catalog')
+            .select('*, catalog_photos(photo_url)')
+            .eq('couturier_id', couturierId)
+            .eq('statut', 'public')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(40);
+        if (error) return { data, error };
+        return { data: await attachCatalogPhotos(data), error: null };
     },
 
     /** Crée un nouveau modèle (les photos sont stockées séparément dans catalog_photos) */
@@ -1088,25 +1476,30 @@ export const catalogService = {
 // ==========================================
 
 /** Convertit une ligne DB catalog (+ catalog_photos joint) → type CatalogModel de l'app */
-export const mapCatalogModel = (row: any): CatalogModel => ({
+export const mapCatalogModel = (row: any): CatalogModel => {
+    const fromJoin = Array.isArray(row.catalog_photos)
+        ? row.catalog_photos.map((p: any) => (typeof p === 'string' ? p : p?.photo_url ?? p?.url)).filter(Boolean)
+        : [];
+    const fromCol = Array.isArray(row.photos) ? row.photos.filter(Boolean) : [];
+    const single = typeof row.photo_url === 'string' && row.photo_url ? [row.photo_url] : [];
+    return {
     id:                      row.id,
     couturierId:             row.couturier_id ?? row.user_id ?? '',
     nom:                     row.name ?? '',
     categorie:               row.category ?? 'casual',
     description:             row.description ?? undefined,
-    photos:                  Array.isArray(row.catalog_photos)
-        ? row.catalog_photos.map((p: any) => p.photo_url)
-        : (Array.isArray(row.photos) ? row.photos : []),
+    photos:                  fromJoin.length ? fromJoin : (fromCol.length ? fromCol : single),
     prixIndicatif:           Number(row.price ?? 0),
     difficulte:              row.difficulte ?? 'moyen',
     tempsMoyenRealisation:   row.temps_moyen_realisation ?? null,
     tissusRecommandes:       Array.isArray(row.tissus_recommandes) ? row.tissus_recommandes : [],
     accessoiresNecessaires:  Array.isArray(row.accessoires_necessaires) ? row.accessoires_necessaires : [],
-    statut:                  row.statut ?? 'prive',
+    statut:                  String(row.statut ?? '').toLowerCase() === 'public' ? 'public' : (row.statut ?? 'prive'),
     isFavorite:              row.is_favorite ?? false,
     createdAt:               new Date(row.created_at),
     deletedAt:               row.deleted_at ? new Date(row.deleted_at) : null,
-});
+    };
+};
 
 
 // ==========================================
@@ -1117,6 +1510,8 @@ export const mapCatalogModel = (row: any): CatalogModel => ({
 export const mapClient = (row: any): Client => ({
     id:            row.id,
     couturierId:   row.couturier_id ?? row.user_id ?? '',
+    clientUserId:  row.client_user_id ?? null,
+    inviteCode:    row.invite_code ?? null,
     nom:           row.nom ?? row.full_name ?? '',
     telephone:     row.telephone ?? row.phone ?? '',
     whatsapp:      row.whatsapp ?? null,
@@ -1171,6 +1566,7 @@ export const mapOrder = (row: any): Order => {
     return {
         id: row.id,
         clientId: row.client_id,
+        couturierId: row.couturier_id ?? undefined,
         clientName: row.client_name,
         clothingType: row.clothing_type,
         description: row.description ?? '',

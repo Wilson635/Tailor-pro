@@ -1,7 +1,8 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import * as Notifications from '@/src/notifications/expoNotificationsSafe';
+import type { NotificationTriggerInput, NotificationResponse } from '@/src/notifications/expoNotificationsSafe';
 import type { InboxItem } from '@/src/utils/buildInbox';
 import { openFromDeviceNotification } from '@/src/navigation/notificationNav';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
@@ -11,16 +12,20 @@ const SENT_KEY = (uid: string, day: string) => `@tailorpro_os_notif_sent_${uid}_
 const PREFIX = 'tp-';
 export const ATELIER_CHANNEL = 'atelier';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    priority: Notifications.AndroidNotificationPriority.HIGH,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+    }),
+  });
+} catch (e) {
+  console.warn('Notification handler unavailable', e);
+}
 
 const dayStamp = () => new Date().toISOString().slice(0, 10);
 
@@ -36,38 +41,51 @@ export const setNotificationsEnabled = async (uid: string, enabled: boolean) => 
 
 const ensureAndroidChannel = async () => {
   if (Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync(ATELIER_CHANNEL, {
-    name: 'Atelier TailorPro',
-    importance: Notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#D4AF37',
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-  });
+  try {
+    await Notifications.setNotificationChannelAsync(ATELIER_CHANNEL, {
+      name: 'Atelier TailorPro',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#D4AF37',
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+  } catch (e) {
+    console.warn('Notification channel unavailable', e);
+  }
 };
 
 export const requestNotificationPermission = async (): Promise<boolean> => {
   if (Platform.OS === 'web') return false;
   if (!Device.isDevice) return false;
-  await ensureAndroidChannel();
-  const current = await Notifications.getPermissionsAsync();
-  let status = current.status;
-  if (status !== 'granted') {
-    const asked = await Notifications.requestPermissionsAsync({
-      ios: { allowAlert: true, allowBadge: true, allowSound: true },
-    });
-    status = asked.status;
+  try {
+    await ensureAndroidChannel();
+    const current = await Notifications.getPermissionsAsync();
+    let status = current.status;
+    if (status !== 'granted') {
+      const asked = await Notifications.requestPermissionsAsync({
+        ios: { allowAlert: true, allowBadge: true, allowSound: true },
+      });
+      status = asked.status;
+    }
+    return status === 'granted';
+  } catch (e) {
+    console.warn('Notification permission unavailable', e);
+    return false;
   }
-  return status === 'granted';
 };
 
 export const cancelAllAtelierNotifications = async () => {
   if (Platform.OS === 'web') return;
-  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  await Promise.all(
-    scheduled
-      .filter((n) => n.identifier.startsWith(PREFIX))
-      .map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)),
-  );
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    await Promise.all(
+      scheduled
+        .filter((n) => n.identifier.startsWith(PREFIX))
+        .map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)),
+    );
+  } catch (e) {
+    console.warn('Cancel notifications unavailable', e);
+  }
 };
 
 const fireDateFor = (item: InboxItem): Date | null => {
@@ -130,25 +148,12 @@ export const syncDeviceNotifications = async (uid: string, items: InboxItem[]) =
     if (immediate && sent.has(item.id)) continue;
 
     const seconds = Math.max(2, Math.round((when.getTime() - Date.now()) / 1000));
-    const trigger: Notifications.NotificationTriggerInput = immediate
-      ? {
-          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds,
-          repeats: false,
-          channelId: ATELIER_CHANNEL,
-        }
-      : when.getTime() - Date.now() > 60_000
-        ? {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: when,
-            channelId: ATELIER_CHANNEL,
-          }
-        : {
-            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-            seconds,
-            repeats: false,
-            channelId: ATELIER_CHANNEL,
-          };
+    const trigger: NotificationTriggerInput = {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds,
+      repeats: false,
+      ...(Platform.OS === 'android' ? { channelId: ATELIER_CHANNEL } : {}),
+    };
 
     try {
       await Notifications.scheduleNotificationAsync({
@@ -179,7 +184,7 @@ export const syncDeviceNotifications = async (uid: string, items: InboxItem[]) =
 
 let responseSub: { remove: () => void } | null = null;
 
-const openFromResponse = (response: Notifications.NotificationResponse) => {
+const openFromResponse = (response: NotificationResponse) => {
   const data = response.notification.request.content.data as {
     routeName?: keyof RootStackParamList;
     routeParams?: object;
@@ -195,11 +200,17 @@ const openFromResponse = (response: Notifications.NotificationResponse) => {
 
 export const startNotificationResponseListener = () => {
   if (responseSub || Platform.OS === 'web') return;
-  responseSub = Notifications.addNotificationResponseReceivedListener(openFromResponse);
+  try {
+    responseSub = Notifications.addNotificationResponseReceivedListener(openFromResponse);
 
-  Notifications.getLastNotificationResponseAsync().then((last) => {
-    if (!last) return;
-    openFromResponse(last);
-    Notifications.clearLastNotificationResponse();
-  });
+    Notifications.getLastNotificationResponseAsync()
+      .then((last) => {
+        if (!last) return;
+        openFromResponse(last);
+        Notifications.clearLastNotificationResponse();
+      })
+      .catch(() => undefined);
+  } catch (e) {
+    console.warn('Notification response listener unavailable', e);
+  }
 };

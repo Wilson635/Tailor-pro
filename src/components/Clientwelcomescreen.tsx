@@ -29,7 +29,7 @@ const C = {
     textSecondary: "#7A7787",
     textTertiary:  "#B0ACBA",
 
-    purple900:  "#1A0033",
+    purple900:  "#16123A",
     purple600:  "#534AB7",
     purple100:  "#EEEDFE",
 

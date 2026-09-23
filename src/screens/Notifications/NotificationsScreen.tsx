@@ -21,6 +21,8 @@ const isReminder = (k: InboxKind) => k !== 'activity';
 
 const metaFor = (P: Palette, kind: InboxKind) => {
   switch (kind) {
+    case 'request':
+      return { icon: 'inbox' as const, color: P.gold, bg: P.goldBg };
     case 'order':
       return { icon: 'scissors' as const, color: P.info, bg: P.infoBg };
     case 'payment':

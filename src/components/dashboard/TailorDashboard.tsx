@@ -141,7 +141,7 @@ export const TailorDashboard: React.FC = () => {
     const insets     = useSafeAreaInsets();
     const navigation = useNavigation<Nav>();
     const { colors: P, styles } = useThemedStyles(makeStyles);
-    const { statistics, activities, orders, clients, realisations, loadAllRealisations } = useAppStore();
+    const { statistics, activities, orders, clients, realisations, loadAllRealisations, clientRequests, profile } = useAppStore();
 
     useEffect(() => { loadAllRealisations(); }, []);
 
@@ -200,6 +200,11 @@ export const TailorDashboard: React.FC = () => {
                 .filter(o => !INACTIVE_STATUSES.includes(o.orderStatus))
                 .reduce((s, o) => s + (o.remainingAmount ?? 0), 0),
         [orders]
+    );
+
+    const pendingRequests = useMemo(
+        () => clientRequests.filter(r => r.status === 'pending' && r.couturierId === profile?.id).length,
+        [clientRequests, profile?.id],
     );
 
     // ── Impayés > 30 jours ──────────────────
@@ -354,6 +359,21 @@ export const TailorDashboard: React.FC = () => {
             </View>
 
             {/* ══ LIVRAISONS DU JOUR / EN RETARD ══ */}
+            {pendingRequests > 0 && (
+                <TouchableOpacity
+                    style={styles.alertBanner}
+                    onPress={() => navigation.navigate('AtelierRequests')}
+                    activeOpacity={0.85}
+                >
+                    <View style={styles.alertLeft}>
+                        <Feather name="inbox" size={16} color={P.gold} />
+                        <Text style={styles.alertText}>
+                            {pendingRequests} demande{pendingRequests > 1 ? 's' : ''} devis / RDV en attente
+                        </Text>
+                    </View>
+                    <Feather name="chevron-right" size={14} color={P.gold} />
+                </TouchableOpacity>
+            )}
             <View style={styles.pillRow}>
                 <StatPill
                     icon="truck"
@@ -712,6 +732,13 @@ const makeStyles = (P: Palette) => ({
     periodTabTextActive: { color: '#fff' },
 
     section:  { gap: 12 },
+    alertBanner: {
+        flexDirection: 'row' as const, alignItems: 'center' as const,
+        backgroundColor: P.goldBg, borderRadius: 16, padding: 14,
+        borderWidth: 0.5, borderColor: P.goldRim, gap: 8,
+    },
+    alertLeft: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 8, flex: 1 },
+    alertText: { flex: 1, fontSize: 12, color: P.text, fontFamily: 'PlusJakartaSans_600SemiBold', lineHeight: 18 },
     kpiRow:   { flexDirection: 'row' as const, gap: 10 },
     kpiCard: {
         flex: 1, backgroundColor: P.surface, borderRadius: 16,

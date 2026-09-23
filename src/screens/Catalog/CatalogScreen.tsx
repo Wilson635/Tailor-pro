@@ -49,13 +49,15 @@ const ModelCard = ({
   styles,
   onPress,
   onFavorite,
+  hideFavorite,
 }: {
   item: CatalogModel;
   index: number;
   colors: Palette;
   styles: ReturnType<typeof makeStyles>;
   onPress: () => void;
-  onFavorite: () => void;
+  onFavorite?: () => void;
+  hideFavorite?: boolean;
 }) => {
   const enter = useRef(new Animated.Value(0)).current;
   const press = useRef(new Animated.Value(1)).current;
@@ -100,6 +102,7 @@ const ModelCard = ({
             style={StyleSheet.absoluteFill}
           />
 
+          {!hideFavorite && (
           <TouchableOpacity
             style={styles.favBtn}
             onPress={() => {
@@ -107,7 +110,7 @@ const ModelCard = ({
                 Animated.spring(heart, { toValue: 1.28, useNativeDriver: nativeDriver, speed: 28, bounciness: 12 }),
                 Animated.spring(heart, { toValue: 1, useNativeDriver: nativeDriver, speed: 18 }),
               ]).start();
-              onFavorite();
+              onFavorite?.();
             }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
@@ -119,6 +122,7 @@ const ModelCard = ({
               />
             </Animated.View>
           </TouchableOpacity>
+          )}
 
           <View style={styles.cardMeta}>
             <View style={styles.cardPills}>
@@ -148,7 +152,8 @@ export const CatalogScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { colors, styles } = useThemedStyles(makeStyles);
   const navigation = useNavigation<NavigationProp>();
-  const { catalog, toggleCatalogFavorite } = useAppStore();
+  const { catalog, toggleCatalogFavorite, profile } = useAppStore();
+  const isClient = profile?.role === 'client';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -183,13 +188,14 @@ export const CatalogScreen: React.FC = () => {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.kicker}>Atelier</Text>
-          <Text style={styles.headerTitle}>Catalogue</Text>
+          <Text style={styles.kicker}>{isClient ? 'Espace client' : 'Atelier'}</Text>
+          <Text style={styles.headerTitle}>{isClient ? 'Modèles' : 'Catalogue'}</Text>
         </View>
         <View style={styles.headerRight}>
           <View style={styles.countPill}>
             <Text style={styles.countText}>{catalog.length}</Text>
           </View>
+          {!isClient && (
           <TouchableOpacity
             style={styles.addBtn}
             onPress={() => navigation.navigate('AddCatalogModel')}
@@ -197,6 +203,7 @@ export const CatalogScreen: React.FC = () => {
           >
             <Ionicons name="add" size={20} color={colors.gold} />
           </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -225,6 +232,7 @@ export const CatalogScreen: React.FC = () => {
         style={{ flexGrow: 0 }}
         contentContainerStyle={styles.chipsRow}
       >
+        {!isClient && (
         <TouchableOpacity
           onPress={() => setFavOnly((v) => !v)}
           style={[styles.filterChip, favOnly && styles.filterChipOn]}
@@ -235,6 +243,7 @@ export const CatalogScreen: React.FC = () => {
             Favoris{favoriteCount > 0 ? ` ${favoriteCount}` : ''}
           </Text>
         </TouchableOpacity>
+        )}
         {CATALOG_FILTER_CATEGORIES.map((cat) => {
           const active = activeCategory === cat;
           return (
@@ -275,7 +284,8 @@ export const CatalogScreen: React.FC = () => {
             colors={colors}
             styles={styles}
             onPress={() => navigation.navigate('ModelDetails', { modelId: item.id })}
-            onFavorite={() => handleFavorite(item.id)}
+            onFavorite={isClient ? undefined : () => handleFavorite(item.id)}
+            hideFavorite={isClient}
           />
         )}
         ListEmptyComponent={
@@ -286,14 +296,18 @@ export const CatalogScreen: React.FC = () => {
             <Text style={styles.emptyTitle}>
               {searchQuery || activeCategory !== 'all' || favOnly
                 ? 'Aucun modèle'
-                : 'Votre vitrine est vide'}
+                : isClient
+                  ? 'Aucun modèle public'
+                  : 'Votre vitrine est vide'}
             </Text>
             <Text style={styles.emptySub}>
               {searchQuery || activeCategory !== 'all' || favOnly
                 ? 'Essayez un autre filtre ou une autre recherche.'
-                : 'Ajoutez vos créations pour les proposer à vos clients.'}
+                : isClient
+                  ? 'Les ateliers publient ici leurs créations.'
+                  : 'Ajoutez vos créations pour les proposer à vos clients.'}
             </Text>
-            {!searchQuery && activeCategory === 'all' && !favOnly && (
+            {!isClient && !searchQuery && activeCategory === 'all' && !favOnly && (
               <TouchableOpacity
                 style={styles.emptyBtn}
                 onPress={() => navigation.navigate('AddCatalogModel')}

@@ -28,7 +28,7 @@ const C = {
     text:    '#FFFFFF',
     sub:     'rgba(255,255,255,0.5)',
     gold:    '#D4AF37',
-    purple:  '#2E0057',
+    purple:  '#221E4E',
     success: '#4ADE80',
     error:   '#EF4444',
 };
@@ -274,7 +274,7 @@ export const BiometricAuthScreen: React.FC<Props> = ({ navigation }) => {
                                 colors={
                                     biometricState === 'success' ? ['#065F46', '#064E3B'] :
                                         biometricState === 'error'   ? ['#7F1D1D', '#991B1B'] :
-                                            ['#2E0057', '#1A0033']
+                                            ['#221E4E', '#16123A']
                                 }
                                 style={styles.biometricBtn}
                             >
@@ -345,7 +345,7 @@ export const BiometricAuthScreen: React.FC<Props> = ({ navigation }) => {
                                 ))}
                             </View>
                             <TouchableOpacity style={styles.otpSubmit} activeOpacity={0.85}>
-                                <LinearGradient colors={['#2E0057', '#18002E']} style={styles.otpSubmitGrad}>
+                                <LinearGradient colors={['#221E4E', '#16123A']} style={styles.otpSubmitGrad}>
                                     <Text style={styles.otpSubmitText}>Vérifier le code</Text>
                                 </LinearGradient>
                             </TouchableOpacity>
@@ -358,7 +358,7 @@ export const BiometricAuthScreen: React.FC<Props> = ({ navigation }) => {
                     <View style={styles.passkeySection}>
                         <TouchableOpacity style={styles.passkeyCard}>
                             <View style={styles.passkeyIconWrap}>
-                                <LinearGradient colors={['#2E0057', '#1A0033']} style={styles.passkeyIconBg}>
+                                <LinearGradient colors={['#221E4E', '#16123A']} style={styles.passkeyIconBg}>
                                     <Ionicons name="key-outline" size={36} color={C.gold} />
                                 </LinearGradient>
                             </View>
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center', gap: 6,
         paddingVertical: 10, borderRadius: 10,
     },
-    methodTabActive: { backgroundColor: '#2E0057' },
+    methodTabActive: { backgroundColor: '#221E4E' },
     methodTabText: { fontSize: 12, fontWeight: '600', color: C.sub },
 
     // Biometric
@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
     },
     twoFAIcon: {
         width: 60, height: 60, borderRadius: 18,
-        backgroundColor: '#2E0057',
+        backgroundColor: '#221E4E',
         alignItems: 'center', justifyContent: 'center', marginBottom: 16,
     },
     twoFATitle: {
