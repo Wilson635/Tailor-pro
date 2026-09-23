@@ -19,13 +19,19 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppStore } from '@store/useAppStore';
 import { useProfile } from '@hooks/useProfile';
-import { formatCurrencyShort } from '@utils/formatters';
+import { formatCurrencyShort, formatPhone } from '@utils/formatters';
 import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { useThemedStyles, type Palette } from '@/src/theme';
 import { AtelierIcon } from '@/src/components/ui';
 import { showAlert, showSuccess } from '@/src/context/DialogContext';
 import { isCancelledOrder } from '@constants/commandeConstants';
-import { confectionRequestMessage, openTel, openWhatsApp } from '@utils/atelierContact';
+import {
+  confectionRequestMessage,
+  openTel,
+  openWhatsApp,
+  atelierPhone as pickAtelierPhone,
+  atelierWhatsApp as pickAtelierWhatsApp,
+} from '@utils/atelierContact';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -56,9 +62,12 @@ export const ClientAccountScreen: React.FC = () => {
   );
 
   const primaryClient = clients[0] ?? null;
-  const primaryTailor = linkedTailors[0]
-    ?? (primaryClient ? getAtelierById(primaryClient.couturierId) : undefined)
+  const primaryTailor = (linkedTailors[0]
+    ? (getAtelierById(linkedTailors[0].id) ?? linkedTailors[0])
+    : (primaryClient ? getAtelierById(primaryClient.couturierId) : undefined))
     ?? null;
+  const callNumber = pickAtelierPhone(primaryTailor);
+  const waNumber = pickAtelierWhatsApp(primaryTailor);
 
   const ficheCount = useMemo(
     () => (primaryClient ? (fiches[primaryClient.id] ?? []).length : 0),
@@ -149,8 +158,12 @@ export const ClientAccountScreen: React.FC = () => {
                   <Text style={styles.tailorName}>
                     {primaryTailor.atelierName ?? primaryTailor.displayName ?? 'Atelier'}
                   </Text>
-                  {!!primaryTailor.city && (
-                    <Text style={styles.tailorSub}>{primaryTailor.city}</Text>
+                  {(!!primaryTailor.city || !!callNumber) && (
+                    <Text style={styles.tailorSub}>
+                      {[primaryTailor.city, callNumber ? formatPhone(callNumber) : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
                   )}
                   {linkedTailors.length > 1 && (
                     <Text style={styles.tailorSub}>
@@ -164,14 +177,14 @@ export const ClientAccountScreen: React.FC = () => {
               <View style={styles.contactRow}>
                 <TouchableOpacity
                   style={styles.contactBtn}
-                  onPress={() => openTelContact(primaryTailor.phone ?? primaryTailor.whatsapp)}
+                  onPress={() => openTelContact(callNumber)}
                 >
                   <Feather name="phone" size={14} color={P.primary} />
                   <Text style={styles.contactBtnText}>Appeler</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.contactBtn}
-                  onPress={() => openWhatsAppContact(primaryTailor.whatsapp ?? primaryTailor.phone)}
+                  onPress={() => openWhatsAppContact(waNumber)}
                 >
                   <Feather name="message-circle" size={14} color={P.success} />
                   <Text style={styles.contactBtnText}>WhatsApp</Text>

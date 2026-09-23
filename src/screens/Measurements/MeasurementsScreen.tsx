@@ -17,7 +17,7 @@ import {
 import type { FicheMensuration, TypeVetement } from '../../types';
 import type { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { useThemedStyles, type Palette } from '@/src/theme';
-import { confectionRequestMessage, openWhatsApp } from '@utils/atelierContact';
+import { confectionRequestMessage, openWhatsApp, atelierWhatsApp } from '@utils/atelierContact';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Measurements'>;
 
@@ -66,11 +66,14 @@ export const MeasurementsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { clientId } = route.params;
   const { colors: P, styles } = useThemedStyles(makeStyles);
 
-  const { fiches, loadFiches, getClientById, profile, linkedTailors } = useAppStore();
+  const { fiches, loadFiches, getClientById, profile, linkedTailors, getAtelierById } = useAppStore();
   const isClient = profile?.role === 'client';
   const client = getClientById(clientId);
   const clientFiches = fiches[clientId] ?? [];
-  const primaryTailor = linkedTailors[0];
+  const primaryTailorId = client?.couturierId ?? linkedTailors[0]?.id;
+  const primaryTailor = primaryTailorId
+    ? (getAtelierById(primaryTailorId) ?? linkedTailors[0])
+    : linkedTailors[0];
 
   useEffect(() => {
     loadFiches(clientId);
@@ -100,7 +103,7 @@ export const MeasurementsScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const askTailorUpdate = () => {
     openWhatsApp(
-      primaryTailor?.whatsapp ?? primaryTailor?.phone,
+      atelierWhatsApp(primaryTailor),
       confectionRequestMessage({
         atelierName: primaryTailor?.atelierName ?? primaryTailor?.displayName,
       }).replace('confection', 'mise à jour de mes mesures'),

@@ -9,7 +9,6 @@ import {
     Text,
     ScrollView,
     TouchableOpacity,
-    Linking,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,13 +24,14 @@ import { RootStackParamList } from '@/src/navigation/AppNavigator';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useThemedStyles, type Palette } from '@/src/theme';
 import { AtelierIcon } from '@/src/components/ui';
+import { atelierWhatsApp, confectionRequestMessage, openWhatsApp } from '@utils/atelierContact';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MainTabs'>;
 
 export const ClientOrdersScreen: React.FC<Props> = ({ navigation }) => {
     const insets = useSafeAreaInsets();
     const { colors: P, styles } = useThemedStyles(makeStyles);
-    const { orders, clients, linkedTailors } = useAppStore();
+    const { orders, clients, linkedTailors, getAtelierById } = useAppStore();
 
     const linkedIds = useMemo(() => new Set(clients.map(c => c.id)), [clients]);
     const myOrders = useMemo(
@@ -40,13 +40,19 @@ export const ClientOrdersScreen: React.FC<Props> = ({ navigation }) => {
     );
     const activeOrders = myOrders.filter((o) => !isDoneOrder(o.orderStatus));
     const pastOrders = myOrders.filter((o) => isDoneOrder(o.orderStatus));
-    const primaryTailor = linkedTailors[0] ?? null;
+    const primaryTailorId = linkedTailors[0]?.id ?? clients[0]?.couturierId;
+    const primaryTailor = primaryTailorId
+        ? (getAtelierById(primaryTailorId) ?? linkedTailors[0] ?? null)
+        : null;
 
     const contactTailor = () => {
         if (!primaryTailor) return;
-        const phone = (primaryTailor.whatsapp ?? primaryTailor.phone ?? '').replace(/\s/g, '');
-        if (!phone) return;
-        Linking.openURL(`https://wa.me/${phone.replace('+', '')}`);
+        openWhatsApp(
+            atelierWhatsApp(primaryTailor),
+            confectionRequestMessage({
+                atelierName: primaryTailor.atelierName ?? primaryTailor.displayName,
+            }),
+        );
     };
 
     return (

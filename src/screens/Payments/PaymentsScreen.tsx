@@ -136,6 +136,8 @@ export const PaymentsScreen: React.FC<Props> = ({ route, navigation }) => {
           totalAmount: order?.totalPrice ?? item.amount,
           paidAmount: order ? Math.max(0, (order.totalPrice ?? 0) - (order.remainingAmount ?? 0)) : item.amount,
           remaining: order?.remainingAmount ?? 0,
+          tailorId: order?.couturierId,
+          orderId: item.orderId,
         })}
       >
         <View style={styles.iconWrap}>

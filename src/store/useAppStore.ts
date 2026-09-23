@@ -568,8 +568,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   getAtelierById: (id) => {
     const linked = get().linkedTailors.find(t => t.id === id);
-    if (linked) return linked;
-    return get().publicAteliers.find(t => t.id === id);
+    const pub = get().publicAteliers.find(t => t.id === id);
+    if (linked && pub) {
+      return {
+        ...pub,
+        ...linked,
+        phone: linked.phone || pub.phone,
+        whatsapp: linked.whatsapp || pub.whatsapp,
+        city: linked.city || pub.city,
+        avatarUrl: linked.avatarUrl || pub.avatarUrl,
+        coverUrl: linked.coverUrl || pub.coverUrl,
+        atelierName: linked.atelierName || pub.atelierName,
+        displayName: linked.displayName || pub.displayName,
+      };
+    }
+    return linked ?? pub;
   },
 
   linkAtelierByInvite: async (code) => {

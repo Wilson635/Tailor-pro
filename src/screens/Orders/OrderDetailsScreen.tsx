@@ -325,6 +325,8 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                             totalAmount:    order.totalPrice,
                             paidAmount:     snapPaid,
                             remaining:      Math.max(0, order.totalPrice - snapPaid),
+                            tailorId:       order.couturierId,
+                            orderId:        order.id,
                         }) },
                 ]
             );
@@ -653,6 +655,8 @@ export const OrderDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                                             totalAmount: order.totalPrice,
                                             paidAmount: totalPaid,
                                             remaining,
+                                            tailorId: order.couturierId,
+                                            orderId: order.id,
                                         })}
                                         activeOpacity={0.75}
                                     >

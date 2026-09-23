@@ -3,7 +3,7 @@
 // Papier ivoire, or, marine — image + PDF
 // ==========================================
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Image,
 } from 'react-native';
@@ -16,6 +16,8 @@ import { RootStackParamList } from '../../navigation/AppNavigator';
 import { formatCurrency, formatDate } from '@utils/formatters';
 import { TYPE_PAIEMENT_META, MODE_PAIEMENT_META, TypePaiement, ModePaiement } from '@constants/paiementConstants';
 import { useAppStore } from '@store/useAppStore';
+import { clientLinkService } from '@services/supabaseService';
+import type { PublicAtelier } from '@/src/types';
 import { useThemedStyles, type Palette } from '@/src/theme';
 import { showAlert } from '@/src/context/DialogContext';
 import { AtelierIcon } from '@/src/components/ui';
@@ -56,14 +58,17 @@ export function RecuScreen() {
     const route = useRoute<Route>();
     const insets = useSafeAreaInsets();
     const { colors: C, styles } = useThemedStyles(makeStyles);
-    const { profile } = useAppStore();
+    const { profile, orders, getAtelierById, linkedTailors } = useAppStore();
     const shotRef = useRef<View>(null);
     const [busy, setBusy] = useState<'image' | 'pdf' | null>(null);
+    const [remoteAtelier, setRemoteAtelier] = useState<PublicAtelier | null>(null);
 
     const {
         amount, typePaiement, modePaiement, date,
         notes, clientName, commandeNumero,
         totalAmount, paidAmount, remaining,
+        tailorId: paramTailorId,
+        orderId,
     } = route.params;
 
     const typeMeta = TYPE_PAIEMENT_META[typePaiement as TypePaiement] ?? TYPE_PAIEMENT_META.acompte;
@@ -71,10 +76,37 @@ export function RecuScreen() {
     const dateObj = new Date(date);
     const settled = remaining <= 0;
 
-    const atelierName = profile?.atelier_name?.trim() || profile?.display_name?.trim() || 'TailorPro';
-    const atelierCity = profile?.city?.trim();
-    const atelierPhone = profile?.whatsapp?.trim() || profile?.phone?.trim();
-    const avatarUrl = profile?.avatar_url;
+    const order = useMemo(
+        () => (orderId ? orders.find(o => o.id === orderId) : undefined),
+        [orderId, orders],
+    );
+
+    const tailorId = paramTailorId
+        || order?.couturierId
+        || (profile?.role === 'tailor' ? profile.id : linkedTailors[0]?.id)
+        || undefined;
+
+    useEffect(() => {
+        if (!tailorId || getAtelierById(tailorId) || remoteAtelier?.id === tailorId) return;
+        let cancelled = false;
+        clientLinkService.getPublicAtelierById(tailorId).then(({ data }) => {
+            if (!cancelled && data) setRemoteAtelier(data);
+        });
+        return () => { cancelled = true; };
+    }, [tailorId, getAtelierById, remoteAtelier?.id]);
+
+    const atelier = (tailorId ? getAtelierById(tailorId) : undefined) ?? remoteAtelier;
+    const selfIsTailor = profile?.role === 'tailor' && (!tailorId || tailorId === profile.id);
+
+    const atelierName = atelier?.atelierName?.trim()
+        || atelier?.displayName?.trim()
+        || (selfIsTailor ? (profile?.atelier_name?.trim() || profile?.display_name?.trim()) : null)
+        || 'Atelier';
+    const atelierCity = atelier?.city?.trim() || (selfIsTailor ? profile?.city?.trim() : undefined);
+    const atelierPhone = atelier?.whatsapp?.trim()
+        || atelier?.phone?.trim()
+        || (selfIsTailor ? (profile?.whatsapp?.trim() || profile?.phone?.trim()) : undefined);
+    const avatarUrl = atelier?.avatarUrl || (selfIsTailor ? profile?.avatar_url : null);
     const recuRef = `TP-${dateObj.getFullYear()}${String(dateObj.getMonth() + 1).padStart(2, '0')}${String(dateObj.getDate()).padStart(2, '0')}-${String(Math.abs(amount).toFixed(0)).slice(-4).padStart(4, '0')}`;
     const fileBase = `recu_${(commandeNumero || clientName || 'paiement').replace(/[^\w-]+/g, '_')}_${Date.now()}`;
 
@@ -181,7 +213,7 @@ export function RecuScreen() {
                     <Feather name="arrow-left" size={20} color={C.text} />
                 </TouchableOpacity>
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.kicker}>Atelier</Text>
+                    <Text style={styles.kicker} numberOfLines={1}>{atelierName}</Text>
                     <Text style={styles.headerTitle}>Reçu</Text>
                 </View>
             </View>

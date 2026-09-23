@@ -195,26 +195,38 @@ export const clientLinkService = {
         return { data: keepMine(data), error: error ?? rpc.error };
     },
 
-    /** Profils publics des ateliers liés */
+    /** Profils publics des ateliers liés — jamais les coordonnées CRM du client */
     getLinkedTailors: async (clients: Client[]): Promise<{ data: LinkedTailor[]; error: Error | null }> => {
         if (!clients.length) return { data: [], error: null };
         const tailorIds = [...new Set(clients.map(c => c.couturierId).filter(Boolean))];
         if (!tailorIds.length) return { data: [], error: null };
 
         const byId = new Map<string, any>();
+        const merge = (rows: any[] | null | undefined) => {
+            (rows ?? []).forEach((u: any) => {
+                if (!u?.id) return;
+                byId.set(u.id, { ...byId.get(u.id), ...u });
+            });
+        };
 
         const labels = await supabase.rpc('browse_atelier_labels', { p_ids: tailorIds });
-        if (!labels.error && labels.data) {
-            (labels.data as any[]).forEach(u => byId.set(u.id, u));
+        if (!labels.error) merge(labels.data as any[]);
+
+        const publicRows = await supabase.rpc('browse_public_ateliers');
+        if (!publicRows.error && publicRows.data) {
+            (publicRows.data as any[])
+                .filter((u: any) => tailorIds.includes(u.id))
+                .forEach((u: any) => byId.set(u.id, { ...byId.get(u.id), ...u }));
         }
+
+        const profiles = await supabase.rpc('browse_atelier_profiles', { p_ids: tailorIds });
+        if (!profiles.error) merge(profiles.data as any[]);
 
         const { data, error } = await supabase
             .from('users')
             .select('id, display_name, atelier_name, phone, whatsapp, city, avatar_url, cover_url, description, specialities, horaires, adresse, reseaux_sociaux')
             .in('id', tailorIds);
-        if (!error && data) {
-            data.forEach((u: any) => byId.set(u.id, { ...byId.get(u.id), ...u }));
-        }
+        if (!error && data) merge(data);
 
         const linked: LinkedTailor[] = clients.map(c => {
             const u = byId.get(c.couturierId);
@@ -222,8 +234,6 @@ export const clientLinkService = {
                 ...mapPublicAtelier(u ?? { id: c.couturierId }),
                 id: c.couturierId,
                 clientRowId: c.id,
-                phone: u?.phone ?? c.telephone ?? null,
-                whatsapp: u?.whatsapp ?? c.whatsapp ?? null,
             };
         });
         return { data: linked, error: error && !linked.length ? error : null };
@@ -263,6 +273,11 @@ export const clientLinkService = {
     },
 
     getPublicAtelierById: async (id: string) => {
+        const fromRpc = await supabase.rpc('browse_atelier_profiles', { p_ids: [id] });
+        if (!fromRpc.error && fromRpc.data?.[0]) {
+            return { data: mapPublicAtelier(fromRpc.data[0]), error: null };
+        }
+
         const pick = async (cols: string) =>
             supabase.from('users').select(cols).eq('id', id).maybeSingle();
 

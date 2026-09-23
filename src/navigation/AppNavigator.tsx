@@ -249,6 +249,8 @@ export type RootStackParamList = {
         date: string; notes?: string; clientName: string;
         commandeNumero?: string; totalAmount: number;
         paidAmount: number; remaining: number;
+        tailorId?: string;
+        orderId?: string;
     };
     // ── Kanban commandes ──
     CommandeKanban: undefined;
